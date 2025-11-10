@@ -1,2 +1,155 @@
 /* main.css */
 @import "tailwindcss";
+
+/* ========================================
+   MangaReader 配色方案 - 简约灰白色系
+   ======================================== */
+
+@theme {
+  /* 简约灰白色系 - Light Mode */
+  --color-manga-50: #f8fafc;    /* 最浅背景 */
+  --color-manga-100: #d9eafd;   /* 次要背景/悬停 */
+  --color-manga-200: #bcccdc;   /* 边框/分割线 */
+  --color-manga-300: #9aa6b2;   /* 图标/次要文字 */
+  --color-manga-400: #6b7886;   /* 主要文字 */
+  --color-manga-500: #475569;   /* 深色文字/标题 */
+  
+  /* Dark Mode 预留 */
+  --color-manga-600: #334155;   /* 深色模式卡片 */
+  --color-manga-700: #1e293b;   /* 深色模式背景 */
+  --color-manga-800: #0f172a;   /* 深色模式深背景 */
+  --color-manga-900: #020617;   /* 最深背景 */
+  
+  /* 功能色（保持简约） */
+  --color-accent-primary: #5b8dbe;   /* 主操作按钮（偏冷色调） */
+  --color-accent-success: #6b9080;   /* 成功/完成 */
+  --color-accent-warning: #e8b86d;   /* 警告 */
+  --color-accent-error: #c76d7e;     /* 错误 */
+  
+  /* 字体家族 */
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 
+                      "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+  --font-family-ja: "Noto Sans JP", "Hiragino Sans", Meiryo, sans-serif;
+  
+  /* 阴影（简约风格，浅淡） */
+  --shadow-manga: 0 2px 8px rgb(154 166 178 / 0.1);
+  --shadow-manga-lg: 0 4px 16px rgb(154 166 178 / 0.15);
+  --shadow-manga-hover: 0 4px 12px rgb(154 166 178 / 0.2);
+  
+  /* 圆角 */
+  --radius-manga: 8px;
+  --radius-manga-lg: 12px;
+  
+  /* 过渡时间 */
+  --duration-manga: 200ms;
+}
+
+/* ========================================
+   全局基础样式
+   ======================================== */
+
+:root {
+  /* Light Mode 默认 */
+  --bg-primary: var(--color-manga-50);
+  --bg-secondary: var(--color-manga-100);
+  --border-color: var(--color-manga-200);
+  --text-primary: var(--color-manga-500);
+  --text-secondary: var(--color-manga-300);
+}
+
+/* Dark Mode */
+.dark {
+  --bg-primary: var(--color-manga-700);
+  --bg-secondary: var(--color-manga-600);
+  --border-color: var(--color-manga-500);
+  --text-primary: var(--color-manga-50);
+  --text-secondary: var(--color-manga-200);
+}
+
+body {
+  font-family: var(--font-family-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color var(--duration-manga), color var(--duration-manga);
+}
+
+/* ========================================
+   自定义工具类
+   ======================================== */
+
+/* 日文文本专用 */
+.text-ja {
+  font-family: var(--font-family-ja);
+  line-height: 1.8;
+}
+
+/* 简约卡片样式 */
+.card-manga {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-manga);
+  box-shadow: var(--shadow-manga);
+  transition: all var(--duration-manga);
+}
+
+.card-manga:hover {
+  box-shadow: var(--shadow-manga-hover);
+  transform: translateY(-2px);
+}
+
+/* 按钮样式 */
+.btn-manga {
+  background-color: var(--color-accent-primary);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-manga);
+  transition: all var(--duration-manga);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-manga:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-manga);
+}
+
+/* 输入框样式 */
+.input-manga {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-manga);
+  padding: 0.5rem 0.75rem;
+  color: var(--text-primary);
+  transition: all var(--duration-manga);
+}
+
+.input-manga:focus {
+  outline: none;
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px rgb(91 141 190 / 0.1);
+}
+
+/* 分割线 */
+.divider-manga {
+  border-top: 1px solid var(--border-color);
+}
+
+/* 滚动条样式（简约） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-manga-300);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-manga-400);
+}
