@@ -24,6 +24,6 @@ const handleFileSelect = (event: Event) => {
             class="text-base transition-all duration-200 text-white cursor-pointer hover:opacity-90 hover:-translate-y-px hover:shadow-base px-4 py-2 bg-primary rounded-primary">
             选择图片📁
         </div>
-        <input type="file" accept="image/*" multiple @change="handleFileSelect" class="hidden">
+        <input type="file" accept="image/*,.zip" multiple @change="handleFileSelect" class="hidden">
     </label>
 </template>

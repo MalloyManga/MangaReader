@@ -1,6 +1,8 @@
 <!-- components/ImageUpload.vue -->
 <script setup lang="ts">
 import Sortable from 'sortablejs'
+import JSZip from 'jszip'
+import ImageThumbnail from './ImageThumbnail.vue'
 
 interface ImageItem {
     id: string
@@ -44,18 +46,51 @@ const handleDragOver = (event: Event) => {
 
 // 添加图片
 const addImages = (files: File[]) => {
-    files.forEach(file => {
-        if (file.type.startsWith('image/')) {
-            const id = `${Date.now()}-${Math.random()}`
-            const url = URL.createObjectURL(file)
-            images.value.push({ id, url, file })
-        }
-    })
+    const imageFilesToAdd: File[] = []
 
-    // 如果是第一次添加，显示第一张
-    if (images.value.length === files.length) {
-        currentImageIndex.value = 0
+    const processFiles = async () => {
+        for (const file of files) {
+            // 如果是 zip 文件
+            if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
+                try {
+                    const zip = await JSZip.loadAsync(file)
+                    // 遍历 zip 内的文件
+                    for (const filename in zip.files) {
+                        const zipEntry = zip.files[filename]
+                        // 确保是文件且是图片类型
+                        if (zipEntry && !zipEntry.dir && /\.(jpe?g|png|gif|webp|bmp)$/i.test(zipEntry.name)) {
+                            const blob = await zipEntry.async('blob')
+                            const imageFile = new File([blob], zipEntry.name, { type: blob.type })
+                            imageFilesToAdd.push(imageFile)
+                        }
+                    }
+                } catch (e) {
+                    console.error("解压失败:", e)
+                }
+            }
+            // 如果是图片文件
+            else if (file.type.startsWith('image/')) {
+                imageFilesToAdd.push(file)
+            }
+        }
+
+        // 统一添加图片到 ref
+        if (imageFilesToAdd.length > 0) {
+            const wasEmpty = images.value.length === 0
+            imageFilesToAdd.forEach(file => {
+                const id = `${Date.now()}-${Math.random()}`
+                const url = URL.createObjectURL(file)
+                images.value.push({ id, url, file })
+            })
+
+            // 如果是第一次添加，显示第一张
+            if (wasEmpty) {
+                currentImageIndex.value = 0
+            }
+        }
     }
+
+    processFiles()
 }
 
 const handleDragEnter = (event: DragEvent) => {
@@ -125,8 +160,10 @@ watch(() => images.value.length, (newLength) => {
 
                         // 1. 从数组中移除被拖拽的项
                         const itemToMove = images.value.splice(oldIndex, 1)[0]
-                        // 2. 将项插入到新的位置
-                        images.value.splice(newIndex, 0, itemToMove!)
+                        if (itemToMove) { // 添加了安全检查
+                            // 2. 将其添加到新的位置
+                            images.value.splice(newIndex, 0, itemToMove)
+                        }
 
                         // 拖拽后可能需要更新当前选中的索引
                         // 如果你拖拽的是当前选中的图片，需要更新 currentImageIndex
