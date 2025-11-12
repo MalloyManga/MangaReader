@@ -1,5 +1,7 @@
 <!-- components/ImageUpload.vue -->
 <script setup lang="ts">
+import Sortable from 'sortablejs'
+
 interface ImageItem {
     id: string
     url: string
@@ -14,6 +16,7 @@ const currentImageIndex = ref(0)
 // 模板引用
 const dropArea = useTemplateRef<HTMLDivElement>('dropArea')
 const imageContainer = useTemplateRef<HTMLDivElement>('imageContainer')
+const imagesPreviewContainer = useTemplateRef<HTMLElement>('imagesPreviewContainer')
 
 // 拖拽状态
 const isDragging = ref(false)
@@ -112,9 +115,52 @@ const removeImage = (index: number) => {
     }
 }
 
+// 保存 Sortable 实例
+let sortableInstance: Sortable | null = null
+
+// 监听 images 数组的长度
+watch(() => images.value.length, (newLength) => {
+    // 使用 nextTick 确保 DOM 已经更新
+    nextTick(() => {
+        if (newLength > 0 && imagesPreviewContainer.value) {
+            // 如果实例不存在，则创建
+            if (!sortableInstance) {
+                sortableInstance = Sortable.create(imagesPreviewContainer.value, {
+                    animation: 150,
+                    // 关键：在拖拽结束时触发
+                    onEnd: (event) => {
+                        const { oldIndex, newIndex } = event
+
+                        // 检查索引是否存在
+                        if (oldIndex === undefined || newIndex === undefined) return
+
+                        // 1. 从数组中移除被拖拽的项
+                        const itemToMove = images.value.splice(oldIndex, 1)[0]
+                        // 2. 将项插入到新的位置
+                        images.value.splice(newIndex, 0, itemToMove!)
+
+                        // 拖拽后可能需要更新当前选中的索引
+                        // 如果你拖拽的是当前选中的图片，需要更新 currentImageIndex
+                        if (currentImageIndex.value === oldIndex) {
+                            currentImageIndex.value = newIndex
+                        }
+                    }
+                })
+            }
+        } else if (newLength === 0 && sortableInstance) {
+            // 如果图片被清空，销毁 Sortable 实例
+            sortableInstance.destroy()
+            sortableInstance = null
+        }
+    })
+})
+
 // 组件卸载时清理 URL
 onUnmounted(() => {
     images.value.forEach(img => URL.revokeObjectURL(img.url))
+    if (sortableInstance) {
+        sortableInstance.destroy()
+    }
 })
 
 const handleScreenshot = () => { console.log('handleScreenshot') }
@@ -123,7 +169,7 @@ const handleScreenshot = () => { console.log('handleScreenshot') }
 <template>
     <div class="h-full flex gap-3">
         <!-- 左侧缩略图列表 -->
-        <div v-if="images.length > 0"
+        <div v-if="images.length > 0" ref="imagesPreviewContainer"
             class="w-24 flex flex-col gap-2 overflow-y-auto bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600">
             <div v-for="(image, index) in images" :key="image.id"
                 class="relative group cursor-pointer transition-all duration-200" @click="selectImage(index)">
