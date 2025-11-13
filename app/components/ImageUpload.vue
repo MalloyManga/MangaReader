@@ -193,10 +193,12 @@ const handleScreenshot = () => { console.log('handleScreenshot') }
 </script>
 
 <template>
-    <div class="h-full flex gap-3">
+    <div class="h-full flex gap-3 items-stretch">
         <!-- 左侧缩略图列表 -->
         <div v-if="images.length > 0" ref="imagesPreviewContainer"
-            class="w-24 flex flex-col gap-2 overflow-y-auto bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600">
+            class="w-24 flex flex-col gap-2 min-h-0 bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600 overflow-y-auto"
+            :style="{ height: containerSize.height + 'px' }">
+            <!-- 这里可能要改一下 滚动条样式 这里待调整 目前没有更好的方法 -->
             <ImageThumbnail v-for="(image, index) in images" :key="image.id" :image="image" :index="index"
                 :is-active="index === currentImageIndex" @select="selectImage(index)" @delete="removeImage(index)" />
         </div>
