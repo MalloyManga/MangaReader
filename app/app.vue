@@ -4,6 +4,8 @@ const router = useRouter()
 const route = useRoute()
 
 onMounted(() => {
+	document.title = 'Manga Reader'
+
 	// 调试日志：看看 Electron 到底把路由识别成了什么鬼样子
 	console.log('🚀 App Launched. Initial Route:', route.fullPath)
 

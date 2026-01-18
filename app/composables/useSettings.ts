@@ -36,6 +36,7 @@ export const useSettings = () => {
         // 监听 settings 变化，自动同步到 Electron Store
         watch(settings, (newVal) => {
             applyTheme()
+            if (!window.electronAPI) return
             // 遍历保存每一个 key
             for (const [key, value] of Object.entries(newVal)) {
                 // 注意：这里需要确保 saveSetting 存在，防止 SSR 报错
@@ -67,6 +68,12 @@ export const useSettings = () => {
     // 初始化：从 Electron 读取配置
     const initSettings = async () => {
         if (import.meta.client) {
+
+            if (!window.electronAPI) {
+                console.warn('Electron API not available')
+                applyTheme()
+                return
+            }
             try {
                 const storedSettings = await window.electronAPI.getSettings()
                 // 合并配置：用 store 里的覆盖默认值

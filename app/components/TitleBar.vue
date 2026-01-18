@@ -29,6 +29,10 @@ onMounted(() => {
         document.documentElement.classList.add('dark')
     }
 
+    if (!window.electronAPI) {
+        console.warn('TitleBar: Electron API not available')
+        return
+    }
     //  监听 Electron 发来的窗口状态变化
     window.electronAPI.onWindowStateChange((state: string) => {
         isMaximized.value = state === 'maximized'

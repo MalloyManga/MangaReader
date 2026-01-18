@@ -1,5 +1,5 @@
 {
-  "name": "MangaReader",
+  "name": "manga-reader",
   "author": "Malloy",
   "description": "A tool helps manga lover and Japanese learner read manga easily",
   "type": "module",
@@ -9,7 +9,7 @@
   "electronMirror": "https://npmmirror.com/mirrors/electron/",
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev",
+    "dev": "nuxt prepare && nuxt dev",
     "generate": "nuxt generate && node fix-paths.cjs",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -25,15 +25,11 @@
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
     "jszip": "^3.10.1",
+    "pdf-dist": "^1.0.0",
+    "pdfjs-dist": "^5.4.530",
     "sortablejs": "^1.15.6"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.17",
-    "@types/sortablejs": "^1.15.9",
-    "nuxt": "^4.2.1",
-    "tailwindcss": "^4.1.17",
-    "vue": "^3.5.22",
-    "vue-router": "^4.6.3",
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
@@ -42,7 +38,13 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron/fuses": "^1.8.0",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/sortablejs": "^1.15.9",
     "electron": "39.1.2",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "tailwindcss": "^4.1.17",
+    "vue": "^3.5.22",
+    "nuxt": "^4.2.1",
+    "vue-router": "^4.6.3"
   }
 }

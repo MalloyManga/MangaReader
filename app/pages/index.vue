@@ -109,6 +109,9 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         const imageBase64 = canvas.toDataURL('image/png')
 
         console.log('发送 OCR 识别请求...')
+        if (!window.electronAPI || !window.electronAPI.recognizeText) {
+            throw new Error('Electron API 不可用')
+        }
 
         // 调用 OCR 识别
         const result = await window.electronAPI.recognizeText(imageBase64)
@@ -152,22 +155,26 @@ const handleAppReady = () => {
 onMounted(() => {
     initSettings()
 
-    // 监听来自 Electron 的快捷键信号
-    if (window.electronAPI) {
-        // 当快捷键按下 -> 执行 handleOcr (和点击按钮效果一样)
-        const cleanup = window.electronAPI.onShortcutTriggered(() => {
-            console.log('Vue 收到快捷键信号，启动 OCR')
-            // 只有当前不在 OCR 模式，且不在识别中才启动
-            if (!isOcrMode.value && !isOcrRecognizing.value) {
-                handleOcr()
-            }
-        })
 
-        // 页面卸载时清理监听 (虽然 index.vue 通常不卸载，但这是好习惯)
-        onUnmounted(() => {
-            cleanup()
-        })
+
+    // 监听来自 Electron 的快捷键信号
+    if (!window.electronAPI) {
+        console.warn('Electron API not available for shortcut handling')
+        return
     }
+    // 当快捷键按下 -> 执行 handleOcr (和点击按钮效果一样)
+    const cleanup = window.electronAPI.onShortcutTriggered(() => {
+        console.log('Vue 收到快捷键信号，启动 OCR')
+        // 只有当前不在 OCR 模式，且不在识别中才启动
+        if (!isOcrMode.value && !isOcrRecognizing.value) {
+            handleOcr()
+        }
+    })
+
+    // 页面卸载时清理监听 (虽然 index.vue 通常不卸载，但这是好习惯)
+    onUnmounted(() => {
+        cleanup()
+    })
 })
 </script>
 
@@ -183,7 +190,7 @@ onMounted(() => {
         <main class="max-w-screen-2xl mx-auto p-6">
             <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-120px)]">
                 <div class="lg:col-span-3 relative">
-                    <ImageUpload />
+                    <FileUpload />
                     <!-- OCR 框选 overlay -->
                     <OcrOverlay v-if="isOcrMode" @capture-complete="handleOcrCapture" @cancel="handleOcrCancel" />
                 </div>

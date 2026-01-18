@@ -23,11 +23,14 @@ const fetchTranslation = async (text: string) => {
     errorType.value = null
 
     try {
+        if (!window.electronAPI || !window.electronAPI.translate) {
+            throw new Error('Electron API 不可用')
+        }
         console.log('[Frontend] [Translation.vue] Initiating translation request for:', text)
         console.log('[Frontend] [Translation.vue] Calling window.electronAPI.translate...')
 
         const response = await window.electronAPI.translate(text)
-        
+
         console.log('[Frontend] [Translation.vue] Received response:', response)
 
         if (response.success && response.translation) {

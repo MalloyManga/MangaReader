@@ -22,6 +22,10 @@ const techStack = [
 ]
 
 const openLink = (url: string) => {
+    if (!window.electronAPI) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+        return
+    }
     window.electronAPI.openLink(url)
 }
 </script>
@@ -44,7 +48,7 @@ const openLink = (url: string) => {
                     <button @click="openLink(config.projectGithub)" title="View Source Code"
                         class="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium text-manga-500 hover:text-blue-600 dark:text-manga-400 dark:hover:text-white bg-transparent hover:bg-blue-50 dark:hover:bg-manga-700 transition-all cursor-pointer border border-transparent hover:border-blue-100 dark:hover:border-manga-600">
                         <IconGithub class="size-3.5" />
-                        <span>OpenSource</span>
+                        <span>GPL v3</span>
                     </button>
                 </div>
             </div>

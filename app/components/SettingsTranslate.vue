@@ -59,6 +59,11 @@ const openLink = (url: string) => {
 // 组件挂载时检查状态
 onMounted(() => {
     checkModelStatus()
+
+    if (!window.electronAPI) {
+        console.warn('SettingsTranslate: Electron API not available')
+        return
+    }
     // 保存清理函数，组件销毁时取消监听
     const cleanup = window.electronAPI.onDownloadProgress((percent: number) => {
         // 只有当前状态是 downloading 时才更新，防止干扰
@@ -140,9 +145,9 @@ onMounted(() => {
                         <!-- 状态：未下载 -->
                         <div v-else>
                             <button @click="handleDownload"
-                                class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer">
+                                class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer white-space-nowrap">
                                 <IconDownload class="size-4" />
-                                下载
+                                <span class="whitespace-nowrap">下载</span>
                             </button>
                         </div>
                     </div>

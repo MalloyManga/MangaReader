@@ -22,6 +22,13 @@ const openGithubHelp = () => {
 
 // 监听后端状态
 onMounted(async () => {
+
+    if (!window.electronAPI) {
+        console.warn('Loader: Electron API not available')
+        loadingText.value = "Electron API not available"
+        finishLoading()
+        return
+    }
     window.electronAPI.on('backend-status', (data) => {
         console.log('Loader received signal:', data)
         if (data.status === 'ready') {

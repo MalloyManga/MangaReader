@@ -21,7 +21,7 @@
 **本项目仅供学习交流使用，严禁用于任何商业用途。**
 
 - 本项目中集成的 **SakuraLLM** 模型及其衍生模型遵循 **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans)** 协议。
-- 这意味着您 **必须署名**、**非商业使用**，且若进行修改必须 **以相同方式共享**。
+- 本项目**代码**遵循 GPL-3.0 协议开源。但在加载 SakuraLLM 模型进行翻译时，由于该模型遵循 CC BY-NC-SA 4.0 协议，组合后的整体软件**仅限非商业用途（Non-Commercial）**。如果您替换为其他兼容商业许可的模型，则不受此限制。
 - 开发者不对使用本项目造成的任何版权问题或法律后果负责。如果您喜欢相关的漫画作品，请支持正版。
 
 ---
@@ -124,4 +124,3 @@ The source code of this project is licensed under the **GPL-3.0** license.
 | **SakuraLLM** | GPL-3.0 / CC BY-NC-SA 4.0 | 离线轻小说/漫画翻译 | [GitHub](https://github.com/SakuraLLM/SakuraLLM)         |
 | **SudachiPy** | Apache-2.0                | 日语分词引擎        | [GitHub](https://github.com/WorksApplications/SudachiPy) |
 
-> **注意**：SakuraLLM 模型及其衍生数据遵循 **CC BY-NC-SA 4.0** 协议，这意味着您**不可将本项目及其内置模型用于商业目的**。

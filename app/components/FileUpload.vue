@@ -1,14 +1,50 @@
-<!-- components/ImageUpload.vue -->
+<!-- components/FileUpload.vue -->
 <script setup lang="ts">
 import Sortable from 'sortablejs'
 import JSZip from 'jszip'
 import ImageThumbnail from './ImageThumbnail.vue'
 
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+// PDF.js 类型定义
+type PDFDocumentProxy = any
+type PDFPageProxy = any
+
 interface ImageItem {
     id: string
     url: string
     file: File
+    type: 'image' | 'pdf-page'
+    pageNumber?: number
 }
+
+// 使用动态导入 PDF.js
+const pdfjsLib = ref<any>(null)
+const isPdfJsLoaded = ref(false)
+
+const initPdfJs = async () => {
+    if (isPdfJsLoaded.value || !import.meta.client) return
+    try {
+        const lib = await import('pdfjs-dist')
+        pdfjsLib.value = lib
+
+        // 配置 Worker
+        lib.GlobalWorkerOptions.workerSrc = `${pdfWorker}`
+        isPdfJsLoaded.value = true
+        console.log('✅ PDF.js loaded successfully')
+    } catch (error) {
+        console.error('❌ Failed to load PDF.js:', error)
+        useToast().showToast('PDF.js 加载失败，请重试', 2000)
+    }
+}
+interface ImageItem {
+    id: string
+    url: string
+    file: File
+    type: 'image' | 'pdf-page'
+    pageNumber?: number // PDF 页码
+}
+
+
 
 // 图片列表
 const images = ref<ImageItem[]>([])
@@ -45,68 +81,120 @@ const handleDragOver = (event: Event) => {
     event.stopPropagation()
 }
 
+// PDF 转图片
+const convertPdfToImages = async (file: File): Promise<ImageItem[]> => {
+    if (!isPdfJsLoaded.value) {
+        await initPdfJs()
+    }
+
+    if (!pdfjsLib.value) {
+        throw new Error('PDF.js 加载失败')
+    }
+
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.value.getDocument({ data: arrayBuffer }).promise
+    const pageCount = pdf.numPages
+    const images: ImageItem[] = []
+
+    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+        const page = await pdf.getPage(pageNum)
+        const viewport = page.getViewport({ scale: 2.0 }) // 2倍缩放提高清晰度
+
+        const canvas = document.createElement('canvas')
+        const context = canvas.getContext('2d')!
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+
+        await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas
+        }).promise
+
+        // 转换为 Blob
+        const blob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((blob) => resolve(blob!), 'image/png')
+        })
+
+        const url = URL.createObjectURL(blob)
+        const imageFile = new File([blob], `${file.name}_page_${pageNum}.png`, { type: 'image/png' })
+
+        images.push({
+            id: `${Date.now()}-${pageNum}-${Math.random()}`,
+            url,
+            file: imageFile,
+            type: 'pdf-page',
+            pageNumber: pageNum
+        })
+    }
+
+    return images
+}
+
 // 添加图片
-const addImages = (files: File[]) => {
-    const imageFilesToAdd: File[] = []
+const addImages = async (files: File[]) => {
+    const imageFilesToAdd: ImageItem[] = []
+    const { showToast } = useToast()
 
     const processFiles = async () => {
         for (const file of files) {
-            // 如果是 zip 文件
-            if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
-                try {
+            try {
+                // 处理 PDF 文件
+                if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                    showToast(`正在处理 PDF: ${file.name}...`, 2000)
+                    const pdfImages = await convertPdfToImages(file)
+                    imageFilesToAdd.push(...pdfImages)
+                    showToast(`PDF 转换完成: ${pdfImages.length} 页`, 2000)
+                }
+                // 处理 ZIP 文件
+                else if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
                     const zip = await JSZip.loadAsync(file)
-                    // 遍历 zip 内的文件
                     for (const filename in zip.files) {
                         const zipEntry = zip.files[filename]
-                        // 确保是文件且是图片类型
                         if (zipEntry && !zipEntry.dir && /\.(jpe?g|png|gif|webp|bmp)$/i.test(zipEntry.name)) {
                             const blob = await zipEntry.async('blob')
                             const imageFile = new File([blob], zipEntry.name, { type: blob.type })
-                            imageFilesToAdd.push(imageFile)
+                            const id = `${Date.now()}-${Math.random()}`
+                            const url = URL.createObjectURL(imageFile)
+                            imageFilesToAdd.push({ id, url, file: imageFile, type: 'image' })
                         }
                     }
-                } catch (e) {
-                    console.error("解压失败:", e)
                 }
-            }
-            // 如果是图片文件
-            else if (file.type.startsWith('image/')) {
-                imageFilesToAdd.push(file)
+                // 处理图片文件
+                else if (file.type.startsWith('image/')) {
+                    const id = `${Date.now()}-${Math.random()}`
+                    const url = URL.createObjectURL(file)
+                    imageFilesToAdd.push({ id, url, file, type: 'image' })
+                }
+            } catch (error) {
+                console.error(`处理文件失败: ${file.name}`, error)
+                showToast(`处理失败: ${file.name}`, 2000)
             }
         }
 
         // 统一添加图片到 ref
         if (imageFilesToAdd.length > 0) {
             const wasEmpty = images.value.length === 0
-            imageFilesToAdd.forEach(file => {
-                const id = `${Date.now()}-${Math.random()}`
-                const url = URL.createObjectURL(file)
-                images.value.push({ id, url, file })
-            })
+            images.value.push(...imageFilesToAdd)
 
-            // 如果是第一次添加，显示第一张
             if (wasEmpty) {
                 currentImageIndex.value = 0
             }
         }
     }
 
-    processFiles()
+    await processFiles()
 }
 
 const handleDragEnter = (event: DragEvent) => {
-
     isDragging.value = true
 }
 
 const handleDragLeave = (event: DragEvent) => {
     const relatedTarget = event.relatedTarget as HTMLElement
-
     if (dropArea.value && !dropArea.value.contains(relatedTarget)) {
-        // 模板引用的类型守卫
         isDragging.value = false
     }
-
 }
 
 const handleDrop = (event: DragEvent) => {
@@ -131,7 +219,6 @@ const removeImage = (index: number) => {
         URL.revokeObjectURL(img.url)
         images.value.splice(index, 1)
 
-        // 调整当前索引
         if (images.value.length === 0) {
             currentImageIndex.value = 0
         } else if (currentImageIndex.value >= images.value.length) {
@@ -140,13 +227,11 @@ const removeImage = (index: number) => {
     }
 }
 
-// 保存 Sortable 实例
+// Sortable 实例
 let sortableInstance: Sortable | null = null
 
-// 监听 images 数组的长度
 watch([() => images.value.length, listKey], () => {
     nextTick(() => {
-        // 如果有旧实例，先销毁（防止内存泄漏或绑定在旧 DOM 上）
         if (sortableInstance) {
             sortableInstance.destroy()
             sortableInstance = null
@@ -159,14 +244,12 @@ watch([() => images.value.length, listKey], () => {
                     const { oldIndex, newIndex } = event
                     if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return
 
-                    // 1. 修改数据
                     const movingItem = images.value[oldIndex]
                     if (movingItem) {
-                        images.value.splice(oldIndex, 1)     // 移除
-                        images.value.splice(newIndex, 0, movingItem) // 插入
+                        images.value.splice(oldIndex, 1)
+                        images.value.splice(newIndex, 0, movingItem)
                     }
 
-                    // 2. 更新选中索引 (保持高亮跟随)
                     if (currentImageIndex.value === oldIndex) {
                         currentImageIndex.value = newIndex
                     } else if (oldIndex < currentImageIndex.value && newIndex >= currentImageIndex.value) {
@@ -183,6 +266,10 @@ watch([() => images.value.length, listKey], () => {
 })
 
 const handleScreenshot = () => {
+    if (!window.electronAPI) {
+        useToast().showToast('截图功能仅在桌面版可用', 2000)
+        return
+    }
     window.electronAPI.send('window:capture-open')
 }
 
@@ -190,7 +277,6 @@ const handleScreenshot = () => {
 onMounted(() => {
     if (window.electronAPI) {
         window.electronAPI.on('screenshot:captured', (base64Data: string) => {
-            // 将 base64 转换为 File 对象
             fetch(base64Data)
                 .then(res => res.blob())
                 .then(blob => {
@@ -204,7 +290,7 @@ onMounted(() => {
     }
 })
 
-// 组件卸载时清理 URL
+// 组件卸载时清理
 onUnmounted(() => {
     images.value.forEach(img => URL.revokeObjectURL(img.url))
     if (sortableInstance) {
@@ -218,7 +304,6 @@ onUnmounted(() => {
     <div class="h-full flex gap-3 items-stretch">
         <!-- 左侧缩略图列表 -->
         <div v-if="images.length > 0" class="flex flex-col gap-2" :style="{ height: containerSize.height + 'px' }">
-            <!-- 这里可能要改一下 滚动条样式 这里待调整 目前没有更好的方法 -->
             <div class="flex gap-2 w-full justify-between">
                 <SelectImageButton @files-selected="addImages">
                     📁
@@ -245,7 +330,6 @@ onUnmounted(() => {
             <!-- 有图片时显示 -->
             <div v-if="images.length > 0" ref="imageContainer"
                 class="lg:h-full w-full h-screen flex items-center justify-center">
-                <!-- 阻止图片被拖拽 -->
                 <img :src="images[currentImageIndex]?.url" :alt="`当前图片 ${currentImageIndex + 1}`" draggable="false"
                     class="object-contain size-full pointer-events-none select-none" :style="{
                         maxWidth: containerSize.width + 'px',
@@ -255,7 +339,10 @@ onUnmounted(() => {
                 <!-- 图片信息 -->
                 <div
                     class="absolute top-4 right-4 bg-black/60 text-white px-3 py-1.5 rounded text-sm backdrop-blur-sm pointer-events-none">
-                    {{ currentImageIndex + 1 }} / {{ images.length }}
+                    <div>{{ currentImageIndex + 1 }} / {{ images.length }}</div>
+                    <div v-if="images[currentImageIndex]?.type === 'pdf-page'" class="text-xs opacity-75">
+                        PDF 第 {{ images[currentImageIndex]?.pageNumber }} 页
+                    </div>
                 </div>
             </div>
 
@@ -263,19 +350,21 @@ onUnmounted(() => {
             <div v-else class="h-full flex items-center justify-center p-8">
                 <div class="text-center">
                     <div class="text-6xl mb-4">
-                        <span v-if="isDragging"></span>
+                        <span v-if="isDragging">📥</span>
                         <span v-else>📤</span>
                     </div>
                     <p class="text-lg mb-2 text-manga-900 dark:text-manga-100">
-                        {{ isDragging ? '松开鼠标上传' : '图片预览区域' }}
+                        {{ isDragging ? '松开鼠标上传' : '文件预览区域' }}
                     </p>
-                    <p class="text-sm mb-6 text-manga-600 dark:text-manga-400">拖拽图片到此处</p>
+                    <p class="text-sm mb-6 text-manga-600 dark:text-manga-400">
+                        支持拖拽 <span class="font-bold">图片 / PDF / ZIP</span> 文件到此处
+                    </p>
 
                     <div class="flex gap-3 justify-center">
                         <SelectImageButton @files-selected="addImages">
-                            选择图片📁
+                            选择文件 📁
                         </SelectImageButton>
-                        <Button variant="secondary" @btn-click="handleScreenshot">截图✂️</Button>
+                        <Button variant="secondary" @btn-click="handleScreenshot">截图 ✂️</Button>
                     </div>
                 </div>
             </div>
