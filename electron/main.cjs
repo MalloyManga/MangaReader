@@ -3,7 +3,7 @@ if (require('electron-squirrel-startup')) {
     require('electron').app.quit();
     process.exit(0);
 }
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, shell, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { BackendService } = require('./backend-service.cjs')
@@ -89,6 +89,16 @@ function createMainWindow() {
         // 生产环境下，加载 Nuxt 构建后的静态文件
         // Nuxt 4 的 SSG 输出目录是 .output/public
         mainWindow.loadFile(path.join(__dirname, '../.output/public/index.html'))
+
+        // [Security] Disable default menu in production
+        Menu.setApplicationMenu(null)
+
+        // [Security] Intercept shortcuts to prevent opening DevTools
+        mainWindow.webContents.on('before-input-event', (event, input) => {
+            if ((input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
+                event.preventDefault()
+            }
+        })
     }
 
     // Handle window closed event properly
