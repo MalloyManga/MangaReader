@@ -8,7 +8,9 @@ export const useSettings = () => {
         enableTokenization: true, // 启用分词
         translationApiKey: '', // 翻译APIkey
         theme: 'system' as ThemeOption, // 默认为跟随系统
-        ocrShortcut: ''
+        ocrShortcut: '',
+        prevImageShortcut: '',
+        nextImageShortcut: ''
     }))
 
     const applyTheme = () => {
@@ -43,7 +45,12 @@ export const useSettings = () => {
                 window.electronAPI?.saveSetting(key, value)
             }
 
-            window.electronAPI.setGlobalShortcut(newVal.ocrShortcut)
+            // 批量更新所有快捷键
+            window.electronAPI.updateShortcuts({
+                ocr: newVal.ocrShortcut,
+                prev: newVal.prevImageShortcut || '',
+                next: newVal.nextImageShortcut || ''
+            })
 
         }, { deep: true })
 
@@ -80,7 +87,14 @@ export const useSettings = () => {
                 Object.assign(settings.value, storedSettings)
                 // 初始化完成后立即应用一次主题
                 applyTheme()
-                window.electronAPI.setGlobalShortcut(settings.value.ocrShortcut)
+
+                // 初始化所有快捷键
+                window.electronAPI.updateShortcuts({
+                    ocr: settings.value.ocrShortcut,
+                    prev: settings.value.prevImageShortcut || '',
+                    next: settings.value.nextImageShortcut || ''
+                })
+
                 console.log('⚙️ Settings loaded from Electron Store')
             } catch (e) {
                 console.error('Failed to load settings:', e)

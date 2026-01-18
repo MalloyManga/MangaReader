@@ -6,6 +6,7 @@ const showSettingsModal = ref(false) // settingModal显示
 const isOcrMode = ref(false) // ocr模式 鼠标十字crosshair
 const isOcrRecognizing = ref(false) // 正在调用模型识别
 const { showToast } = useToast()
+const { nextImage, prevImage } = useMangaImages()
 
 const handleOcr = () => {
     // 启动ocr时显示一个tooltip提示
@@ -162,12 +163,19 @@ onMounted(() => {
         console.warn('Electron API not available for shortcut handling')
         return
     }
-    // 当快捷键按下 -> 执行 handleOcr (和点击按钮效果一样)
-    const cleanup = window.electronAPI.onShortcutTriggered(() => {
-        console.log('Vue 收到快捷键信号，启动 OCR')
-        // 只有当前不在 OCR 模式，且不在识别中才启动
-        if (!isOcrMode.value && !isOcrRecognizing.value) {
-            handleOcr()
+    // 当快捷键按下 -> 根据 action 执行对应操作
+    const cleanup = window.electronAPI.onShortcutTriggered((action: string) => {
+        console.log('Vue 收到快捷键信号:', action)
+        
+        if (action === 'ocr') {
+            // 只有当前不在 OCR 模式，且不在识别中才启动
+            if (!isOcrMode.value && !isOcrRecognizing.value) {
+                handleOcr()
+            }
+        } else if (action === 'next') {
+            nextImage()
+        } else if (action === 'prev') {
+            prevImage()
         }
     })
 

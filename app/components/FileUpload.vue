@@ -2,18 +2,11 @@
 <script setup lang="ts">
 import Sortable from 'sortablejs'
 import JSZip from 'jszip'
-import ImageThumbnail from './ImageThumbnail.vue'
+import type { ImageItem } from '~/types/interface'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 const { showToast } = useToast()
-
-interface ImageItem {
-    id: string
-    url: string
-    file: File
-    type: 'image' | 'pdf-page'
-    pageNumber?: number
-}
+const { images, currentImageIndex, addImagesToStore, setImage, removeImage: removeImageFromStore } = useMangaImages()
 
 // 使用动态导入 PDF.js
 const pdfjsLib = ref<any>(null)
@@ -34,19 +27,7 @@ const initPdfJs = async () => {
         showToast('PDF.js 加载失败，请重试', 2000)
     }
 }
-interface ImageItem {
-    id: string
-    url: string
-    file: File
-    type: 'image' | 'pdf-page'
-    pageNumber?: number // PDF 页码
-}
 
-
-// 图片列表
-const images = ref<ImageItem[]>([])
-// 当前显示的图片索引
-const currentImageIndex = ref(0)
 const listKey = ref(0)
 
 // 模板引用
@@ -169,12 +150,7 @@ const addImages = async (files: File[]) => {
 
         // 统一添加图片到 ref
         if (imageFilesToAdd.length > 0) {
-            const wasEmpty = images.value.length === 0
-            images.value.push(...imageFilesToAdd)
-
-            if (wasEmpty) {
-                currentImageIndex.value = 0
-            }
+            addImagesToStore(imageFilesToAdd)
         }
     }
 
@@ -204,22 +180,12 @@ const handleDrop = (event: DragEvent) => {
 
 // 切换到指定图片
 const selectImage = (index: number) => {
-    currentImageIndex.value = index
+    setImage(index)
 }
 
 // 删除图片
 const removeImage = (index: number) => {
-    const img = images.value[index]
-    if (img) {
-        URL.revokeObjectURL(img.url)
-        images.value.splice(index, 1)
-
-        if (images.value.length === 0) {
-            currentImageIndex.value = 0
-        } else if (currentImageIndex.value >= images.value.length) {
-            currentImageIndex.value = images.value.length - 1
-        }
-    }
+    removeImageFromStore(index)
 }
 
 // Sortable 实例

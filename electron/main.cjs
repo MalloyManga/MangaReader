@@ -406,50 +406,53 @@ app.whenReady().then(async () => {
             return backendService ? backendService.isReady : false
         })
 
-        // 快捷键设置
-        ipcMain.handle('settings:set-shortcut', (event, shortcut) => {
-            // 1. 无论如何，先清除所有旧的快捷键，防止冲突或残留
+        // 批量更新快捷键设置
+        ipcMain.handle('settings:update-shortcuts', (event, shortcuts) => {
+            // shortcuts: { ocr: '...', next: '...', prev: '...' }
+
+            // 1. 先清除所有旧的快捷键
             globalShortcut.unregisterAll()
 
-            // 2. 如果传空值，说明用户想清除快捷键
-            if (!shortcut || shortcut.trim() === '') {
-                console.log('[INFO] 快捷键已清除')
+            if (!shortcuts || typeof shortcuts !== 'object') {
                 return true
             }
 
-            // 3. 格式转换：前端录制的是 "Ctrl + Shift + A" (带空格) -> Electron 需要 "Ctrl+Shift+A"
-            const accelerator = shortcut.replace(/\s+/g, '')
-
-            try {
-                // 4. 向操作系统注册新快捷键
-                const ret = globalShortcut.register(accelerator, () => {
-                    console.log('[INFO] 快捷键被触发:', accelerator)
-
-                    if (mainWindow) {
-                        if (mainWindow.isMinimized()) mainWindow.restore()
-                        mainWindow.show()
-                        mainWindow.focus()
-                        mainWindow.webContents.send('ocr:shortcut-triggered')
-                    }
-                })
-
-                if (!ret) {
-                    console.log('[ERROR] 快捷键注册失败 (可能被占用):', accelerator)
-                    return false
+            // 2. 遍历注册每个功能的快捷键
+            for (const [action, shortcut] of Object.entries(shortcuts)) {
+                if (!shortcut || typeof shortcut !== 'string' || shortcut.trim() === '') {
+                    continue
                 }
 
-                console.log('[INFO] 快捷键注册成功:', accelerator)
-                return true
-            } catch (error) {
-                console.error('快捷键注册异常:', error)
-                return false
+                // 格式转换 "Ctrl + A" -> "Ctrl+A"
+                const accelerator = shortcut.replace(/\s+/g, '')
+
+                try {
+                    const ret = globalShortcut.register(accelerator, () => {
+                        console.log(`[INFO] 快捷键触发: ${action} (${accelerator})`)
+
+                        if (mainWindow) {
+                            if (mainWindow.isMinimized()) mainWindow.restore()
+                            // OCR可能需要窗口显示，但翻页快捷键大概率是在阅读时使用，窗口本身就是活跃的
+                            mainWindow.show()
+
+                            // 发送通用事件，带上 action 类型
+                            mainWindow.webContents.send('shortcut:triggered', action)
+                        }
+                    })
+
+                    if (!ret) {
+                        console.warn(`[WARN] 快捷键注册失败 (可能被占用): ${action} - ${accelerator}`)
+                    }
+                } catch (err) {
+                    console.error(`[ERROR] 快捷键注册异常: ${action}`, err)
+                }
             }
+            return true
         })
 
         // 创建主窗口
         createMainWindow()
-    }
-    catch (e) {
+    } catch (e) {
         console.log('启动时错误', e)
     }
 })

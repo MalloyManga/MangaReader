@@ -8,36 +8,44 @@ const themeOptions = ['light', 'dark', 'system'] as const
 
 // --- 快捷键逻辑 (保持不变，封装在此) ---
 const isRecording = ref(false)
-const shortcutInputRef = useTemplateRef<HTMLInputElement>('shortcutInputRef')
+// 记录当前正在录制哪个快捷键
+const recordingTarget = ref<'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut' | null>(null)
 
-const startRecording = () => {
+const startRecording = (target: 'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut') => {
     isRecording.value = true
+    recordingTarget.value = target
     showToast('按下组合键，Enter 确认，Esc 取消', 3000)
 }
 
 const stopRecording = () => {
     isRecording.value = false
-    shortcutInputRef.value?.blur()
+    recordingTarget.value = null
+    // 移除 ref 操作，依赖原生 focus/blur 行为即可
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
-    if (!isRecording.value) return
+    if (!isRecording.value || !recordingTarget.value) return
     e.preventDefault(); e.stopPropagation()
 
     if (e.key === 'Escape') {
-        stopRecording()
+        stopRecording();
+        (e.target as HTMLElement).blur()
         return
     }
     if (e.key === 'Enter') {
         saveSettings() // 确认后自动保存
-        stopRecording()
+        stopRecording();
+        (e.target as HTMLElement).blur()
         return
     }
     if (e.key === 'Backspace') {
-        settings.value.ocrShortcut = ''
+        if (recordingTarget.value) {
+            settings.value[recordingTarget.value] = ''
+        }
         // 清空后立即保存并退出录制，体验更流畅
         saveSettings()
-        stopRecording()
+        stopRecording();
+        (e.target as HTMLElement).blur()
         showToast('快捷键已清除', 1500)
         return
     }
@@ -49,12 +57,29 @@ const handleKeyDown = (e: KeyboardEvent) => {
     if (e.shiftKey) keys.push('Shift')
     const specialKeys = ['Control', 'Meta', 'Alt', 'Shift']
     if (!specialKeys.includes(e.key)) {
-        let keyName = e.key.toUpperCase()
-        if (keyName === ' ') keyName = 'Space'
+        let keyName = e.key
+
+        // Electron 快捷键名称映射
+        const keyMap: Record<string, string> = {
+            'ArrowUp': 'Up',
+            'ArrowDown': 'Down',
+            'ArrowLeft': 'Left',
+            'ArrowRight': 'Right',
+            ' ': 'Space'
+        }
+
+        if (keyMap[keyName]) {
+            keyName = keyMap[keyName] as string
+        } else if (keyName.length === 1) {
+            // 字母/数字转大写
+            keyName = keyName.toUpperCase()
+        }
+        // 其他如 F1...F12, Home, End 保持原样 (e.key 本身就是 PascalCase)
+
         keys.push(keyName)
     }
-    if (keys.length > 0) {
-        settings.value.ocrShortcut = keys.join(' + ')
+    if (keys.length > 0 && recordingTarget.value) {
+        settings.value[recordingTarget.value] = keys.join(' + ')
     }
 }
 </script>
@@ -103,27 +128,84 @@ const handleKeyDown = (e: KeyboardEvent) => {
             </div>
         </div>
 
-        <!-- OCR快捷键 -->
+        <!-- 快捷键设置区域 -->
         <div class="space-y-4">
-            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">OCR快捷键</h4>
-            <div class="relative group">
-                <input ref="shortcutInputRef" type="text" readonly
-                    :value="isRecording ? (settings.ocrShortcut || '请按下按键...') : (settings.ocrShortcut || '未设置')"
-                    @click="startRecording" @keydown="handleKeyDown" @blur="stopRecording"
-                    class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
-                    :class="[
-                        isRecording
-                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-inner'
-                            : 'bg-white dark:bg-manga-900 border-manga-200 dark:border-manga-700 text-manga-600 dark:text-manga-300 hover:border-manga-400'
-                    ]" />
-                <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-                    <span v-if="isRecording" class="absolute right-2 top-1/2 -translate-y-1/2 flex h-3 w-3">
-                        <span
-                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                    </span>
-                    <span v-else
-                        class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">全局快捷键</h4>
+
+            <!-- OCR 截图 -->
+            <div>
+                <label class="text-xs text-manga-500 mb-1 block">OCR 截图</label>
+                <div class="relative group">
+                    <input type="text" readonly
+                        :value="(isRecording && recordingTarget === 'ocrShortcut') ? (settings.ocrShortcut || '请按下按键...') : (settings.ocrShortcut || '未设置')"
+                        @click="startRecording('ocrShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
+                        class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
+                        :class="[
+                            (isRecording && recordingTarget === 'ocrShortcut')
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-inner'
+                                : 'bg-white dark:bg-manga-900 border-manga-200 dark:border-manga-700 text-manga-600 dark:text-manga-300 hover:border-manga-400'
+                        ]" />
+                    <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                        <span v-if="isRecording && recordingTarget === 'ocrShortcut'" class="flex h-3 w-3 relative">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                        </span>
+                        <span v-else
+                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 上一张图片 -->
+            <div>
+                <label class="text-xs text-manga-500 mb-1 block">上一张图片</label>
+                <div class="relative group">
+                    <input type="text" readonly
+                        :value="(isRecording && recordingTarget === 'prevImageShortcut') ? (settings.prevImageShortcut || '请按下按键...') : (settings.prevImageShortcut || '未设置')"
+                        @click="startRecording('prevImageShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
+                        class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
+                        :class="[
+                            (isRecording && recordingTarget === 'prevImageShortcut')
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-inner'
+                                : 'bg-white dark:bg-manga-900 border-manga-200 dark:border-manga-700 text-manga-600 dark:text-manga-300 hover:border-manga-400'
+                        ]" />
+                    <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                        <span v-if="isRecording && recordingTarget === 'prevImageShortcut'"
+                            class="flex h-3 w-3 relative">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                        </span>
+                        <span v-else
+                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下一张图片 -->
+            <div>
+                <label class="text-xs text-manga-500 mb-1 block">下一张图片</label>
+                <div class="relative group">
+                    <input type="text" readonly
+                        :value="(isRecording && recordingTarget === 'nextImageShortcut') ? (settings.nextImageShortcut || '请按下按键...') : (settings.nextImageShortcut || '未设置')"
+                        @click="startRecording('nextImageShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
+                        class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
+                        :class="[
+                            (isRecording && recordingTarget === 'nextImageShortcut')
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-inner'
+                                : 'bg-white dark:bg-manga-900 border-manga-200 dark:border-manga-700 text-manga-600 dark:text-manga-300 hover:border-manga-400'
+                        ]" />
+                    <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                        <span v-if="isRecording && recordingTarget === 'nextImageShortcut'"
+                            class="flex h-3 w-3 relative">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                        </span>
+                        <span v-else
+                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+                    </div>
                 </div>
             </div>
         </div>

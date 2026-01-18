@@ -13,13 +13,24 @@ export interface AppSettings {
     translationApiKey: string
     theme: 'system' | 'light' | 'dark'
     ocrShortcut: string
+    prevImageShortcut?: string
+    nextImageShortcut?: string
     [key: string]: any
+}
+
+export interface ImageItem {
+    id: string
+    url: string
+    file: File
+    type: 'image' | 'pdf-page'
+    pageNumber?: number
 }
 
 export interface IElectronAPI {
     // 基础通信
     send: (channel: string, data?: any) => void
     on: (channel: string, func: (...args: any[]) => void) => void
+
 
     // OCR 核心
     recognizeText: (imageBase64: string) => Promise<{
@@ -46,12 +57,9 @@ export interface IElectronAPI {
 
     openLink: (url: string) => Promise<void>
 
-    // 1. 设置快捷键 (返回 boolean 表示是否成功)
-    setGlobalShortcut: (shortcut: string) => Promise<boolean>
-
-    // 2. 监听快捷键触发
-    // 参数是一个回调函数，返回值是一个“清理函数”(用于移除监听)
-    onShortcutTriggered: (callback: () => void) => () => void
+    // 快捷键
+    updateShortcuts: (shortcuts: Record<string, string>) => Promise<boolean>
+    onShortcutTriggered: (callback: (action: string) => void) => () => void
 
     checkModel: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
     downloadModel: () => Promise<{ success: boolean; error?: string }>
