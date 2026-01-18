@@ -3,11 +3,9 @@
 import Sortable from 'sortablejs'
 import JSZip from 'jszip'
 import ImageThumbnail from './ImageThumbnail.vue'
-
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-// PDF.js 类型定义
-type PDFDocumentProxy = any
-type PDFPageProxy = any
+
+const { showToast } = useToast()
 
 interface ImageItem {
     id: string
@@ -33,7 +31,7 @@ const initPdfJs = async () => {
         console.log('✅ PDF.js loaded successfully')
     } catch (error) {
         console.error('❌ Failed to load PDF.js:', error)
-        useToast().showToast('PDF.js 加载失败，请重试', 2000)
+        showToast('PDF.js 加载失败，请重试', 2000)
     }
 }
 interface ImageItem {
@@ -43,7 +41,6 @@ interface ImageItem {
     type: 'image' | 'pdf-page'
     pageNumber?: number // PDF 页码
 }
-
 
 
 // 图片列表
@@ -134,8 +131,6 @@ const convertPdfToImages = async (file: File): Promise<ImageItem[]> => {
 // 添加图片
 const addImages = async (files: File[]) => {
     const imageFilesToAdd: ImageItem[] = []
-    const { showToast } = useToast()
-
     const processFiles = async () => {
         for (const file of files) {
             try {
@@ -267,7 +262,7 @@ watch([() => images.value.length, listKey], () => {
 
 const handleScreenshot = () => {
     if (!window.electronAPI) {
-        useToast().showToast('截图功能仅在桌面版可用', 2000)
+        showToast('截图功能仅在桌面版可用', 2000)
         return
     }
     window.electronAPI.send('window:capture-open')
