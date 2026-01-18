@@ -52,6 +52,10 @@ const confirmDelete = async () => {
     }
 }
 
+const openLink = (url: string) => {
+    window.electronAPI.openLink(url)
+}
+
 // 组件挂载时检查状态
 onMounted(() => {
     checkModelStatus()
@@ -170,12 +174,12 @@ onMounted(() => {
                                 打开模型文件夹
                             </button>
 
-                            <a href="https://github.com/MalloyManga/MangaReader?tab=readme-ov-file#-%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97"
-                                target="_blank"
+                            <button type="button" title="参考教程"
+                                @click="openLink('https://github.com/MalloyManga/MangaReader?tab=readme-ov-file#-%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97')"
                                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
                                 参考教程
                                 <IconGithub class="text-black dark:text-white size-4" />
-                            </a>
+                            </button>
                         </div>
                     </div>
                 </div>
