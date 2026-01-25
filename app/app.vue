@@ -2,11 +2,16 @@
 <script setup lang="ts">
 const router = useRouter()
 const route = useRoute()
+const isAppReady = ref(false)
+
+const handleAppReady = () => {
+    isAppReady.value = true
+}
 
 onMounted(() => {
 	document.title = 'Manga Reader'
 
-	// 调试日志：看看 Electron 到底把路由识别成了什么鬼样子
+	// 调试日志
 	console.log('🚀 App Launched. Initial Route:', route.fullPath)
 
 	// 监听后端日志并打印到控制台
@@ -16,14 +21,11 @@ onMounted(() => {
 		})
 	}
 
-	// 核心修复逻辑：
-	// 1. 如果路由包含 'index.html' (Electron 典型特征)
-	// 2. 或者路由包含盘符 'E:' (你的报错特征)
-	// 3. 或者路由包含 '%3A' (冒号的转义)
-	if (route.fullPath.includes('index.html') || route.fullPath.includes(':') || route.fullPath.includes('%3A')) {
-		console.log('🚨 检测到非法文件路径路由，正在强制重定向到首页...')
-
-		// 强制替换为根路径，并不产生历史记录
+    // [恢复并修复] 生产环境路径修正逻辑
+    // 为了防止 Electron 打包后出现文件路径作为路由的情况 (如 /E:/...)
+    // 修复关键：只检查 route.path (不包含 query 参数)，避免误伤带有 path 参数的正常页面
+	if (route.path.includes('index.html') || route.path.includes(':')) {
+		console.log('🚨 [App] 检测到非法文件路径路由，正在强制重定向到首页...', route.path)
 		router.replace('/')
 	}
 })
@@ -31,6 +33,9 @@ onMounted(() => {
 
 <template>
 	<div class="min-h-screen transition-colors">
-		<NuxtPage />
+        <GlobalLoader v-if="!isAppReady" @ready="handleAppReady" />
+        <div v-show="isAppReady">
+		    <NuxtPage />
+        </div>
 	</div>
 </template>

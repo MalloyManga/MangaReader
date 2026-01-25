@@ -5,6 +5,7 @@ export const useMangaImages = () => {
     // 全局状态：图片列表和当前索引
     const images = useState<ImageItem[]>('manga-images', () => [])
     const currentImageIndex = useState<number>('manga-current-index', () => 0)
+    const tempBookPath = useState<string | null>('manga-temp-path', () => null)
 
     // 计算属性：当前图片对象
     const currentImage = computed(() => images.value[currentImageIndex.value])
@@ -28,6 +29,16 @@ export const useMangaImages = () => {
         if (index >= 0 && index < images.value.length) {
             currentImageIndex.value = index
         }
+    }
+
+    const clearImages = () => {
+        // Warning: Don't revoke URLs if they are base64 string, only blob:
+        images.value.forEach(img => {
+            if (img.url.startsWith('blob:')) URL.revokeObjectURL(img.url)
+        })
+        images.value = []
+        currentImageIndex.value = 0
+        tempBookPath.value = null
     }
 
     // 动作：添加图片
@@ -54,17 +65,11 @@ export const useMangaImages = () => {
         }
     }
 
-    // 动作：清空（可选）
-    const clearImages = () => {
-        images.value.forEach(img => URL.revokeObjectURL(img.url))
-        images.value = []
-        currentImageIndex.value = 0
-    }
-
     return {
         images,
         currentImageIndex,
         currentImage,
+        tempBookPath,
         nextImage,
         prevImage,
         setImage,

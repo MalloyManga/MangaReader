@@ -6,7 +6,7 @@ import type { ImageItem } from '~/types/interface'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 const { showToast } = useToast()
-const { images, currentImageIndex, addImagesToStore, setImage, removeImage: removeImageFromStore } = useMangaImages()
+const { images, currentImageIndex, addImagesToStore, setImage, removeImage: removeImageFromStore, tempBookPath } = useMangaImages()
 
 // 使用动态导入 PDF.js
 const pdfjsLib = ref<any>(null)
@@ -34,6 +34,58 @@ const listKey = ref(0)
 const dropArea = useTemplateRef<HTMLDivElement>('dropArea')
 const imageContainer = useTemplateRef<HTMLDivElement>('imageContainer')
 const imagesPreviewContainer = useTemplateRef<HTMLElement>('imagesPreviewContainer')
+
+// Base64 转 File
+const base64ToFile = (dataurl: string, filename: string): File => {
+    try {
+        const arr = dataurl.split(',')
+        const match = arr[0]?.match(/:(.*?);/)
+        const mime = match ? match[1] : 'application/octet-stream'
+        const bstr = atob(arr[1] ?? '')
+        let n = bstr.length
+        const u8arr = new Uint8Array(n)
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n)
+        }
+        return new File([u8arr], filename, { type: mime })
+    } catch (e) {
+        console.error('Base64 conversion failed', e)
+        return new File([], filename)
+    }
+}
+
+const handleOpenFile = async () => {
+    if (!window.electronAPI) return
+    try {
+        const { canceled, filePaths } = await window.electronAPI.openFileDialog()
+        if (canceled || filePaths.length === 0) return
+
+        showToast('正在加载文件...', 2000)
+
+        const res = await window.electronAPI.readImageFiles(filePaths)
+        if (res.success && res.images) {
+            // 设置推断的父路径 (用于保存到书架)
+            if (res.parentPath) {
+                tempBookPath.value = res.parentPath
+            }
+
+            // 将 Base64 转换回 File 对象，复用 addImages 的逻辑 (支持 PDF/Zip/图片)
+            const files: File[] = res.images.map((img: any) => base64ToFile(img.data, img.name))
+
+            // 使用 addImages 处理（包含 PDF 转换, ZIP 解压等逻辑）
+            // 注意：因为这里的 File 对象没有 path 属性，addImages 内部的路径推断会被跳过，
+            // 但我们已经在上面手动设置了 tempBookPath，所以逻辑是正确的。
+            await addImages(files)
+
+            showToast(`✅ 加载成功`)
+        } else {
+            showToast('加载失败: ' + res.error)
+        }
+    } catch (e) {
+        console.error(e)
+        showToast('打开文件出错')
+    }
+}
 
 // 拖拽状态
 const isDragging = ref(false)
@@ -111,6 +163,22 @@ const convertPdfToImages = async (file: File): Promise<ImageItem[]> => {
 
 // 添加图片
 const addImages = async (files: File[]) => {
+    // 尝试记录来源路径 (用于保存到书架)
+    if (images.value.length === 0 && files.length > 0) {
+        const first = files[0] as any
+        if (first.path) {
+            // 简单的路径推断
+            if (first.name.endsWith('.zip') || first.name.endsWith('.pdf') || first.type === 'application/pdf' || first.type === 'application/zip') {
+                tempBookPath.value = first.path
+            } else {
+                // 如果是图片，取所在的文件夹
+                const p = first.path
+                const dir = p.substring(0, Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')))
+                tempBookPath.value = dir
+            }
+        }
+    }
+
     const imageFilesToAdd: ImageItem[] = []
     const processFiles = async () => {
         for (const file of files) {
@@ -266,9 +334,9 @@ onUnmounted(() => {
         <!-- 左侧缩略图列表 -->
         <div v-if="images.length > 0" class="flex flex-col gap-2" :style="{ height: containerSize.height + 'px' }">
             <div class="flex gap-2 w-full justify-between">
-                <SelectImageButton @files-selected="addImages">
-                    📁
-                </SelectImageButton>
+                <Button @btn-click="handleOpenFile">
+                    📂
+                </Button>
                 <Button variant="secondary" class="p-2" @btn-click="handleScreenshot">✂️</Button>
             </div>
             <div ref="imagesPreviewContainer" :key="listKey"
@@ -319,13 +387,13 @@ onUnmounted(() => {
                     </p>
                     <p class="text-sm mb-6 text-manga-600 dark:text-manga-400">
                         支持拖拽 <span class="font-bold">图片 / PDF / ZIP</span> 文件到此处<br>
-                        或使用 <span class="font-bold">Ctrl+V</span> 粘贴图片
+                        或点击下方按钮导入
                     </p>
 
                     <div class="flex gap-3 justify-center">
-                        <SelectImageButton @files-selected="addImages">
-                            选择文件 📁
-                        </SelectImageButton>
+                        <Button @btn-click="handleOpenFile">
+                            导入 / 打开文件 📁
+                        </Button>
                         <Button variant="secondary" @btn-click="handleScreenshot">截图 ✂️</Button>
                     </div>
                 </div>

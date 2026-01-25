@@ -142,6 +142,8 @@ class BackendService extends EventEmitter {
                     resolve({ tokens: tokens })
                 } else if (translation) {
                     resolve({ translation: translation })
+                } else if (response.cover) {
+                    resolve({ cover: response.cover })
                 } else if (exists !== undefined) {
                     resolve({ exists })
                 } else {
@@ -228,6 +230,11 @@ class BackendService extends EventEmitter {
 
     async deleteModel() {
         return this._sendRequest({ command: 'delete_model' }, 20000)
+    }
+
+    async extractCover(path) {
+        // Extracting cover might take a moment purely due to file IO
+        return this._sendRequest({ command: 'extract_cover', path: path }, 30000)
     }
 
     stop() {

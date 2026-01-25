@@ -26,11 +26,32 @@ export interface ImageItem {
     pageNumber?: number
 }
 
+export interface Book {
+    id: string
+    path: string
+    cover: string | null // Base64 Data URL
+    totalPage: number
+    currentPage: number
+    lastReadTime: number
+}
+
 export interface IElectronAPI {
     // 基础通信
     send: (channel: string, data?: any) => void
     on: (channel: string, func: (...args: any[]) => void) => void
+    invoke: (channel: string, ...args: any[]) => Promise<any>
 
+    // Library
+    getLibrary: () => Promise<Book[]>
+    addBook: (path: string) => Promise<{ success: boolean, book?: Book, error?: string }>
+    updateBookProgress: (data: { id: string, currentPage?: number, totalPage?: number, lastReadTime?: number }) => Promise<boolean>
+    removeBook: (id: string) => Promise<boolean>
+    checkFileExists: (path: string) => Promise<boolean>
+    loadBook: (path: string) => Promise<{ success: boolean, images?: { name: string, data: string }[], error?: string }>
+    
+    // Dialogs
+    openFileDialog: () => Promise<{ canceled: boolean, filePaths: string[] }>
+    readImageFiles: (paths: string[]) => Promise<{ success: boolean, images?: { name: string, data: string }[], parentPath?: string, error?: string }>
 
     // OCR 核心
     recognizeText: (imageBase64: string) => Promise<{

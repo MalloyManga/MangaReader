@@ -51,6 +51,7 @@ onMounted(() => {
         </div>
 
         <div class="flex items-center gap-2 non-draggable px-2 h-full">
+            <slot name="extra-buttons"></slot>
             <Button variant="secondary" size="sm" @btn-click="emit('openSettings')">
                 ⚙️ 设置
             </Button>

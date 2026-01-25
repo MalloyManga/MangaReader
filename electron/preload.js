@@ -23,6 +23,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 翻译
     translate: (text) => ipcRenderer.invoke('ocr:translate', text),
 
+    // Library System
+    getLibrary: () => ipcRenderer.invoke('library:get-all'),
+    addBook: (path) => ipcRenderer.invoke('library:add', path),
+    updateBookProgress: (data) => ipcRenderer.invoke('library:update-progress', data),
+    removeBook: (id) => ipcRenderer.invoke('library:remove', id),
+    checkFileExists: (path) => ipcRenderer.invoke('fs:exists', path),
+    loadBook: (path) => ipcRenderer.invoke('book:load', path),
+    
+    // Dialogs
+    openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+    readImageFiles: (paths) => ipcRenderer.invoke('files:read-images', paths),
+
     // 窗口控制 声明给渲染进程
     minimizeWindow: () => ipcRenderer.send('window:minimize'),
     maximizeWindow: () => ipcRenderer.send('window:maximize'),
