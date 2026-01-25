@@ -318,7 +318,8 @@ onUnmounted(() => {
                         {{ isDragging ? '松开鼠标上传' : '文件预览区域' }}
                     </p>
                     <p class="text-sm mb-6 text-manga-600 dark:text-manga-400">
-                        支持拖拽 <span class="font-bold">图片 / PDF / ZIP</span> 文件到此处
+                        支持拖拽 <span class="font-bold">图片 / PDF / ZIP</span> 文件到此处<br>
+                        或使用 <span class="font-bold">Ctrl+V</span> 粘贴图片
                     </p>
 
                     <div class="flex gap-3 justify-center">

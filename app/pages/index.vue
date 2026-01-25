@@ -6,7 +6,7 @@ const showSettingsModal = ref(false) // settingModal显示
 const isOcrMode = ref(false) // ocr模式 鼠标十字crosshair
 const isOcrRecognizing = ref(false) // 正在调用模型识别
 const { showToast } = useToast()
-const { nextImage, prevImage } = useMangaImages()
+const { nextImage, prevImage, addImagesToStore } = useMangaImages()
 
 const handleOcr = () => {
     // 启动ocr时显示一个tooltip提示
@@ -153,10 +153,60 @@ const handleAppReady = () => {
     nextTick(() => originalText.value = temp)
 }
 
+// Global Paste Handler
+const handlePaste = (event: ClipboardEvent) => {
+    // 1. 冲突检查：检查是否有输入框聚焦
+    const activeElement = document.activeElement as HTMLElement
+    if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
+        return // 如果用户在输入文字，则不拦截，让浏览器默认处理
+    }
+
+    // 2. 检查剪贴板数据
+    if (!event.clipboardData || !event.clipboardData.items) return
+
+    const items = event.clipboardData.items
+    let blob: File | null = null
+
+    // 查找图片类型的条目 (使用 Array.from 避免 TS 索引报错)
+    for (const item of Array.from(items)) {
+        if (item.type.indexOf('image') !== -1) {
+            blob = item.getAsFile()
+            break
+        }
+    }
+
+    if (blob) {
+        event.preventDefault() // 阻止默认粘贴行为（防止重复）
+
+        const url = URL.createObjectURL(blob)
+        // 构造 ImageItem（模拟 Result）
+        // 这里不需要显式引入接口，只要结构匹配即可，TypeScript 在 Vue setup 中通常能推断
+        const newImageItem = {
+            id: `${Date.now()}-paste`,
+            url: url,
+            file: blob,
+            type: 'image'
+        } as any
+
+        // 添加到 Store
+        addImagesToStore([newImageItem])
+
+        // 4. 清除旧的 OCR 结果和翻译
+        originalText.value = ''
+
+        showToast('✅ 已从剪贴板加载图片')
+    } else {
+        showToast('⚠️ 剪贴板中没有图片')
+    }
+}
+
+let cleanup: (() => void) | undefined = undefined
+
 onMounted(() => {
     initSettings()
 
-
+    // 注册全局粘贴监听
+    window.addEventListener('paste', handlePaste)
 
     // 监听来自 Electron 的快捷键信号
     if (!window.electronAPI) {
@@ -164,9 +214,10 @@ onMounted(() => {
         return
     }
     // 当快捷键按下 -> 根据 action 执行对应操作
-    const cleanup = window.electronAPI.onShortcutTriggered((action: string) => {
+    // 赋值给外层的 cleanup 变量
+    cleanup = window.electronAPI.onShortcutTriggered((action: string) => {
         console.log('Vue 收到快捷键信号:', action)
-        
+
         if (action === 'ocr') {
             // 只有当前不在 OCR 模式，且不在识别中才启动
             if (!isOcrMode.value && !isOcrRecognizing.value) {
@@ -181,7 +232,8 @@ onMounted(() => {
 
     // 页面卸载时清理监听 (虽然 index.vue 通常不卸载，但这是好习惯)
     onUnmounted(() => {
-        cleanup()
+        if (cleanup) cleanup()
+        window.removeEventListener('paste', handlePaste)
     })
 })
 </script>
