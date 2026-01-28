@@ -48,7 +48,7 @@ export interface IElectronAPI {
     removeBook: (id: string) => Promise<boolean>
     checkFileExists: (path: string) => Promise<boolean>
     loadBook: (path: string) => Promise<{ success: boolean, images?: { name: string, data: string }[], error?: string }>
-    
+
     // Dialogs
     openFileDialog: () => Promise<{ canceled: boolean, filePaths: string[] }>
     readImageFiles: (paths: string[]) => Promise<{ success: boolean, images?: { name: string, data: string }[], parentPath?: string, error?: string }>

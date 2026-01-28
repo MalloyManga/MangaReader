@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeBook: (id) => ipcRenderer.invoke('library:remove', id),
     checkFileExists: (path) => ipcRenderer.invoke('fs:exists', path),
     loadBook: (path) => ipcRenderer.invoke('book:load', path),
-    
+
     // Dialogs
     openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
     readImageFiles: (paths) => ipcRenderer.invoke('files:read-images', paths),

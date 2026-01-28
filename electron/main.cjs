@@ -283,34 +283,34 @@ ipcMain.handle('book:load', async (event, folderPath) => {
         if (!fs.existsSync(folderPath)) {
             return { success: false, error: 'Path not found' }
         }
-        
+
         // 如果是文件（如 PDF/Zip），暂时不支持直接 loadBook，需要 FileUpload 处理
         // 这里只处理文件夹形式的漫画
         const stats = fs.statSync(folderPath)
         if (!stats.isDirectory()) {
-             return { success: false, error: 'Not a directory' }
+            return { success: false, error: 'Not a directory' }
         }
 
         const files = fs.readdirSync(folderPath)
         const images = []
-        
+
         // 简单自然排序
         const sortedFiles = files.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
 
         for (const file of sortedFiles) {
-             const ext = path.extname(file).toLowerCase()
-             if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'].includes(ext)) {
-                 const fullPath = path.join(folderPath, file)
-                 // 如果图片太大，这里可能会比较慢或占内存。
-                 // 生产环境建议使用 custom protocol (manga://) 流式加载
-                 const data = fs.readFileSync(fullPath).toString('base64')
-                 const mimeType = ext === '.jpg' ? 'jpeg' : ext.substring(1)
-                 
-                 images.push({
-                     name: file,
-                     data: `data:image/${mimeType};base64,${data}` 
-                 })
-             }
+            const ext = path.extname(file).toLowerCase()
+            if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'].includes(ext)) {
+                const fullPath = path.join(folderPath, file)
+                // 如果图片太大，这里可能会比较慢或占内存。
+                // 生产环境建议使用 custom protocol (manga://) 流式加载
+                const data = fs.readFileSync(fullPath).toString('base64')
+                const mimeType = ext === '.jpg' ? 'jpeg' : ext.substring(1)
+
+                images.push({
+                    name: file,
+                    data: `data:image/${mimeType};base64,${data}`
+                })
+            }
         }
 
         return { success: true, images }
@@ -333,7 +333,7 @@ ipcMain.handle('dialog:open-file', async (event) => {
 ipcMain.handle('files:read-images', async (event, filePaths) => {
     try {
         if (!filePaths || filePaths.length === 0) return { success: false, images: [] }
-        
+
         // Infer parent path from the first file
         const firstFile = filePaths[0]
         const parentPath = path.dirname(firstFile)
@@ -342,48 +342,48 @@ ipcMain.handle('files:read-images', async (event, filePaths) => {
         // Instead of just reading the selected files, we scan the PARENT DIRECTORY
         // to find suitable images, mimicking "Open Folder" behavior by selecting a file.
         // This is what the user explicitly requested ("detect parent folder from one file").
-        
+
         const files = fs.readdirSync(parentPath)
         // Sort files naturally (001, 002, 010)
         const sortedFiles = files.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-        
+
         const images = []
 
         for (const file of sortedFiles) {
-             const fullPath = path.join(parentPath, file)
-             const stats = fs.statSync(fullPath)
-             if (!stats.isFile()) continue
+            const fullPath = path.join(parentPath, file)
+            const stats = fs.statSync(fullPath)
+            if (!stats.isFile()) continue
 
-             const ext = path.extname(file).toLowerCase()
-             const name = file // use filename as name
-             
-             if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'].includes(ext)) {
-                 const data = fs.readFileSync(fullPath).toString('base64')
-                 const mimeType = ext === '.jpg' ? 'jpeg' : ext.substring(1)
-                 images.push({
-                     name: name,
-                     data: `data:image/${mimeType};base64,${data}`,
-                     type: 'image'
-                 })
-             } else if (ext === '.pdf') {
-                 const data = fs.readFileSync(fullPath).toString('base64')
-                 images.push({
-                     name: name,
-                     data: `data:application/pdf;base64,${data}`,
-                     type: 'pdf'
-                 })
-             } else if (ext === '.zip') {
-                 const data = fs.readFileSync(fullPath).toString('base64')
-                 images.push({
-                     name: name,
-                     data: `data:application/zip;base64,${data}`,
-                     type: 'zip'
-                 })
-             }
+            const ext = path.extname(file).toLowerCase()
+            const name = file // use filename as name
+
+            if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'].includes(ext)) {
+                const data = fs.readFileSync(fullPath).toString('base64')
+                const mimeType = ext === '.jpg' ? 'jpeg' : ext.substring(1)
+                images.push({
+                    name: name,
+                    data: `data:image/${mimeType};base64,${data}`,
+                    type: 'image'
+                })
+            } else if (ext === '.pdf') {
+                const data = fs.readFileSync(fullPath).toString('base64')
+                images.push({
+                    name: name,
+                    data: `data:application/pdf;base64,${data}`,
+                    type: 'pdf'
+                })
+            } else if (ext === '.zip') {
+                const data = fs.readFileSync(fullPath).toString('base64')
+                images.push({
+                    name: name,
+                    data: `data:application/zip;base64,${data}`,
+                    type: 'zip'
+                })
+            }
         }
-        
+
         return { success: true, images, parentPath }
-    } catch(e) {
+    } catch (e) {
         return { success: false, error: e.message }
     }
 })

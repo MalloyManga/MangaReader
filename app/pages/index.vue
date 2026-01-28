@@ -5,6 +5,7 @@ const library = ref<Book[]>([])
 const loading = ref(true)
 const showSettingsModal = ref(false)
 const { initSettings } = useSettings()
+const { showToast } = useToast()
 
 // Deleting state for animation
 const deletingIds = ref<Set<string>>(new Set())
@@ -12,12 +13,15 @@ const deletingIds = ref<Set<string>>(new Set())
 const loadLibrary = async () => {
     loading.value = true
     if (import.meta.client && window.electronAPI) {
-        library.value = await window.electronAPI.getLibrary()
+        const libs = await window.electronAPI.getLibrary()
+        // Sort by lastReadTime descending (Newest first)
+        library.value = libs.sort((a, b) => b.lastReadTime - a.lastReadTime)
     }
     loading.value = false
 }
 
 const handleAddBook = () => {
+    showToast('💡 提示：选中任意一张图片，即可导入整个文件夹', 2500)
     navigateTo('/reader')
 }
 
@@ -51,7 +55,7 @@ const removeBook = async (e: Event, id: string) => {
     if (deletingIds.value.has(id)) return // Prevent double click
 
     deletingIds.value.add(id)
-    
+
     // Wait for animation (300ms matches the transition duration)
     setTimeout(async () => {
         await window.electronAPI?.removeBook(id)
@@ -77,8 +81,7 @@ onMounted(() => {
 
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                 <!-- Book Card -->
-                <div v-for="book in library" :key="book.id"
-                    :class="{'scale-0 opacity-0': deletingIds.has(book.id)}"
+                <div v-for="book in library" :key="book.id" :class="{ 'scale-0 opacity-0': deletingIds.has(book.id) }"
                     class="group relative bg-white dark:bg-manga-800 rounded-lg shadow-sm hover:shadow-md transition-all duration-300 transform cursor-pointer overflow-hidden border border-manga-200 dark:border-manga-700 hover:border-primary"
                     @click="openBook(book)">
 
@@ -122,7 +125,7 @@ onMounted(() => {
                     class="aspect-2/3 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary hover:text-primary dark:hover:border-primary cursor-pointer text-gray-400 transition-colors group">
                     <div
                         class="size-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
-                        <span class="text-2xl text-gray-500 group-hover:text-primary transition-colors">+</span>
+                        <IconAdd class="size-6 text-gray-500 group-hover:text-primary transition-colors" />
                     </div>
                     <div class="text-xs font-medium">导入新书</div>
                 </div>

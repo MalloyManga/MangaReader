@@ -261,7 +261,7 @@ onMounted(async () => {
     if (path && window.electronAPI) {
         // [UX] Show toast for loading since it might take a second for large folders
         showToast('正在打开书籍，请稍候...', 2000)
-        
+
         currentBookId.value = id
         // Load files from path
         try {
@@ -277,7 +277,7 @@ onMounted(async () => {
 
                 // Initialize page
                 if (page > 0) setImage(page)
-                
+
                 // [Fix] Update Total Page Count to Store
                 // Ensure the progress bar in the library shows the total pages even if we don't flip a page
                 if (window.electronAPI) {
