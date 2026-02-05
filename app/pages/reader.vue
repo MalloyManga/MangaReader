@@ -354,7 +354,7 @@ onMounted(async () => {
                     <!-- 这里indexvue起到一个父组件传递originalText的作用 v-model 传递给originalText再传递给Translationvue -->
                     <TokenizedWords v-if="settings.enableTokenization" :origin-text="originalText" />
                     <Translation v-if="settings.enableTranslation" :original-text="originalText" />
-                    <HintCard v-if="settings.enableTokenization" text="提示：点击分词结果中的单词可查看详情" />
+                    <!-- <HintCard v-if="settings.enableTokenization" text="提示：点击分词结果中的单词可查看详情" /> -->
                 </div>
             </div>
         </main>
