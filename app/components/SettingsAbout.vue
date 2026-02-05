@@ -107,7 +107,7 @@ const openLink = (url: string) => {
         <!-- 4. 底部版权 -->
         <div class="mt-auto pb-4 text-xs text-manga-400 flex flex-col gap-1">
             <p>Copyright © {{ config.currentYear }} {{ config.developerName }}.</p>
-            <p>Released under the MIT License.</p>
+            <p>Released under the GPL License.</p>
         </div>
     </div>
 </template>
