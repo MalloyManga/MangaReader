@@ -1,5 +1,7 @@
 <!-- app/pages/index.vue -->
 <script setup lang="ts">
+import type { OcrBlock } from '~/types/interface'
+
 const route = useRoute()
 const router = useRouter()
 const { nextImage, prevImage, addImagesToStore, setImage, currentImageIndex, clearImages, images, tempBookPath } = useMangaImages()
@@ -64,16 +66,75 @@ const goBackToLibrary = async () => {
     router.push('/')
 }
 
-// 原文显示板块 使用 v-model 双向绑定
-const originalText = ref('今日はいい天気ですね。漫画を読みながら日本語を勉強します。')
+// Ocr Block State
+const ocrBlocks = ref<OcrBlock[]>([])
+// Store blocks for each page: Record<ImageID, Blocks[]>
+const allPageBlocks = ref<Record<string, OcrBlock[]>>({})
+const activeBlockId = ref<string | undefined>(undefined)
+const _staticText = ref('今日はいい天気ですね。漫画を読みながら日本語を勉強します。')
+
+// 双向绑定代理：如果有选中 Block，则读写 Block；否则读写静态文本
+const originalText = computed({
+    get: () => {
+        const block = ocrBlocks.value.find(b => b.id === activeBlockId.value)
+        return block ? block.original : _staticText.value
+    },
+    set: (val) => {
+        const block = ocrBlocks.value.find(b => b.id === activeBlockId.value)
+        if (block) {
+            block.original = val
+        } else {
+            _staticText.value = val
+        }
+    }
+})
+
+// [Fix] Persist blocks across page navigation
+const currentImgId = computed(() => images.value[currentImageIndex.value]?.id)
+
+// Save blocks when leaving a page, Load blocks when entering a page
+watch(currentImgId, (newId, oldId) => {
+    // 1. Save current blocks to map using old ID
+    if (oldId) {
+        allPageBlocks.value[oldId] = [...ocrBlocks.value]
+    }
+
+    // 2. Load blocks for new ID
+    if (newId && allPageBlocks.value[newId]) {
+        ocrBlocks.value = [...allPageBlocks.value[newId]]
+    } else {
+        ocrBlocks.value = []
+    }
+
+    // Reset selection state
+    activeBlockId.value = undefined
+    _staticText.value = ''
+})
+
+// [Optional] Sync changes immediately to map (Safety net)
+watch(ocrBlocks, (newBlocks) => {
+    if (currentImgId.value) {
+        allPageBlocks.value[currentImgId.value] = newBlocks
+    }
+}, { deep: true })
+
 const showSettingsModal = ref(false) // settingModal显示
 const isOcrMode = ref(false) // ocr模式 鼠标十字crosshair
 const isOcrRecognizing = ref(false) // 正在调用模型识别
 const { showToast } = useToast()
 
+// OCR Hint Logic (Show once per book session)
+const hasShownOcrHint = ref(false)
+watch(currentBookId, () => {
+    hasShownOcrHint.value = false
+})
+
 const handleOcr = () => {
-    // 启动ocr时显示一个tooltip提示
-    showToast('🖱️ 拖动鼠标框选识别区域 · 按 ESC 取消', 1500)
+    // 启动ocr时显示一个tooltip提示 (Only once per session)
+    if (!hasShownOcrHint.value) {
+        showToast('🖱️ 拖动鼠标框选识别区域 · 按 ESC 取消', 3000)
+        hasShownOcrHint.value = true
+    }
 
     // 激活 OCR 模式，显示框选 overlay
     isOcrMode.value = true
@@ -81,7 +142,6 @@ const handleOcr = () => {
 
 const { initSettings, settings } = useSettings()
 
-// ocr识别完成 处理ocrCaptureImage
 const handleOcrCapture = async (selectionData: { left: number, top: number, width: number, height: number }) => {
     isOcrMode.value = false
     isOcrRecognizing.value = true
@@ -181,8 +241,24 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         const result = await window.electronAPI.recognizeText(imageBase64)
 
         if (result.success && result.text) {
-            originalText.value = result.text
+            const newBlock: OcrBlock = {
+                id: Date.now().toString(),
+                rect: { x: sourceX, y: sourceY, width: sourceW, height: sourceH },
+                original: result.text,
+                translation: '',
+                tokens: [],
+                status: 'done',
+                showOriginal: false
+            }
+            // Add block first
+            ocrBlocks.value.push(newBlock)
+            activeBlockId.value = newBlock.id
             console.log(' OCR 识别成功:', result.text)
+
+            // Trigger translation if enabled
+            if (settings.value.enableTranslation) {
+                translateBlock(newBlock.id, result.text)
+            }
         } else {
             console.error('❌ OCR 识别失败:', result.error)
             showToast(`OCR 识别失败: ${result.error}`)
@@ -199,6 +275,109 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
 const handleOcrCancel = () => {
     // 用户主动按下esc推出ocr模式
     isOcrMode.value = false
+}
+
+const translateBlock = async (id: string, text: string) => {
+    try {
+        if (!window.electronAPI || !window.electronAPI.translate) return
+
+        const idx = ocrBlocks.value.findIndex(b => b.id === id)
+        if (idx === -1) return
+
+        ocrBlocks.value[idx]!.status = 'loading'
+
+        const response = await window.electronAPI.translate(text)
+
+        if (response.success && response.translation) {
+            // 重新获取索引以防数组变动
+            const currentIndex = ocrBlocks.value.findIndex(b => b.id === id)
+            if (currentIndex !== -1 && ocrBlocks.value[currentIndex]) {
+                ocrBlocks.value[currentIndex]!.translation = response.translation
+                ocrBlocks.value[currentIndex]!.status = 'done'
+            }
+        } else {
+            const errorIndex = ocrBlocks.value.findIndex(b => b.id === id)
+            if (errorIndex !== -1 && ocrBlocks.value[errorIndex]) ocrBlocks.value[errorIndex]!.status = 'error'
+        }
+    } catch (e) {
+        console.error('Translation failed:', e)
+        const errorIndex = ocrBlocks.value.findIndex(b => b.id === id)
+        if (errorIndex !== -1) ocrBlocks.value[errorIndex]!.status = 'error'
+    }
+}
+
+const handleDeleteBlock = (id: string) => {
+    ocrBlocks.value = ocrBlocks.value.filter(b => b.id !== id)
+    if (activeBlockId.value === id) {
+        activeBlockId.value = ocrBlocks.value.length > 0 ? ocrBlocks.value[ocrBlocks.value.length - 1]!.id : undefined
+    }
+}
+
+const handleUpdateBlock = (updatedBlock: OcrBlock) => {
+    const idx = ocrBlocks.value.findIndex(b => b.id === updatedBlock.id)
+    if (idx !== -1) {
+        // 如果原文改变了，重新翻译
+        if (ocrBlocks.value[idx]!.original !== updatedBlock.original && settings.value.enableTranslation) {
+            // 防止双向绑定循环触发，简单判断一下
+            if (updatedBlock.original) translateBlock(updatedBlock.id, updatedBlock.original)
+        }
+        ocrBlocks.value[idx] = updatedBlock
+    }
+}
+
+// Re-OCR Logic (Double Click)
+const handleReOcr = async (id: string) => {
+    const block = ocrBlocks.value.find(b => b.id === id)
+    if (!block) return
+
+    try {
+        const imgElement = document.querySelector('img[alt^="当前图片"]') as HTMLImageElement
+        if (!imgElement || !imgElement.complete || !imgElement.naturalWidth) {
+            showToast('未找到图片')
+            return
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = block.rect.width
+        canvas.height = block.rect.height
+        const ctx = canvas.getContext('2d')!
+
+        ctx.drawImage(
+            imgElement,
+            block.rect.x, block.rect.y, block.rect.width, block.rect.height,
+            0, 0, block.rect.width, block.rect.height
+        )
+
+        const imageBase64 = canvas.toDataURL('image/png')
+
+        showToast('🔁 重新识别中...')
+        block.status = 'loading' // Optimistic update
+
+        if (!window.electronAPI || !window.electronAPI.recognizeText) throw new Error('API Unavailable')
+
+        const result = await window.electronAPI.recognizeText(imageBase64)
+
+        if (result.success && result.text) {
+            handleUpdateBlock({
+                ...block,
+                original: result.text,
+                status: 'done',
+                showOriginal: true
+            })
+            showToast('✅ 重新识别成功')
+        } else {
+            block.status = 'error'
+            showToast(`重新识别失败: ${result.error}`)
+        }
+
+    } catch (e) {
+        console.error('Re-OCR Error', e)
+        showToast('重新识别出错')
+    }
+}
+
+const handleSelectBlock = (id: string) => {
+    activeBlockId.value = id
 }
 
 // Global Paste Handler
@@ -340,21 +519,46 @@ onMounted(async () => {
                 <Button class="text-sm font-bold" variant="secondary" @btn-click="goBackToLibrary">📚 返回书架</Button>
             </template>
         </TitleBar>
-        <main class="max-w-screen-2xl mx-auto p-6">
-            <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-120px)]">
-                <div class="lg:col-span-3 relative">
-                    <FileUpload />
+        <main class="max-w-screen-2xl mx-auto p-6" :class="{ 'max-w-full p-2': settings.readingMode === 'immersive' }">
+            <div class="grid grid-cols-1 gap-6 h-[calc(100vh-120px)]"
+                :class="settings.readingMode === 'immersive' ? '' : 'lg:grid-cols-5'">
+
+                <!-- Image Area -->
+                <div class="relative h-full"
+                    :class="settings.readingMode === 'immersive' ? 'lg:col-span-5' : 'lg:col-span-3'">
+                    <FileUpload>
+                        <template #overlay="{ naturalSize, containerSize }">
+                            <BubbleLayer v-if="ocrBlocks.length > 0" :blocks="ocrBlocks"
+                                :image-natural-size="naturalSize" :container-size="containerSize"
+                                @select-block="handleSelectBlock" @update-block="handleUpdateBlock"
+                                @delete-block="handleDeleteBlock" @re-ocr="handleReOcr" />
+                        </template>
+                    </FileUpload>
                     <!-- OCR 框选 overlay -->
                     <OcrOverlay v-if="isOcrMode" @capture-complete="handleOcrCapture" @cancel="handleOcrCancel" />
                 </div>
 
-                <div class="lg:col-span-2 space-y-4">
-                    <OcrButton @ocr-btn-click="handleOcr" :is-recognizing="isOcrRecognizing" :is-in-ocr="isOcrMode" />
-                    <OriginalText :is-recognizing="isOcrRecognizing" v-model:local-text="originalText" />
-                    <!-- 这里indexvue起到一个父组件传递originalText的作用 v-model 传递给originalText再传递给Translationvue -->
-                    <TokenizedWords v-if="settings.enableTokenization" :origin-text="originalText" />
-                    <Translation v-if="settings.enableTranslation" :original-text="originalText" />
-                    <!-- <HintCard v-if="settings.enableTokenization" text="提示：点击分词结果中的单词可查看详情" /> -->
+                <!-- Sidebar Area -->
+                <div v-if="settings.readingMode !== 'immersive'"
+                    class="lg:col-span-2 overflow-hidden flex flex-col h-full">
+
+                    <!-- List Mode -->
+                    <div v-if="settings.readingMode === 'list'" class="h-full flex flex-col gap-4">
+                        <OcrButton @ocr-btn-click="handleOcr" :is-recognizing="isOcrRecognizing"
+                            :is-in-ocr="isOcrMode" />
+                        <BubbleList class="flex-1 min-h-0" :blocks="ocrBlocks" :active-id="activeBlockId"
+                            @select-block="handleSelectBlock" @update-block="handleUpdateBlock"
+                            @delete-block="handleDeleteBlock" />
+                    </div>
+
+                    <!-- Study Mode (Classic) -->
+                    <div v-else class="space-y-4 overflow-y-auto pr-2 pb-4">
+                        <OcrButton @ocr-btn-click="handleOcr" :is-recognizing="isOcrRecognizing"
+                            :is-in-ocr="isOcrMode" />
+                        <OriginalText :is-recognizing="isOcrRecognizing" v-model:local-text="originalText" />
+                        <TokenizedWords v-if="settings.enableTokenization" :origin-text="originalText" />
+                        <Translation v-if="settings.enableTranslation" :original-text="originalText" />
+                    </div>
                 </div>
             </div>
         </main>

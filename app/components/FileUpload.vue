@@ -91,19 +91,39 @@ const handleOpenFile = async () => {
 const isDragging = ref(false)
 
 // 图片容器的宽高
-const containerSize = ref({ width: 0, height: 0 })
+const containerSize = reactive({ width: 0, height: 0 })
+const imageNaturalSize = reactive({ width: 0, height: 0 })
+let resizeObserver: ResizeObserver | null = null
 
-// 监听当前图片变化，更新容器尺寸
+const updateContainerSize = () => {
+    if (imageContainer.value) {
+        containerSize.width = imageContainer.value.clientWidth
+        containerSize.height = imageContainer.value.clientHeight
+    }
+}
+
+const onImageLoad = (e: Event) => {
+    const img = e.target as HTMLImageElement
+    imageNaturalSize.width = img.naturalWidth
+    imageNaturalSize.height = img.naturalHeight
+}
+
+watch(imageContainer, (el) => {
+    if (el) {
+        updateContainerSize()
+        if (resizeObserver) resizeObserver.disconnect()
+        resizeObserver = new ResizeObserver(updateContainerSize)
+        resizeObserver.observe(el)
+    }
+})
+
+// 监听当前图片变化
 watch(() => images.value[currentImageIndex.value], () => {
-    nextTick(() => {
-        if (images.value.length > 0 && imageContainer.value) {
-            const rect = imageContainer.value.getBoundingClientRect()
-            containerSize.value = {
-                width: rect.width,
-                height: rect.height
-            }
-        }
-    })
+    nextTick(updateContainerSize)
+})
+
+onMounted(() => {
+    window.addEventListener('resize', updateContainerSize)
 })
 
 const handleDragOver = (event: Event) => {
@@ -321,6 +341,11 @@ onMounted(() => {
 
 // 组件卸载时清理
 onUnmounted(() => {
+    window.removeEventListener('resize', updateContainerSize)
+    if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+    }
     images.value.forEach(img => URL.revokeObjectURL(img.url))
     if (sortableInstance) {
         sortableInstance.destroy()
@@ -358,12 +383,14 @@ onUnmounted(() => {
 
             <!-- 有图片时显示 -->
             <div v-if="images.length > 0" ref="imageContainer"
-                class="lg:h-full w-full h-screen flex items-center justify-center">
+                class="lg:h-full w-full h-screen flex items-center justify-center relative">
                 <img :src="images[currentImageIndex]?.url" :alt="`当前图片 ${currentImageIndex + 1}`" draggable="false"
-                    class="object-contain size-full pointer-events-none select-none" :style="{
+                    @load="onImageLoad" class="object-contain size-full pointer-events-none select-none" :style="{
                         maxWidth: containerSize.width + 'px',
                         maxHeight: containerSize.height + 'px'
                     }" />
+
+                <slot name="overlay" :natural-size="imageNaturalSize" :container-size="containerSize"></slot>
 
                 <!-- 图片信息 -->
                 <div

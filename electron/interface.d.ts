@@ -1,4 +1,4 @@
-// electron/electron.d.ts
+// types/electron.d.ts
 export interface Token {
     word: string
     type: 'noun' | 'verb' | 'particle' | 'adjective' | 'other'
@@ -6,20 +6,71 @@ export interface Token {
     dictionary_form?: string
 }
 
+export type ReadingMode = 'study' | 'list' | 'immersive'
+
 // 定义设置对象的接口
 export interface AppSettings {
+    readingMode: ReadingMode
     enableTranslation: boolean
     enableTokenization: boolean
     translationApiKey: string
     theme: 'system' | 'light' | 'dark'
     ocrShortcut: string
+    prevImageShortcut?: string
+    nextImageShortcut?: string
     [key: string]: any
+}
+
+// OCR 结果块
+export interface OcrBlock {
+    id: string
+    rect: {        // 相对原图坐标
+        x: number
+        y: number
+        width: number
+        height: number
+    }
+    original: string
+    translation: string
+    tokens: Token[]
+    status: 'loading' | 'done' | 'error'
+    showOriginal: boolean // 当前显示原文还是译文
+}
+
+export interface ImageItem {
+    id: string
+    url: string
+    file: File
+    type: 'image' | 'pdf-page'
+    pageNumber?: number
+}
+
+export interface Book {
+    id: string
+    path: string
+    cover: string | null // Base64 Data URL
+    totalPage: number
+    currentPage: number
+    lastReadTime: number
 }
 
 export interface IElectronAPI {
     // 基础通信
     send: (channel: string, data?: any) => void
     on: (channel: string, func: (...args: any[]) => void) => void
+    invoke: (channel: string, ...args: any[]) => Promise<any>
+
+    // Library
+    getLibrary: () => Promise<Book[]>
+    addBook: (path: string) => Promise<{ success: boolean, book?: Book, error?: string }>
+    updateBookProgress: (data: { id: string, currentPage?: number, totalPage?: number, lastReadTime?: number }) => Promise<boolean>
+    removeBook: (id: string) => Promise<boolean>
+    checkFileExists: (path: string) => Promise<boolean>
+    loadBook: (path: string) => Promise<{ success: boolean, images?: { name: string, data: string }[], error?: string }>
+
+    // Dialogs
+    openFileDialog: () => Promise<{ canceled: boolean, filePaths: string[] }>
+    readImageFiles: (paths: string[]) => Promise<{ success: boolean, images?: { name: string, data: string }[], parentPath?: string, error?: string }>
 
     // OCR 核心
     recognizeText: (imageBase64: string) => Promise<{
@@ -46,11 +97,8 @@ export interface IElectronAPI {
 
     openLink: (url: string) => Promise<void>
 
-    // 1. 设置快捷键 (返回 boolean 表示是否成功)
+    // 快捷键
     updateShortcuts: (shortcuts: Record<string, string>) => Promise<boolean>
-
-    // 2. 监听快捷键触发
-    // 参数是一个回调函数，返回值是一个“清理函数”(用于移除监听)
     onShortcutTriggered: (callback: (action: string) => void) => () => void
 
     checkModel: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
@@ -64,6 +112,7 @@ export interface IElectronAPI {
     onDownloadProgress: (callback: (percent: number) => void) => () => void
     onInitStatus: (callback: (msg: string) => void) => () => void
     onInitProgress: (callback: (data: { percent: number, message: string }) => void) => () => void
+    onInitError: (callback: (data: { message: string, detail: string }) => void) => () => void
 }
 
 declare global {

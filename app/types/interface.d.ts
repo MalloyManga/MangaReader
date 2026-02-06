@@ -6,8 +6,11 @@ export interface Token {
     dictionary_form?: string
 }
 
+export type ReadingMode = 'study' | 'list' | 'immersive'
+
 // 定义设置对象的接口
 export interface AppSettings {
+    readingMode: ReadingMode
     enableTranslation: boolean
     enableTokenization: boolean
     translationApiKey: string
@@ -16,6 +19,22 @@ export interface AppSettings {
     prevImageShortcut?: string
     nextImageShortcut?: string
     [key: string]: any
+}
+
+// OCR 结果块
+export interface OcrBlock {
+    id: string
+    rect: {        // 相对原图坐标
+        x: number
+        y: number
+        width: number
+        height: number
+    }
+    original: string
+    translation: string
+    tokens: Token[]
+    status: 'loading' | 'done' | 'error'
+    showOriginal: boolean // 当前显示原文还是译文
 }
 
 export interface ImageItem {

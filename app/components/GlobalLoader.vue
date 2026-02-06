@@ -71,11 +71,17 @@ onMounted(async () => {
 
 const finishLoading = () => {
     isFading.value = true
-    // 等待 fade-out 动画结束 (500ms)
     setTimeout(() => {
         isVisible.value = false
         emit('ready')
-        showToast('资源加载完毕 🚀', 2000)
+
+        const hasSeenHint = localStorage.getItem('has_seen_intro_hint')
+        if (!hasSeenHint) {
+            showToast('👋 欢迎使用！建议在【设置】配置翻译模型及阅读模式', 6000)
+            localStorage.setItem('has_seen_intro_hint', 'true')
+        } else {
+            showToast('资源加载完毕 🚀', 2000)
+        }
     }, 500)
 }
 </script>

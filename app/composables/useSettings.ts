@@ -4,6 +4,7 @@ export type ThemeOption = 'system' | 'light' | 'dark'
 export const useSettings = () => {
     // 这里存放具体的设置数据
     const settings = useState('app-settings', () => ({
+        readingMode: 'study' as 'study' | 'list' | 'immersive',
         enableTranslation: false, // 启用翻译
         enableTokenization: true, // 启用分词
         translationApiKey: '', // 翻译APIkey
@@ -37,20 +38,29 @@ export const useSettings = () => {
     if (import.meta.client) {
         // 监听 settings 变化，自动同步到 Electron Store
         watch(settings, (newVal) => {
-            applyTheme()
-            if (!window.electronAPI) return
-            // 遍历保存每一个 key
-            for (const [key, value] of Object.entries(newVal)) {
-                // 注意：这里需要确保 saveSetting 存在，防止 SSR 报错
-                window.electronAPI?.saveSetting(key, value)
-            }
+            try {
+                applyTheme()
+                if (!window.electronAPI) return
 
-            // 批量更新所有快捷键
-            window.electronAPI.updateShortcuts({
-                ocr: newVal.ocrShortcut,
-                prev: newVal.prevImageShortcut || '',
-                next: newVal.nextImageShortcut || ''
-            })
+                // [Fix] 使用 JSON 序列化/反序列化彻底去除 Proxy 包装
+                // 解决 "An object could not be cloned" 报错
+                const rawSettings = JSON.parse(JSON.stringify(newVal))
+
+                // 遍历保存每一个 key
+                for (const [key, value] of Object.entries(rawSettings)) {
+                    // 注意：这里需要确保 saveSetting 存在，防止 SSR 报错
+                    window.electronAPI?.saveSetting(key, value)
+                }
+
+                // 批量更新所有快捷键
+                window.electronAPI.updateShortcuts({
+                    ocr: rawSettings.ocrShortcut,
+                    prev: rawSettings.prevImageShortcut || '',
+                    next: rawSettings.nextImageShortcut || ''
+                })
+            } catch (e) {
+                console.error('Auto-save settings failed:', e)
+            }
 
         }, { deep: true })
 

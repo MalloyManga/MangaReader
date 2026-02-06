@@ -1,8 +1,10 @@
 <!-- components/settings/SettingsAbout.vue -->
 <script setup lang="ts">
+import packageJson from '../../package.json'
+
 const config = {
     appName: 'Manga Reader',
-    appVersion: 'v1.0.1',
+    appVersion: `v${packageJson.version}`,
     appDescription: '专为日语学习者打造的离线漫画阅读与翻译工具。',
     projectGithub: 'https://github.com/MalloyManga/MangaReader',
     developerName: 'Malloy',

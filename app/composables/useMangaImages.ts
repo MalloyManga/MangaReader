@@ -1,4 +1,3 @@
-
 import type { ImageItem } from '~/types/interface'
 
 export const useMangaImages = () => {
