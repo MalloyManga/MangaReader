@@ -12,7 +12,7 @@ interface Props {
     isActive: boolean
 }
 
-defineProps<Props>() // props 仅仅在模板里使用的时间不用接收
+defineProps<Props>()
 
 defineEmits<{
     delete: []

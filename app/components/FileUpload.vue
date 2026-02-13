@@ -126,11 +126,6 @@ onMounted(() => {
     window.addEventListener('resize', updateContainerSize)
 })
 
-const handleDragOver = (event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-}
-
 // PDF 转图片
 const convertPdfToImages = async (file: File): Promise<ImageItem[]> => {
     if (!isPdfJsLoaded.value) {
@@ -144,6 +139,8 @@ const convertPdfToImages = async (file: File): Promise<ImageItem[]> => {
     const arrayBuffer = await file.arrayBuffer()
     const pdf = await pdfjsLib.value.getDocument({ data: arrayBuffer }).promise
     const pageCount = pdf.numPages
+
+    // 构建图片数组
     const images: ImageItem[] = []
 
     for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
@@ -245,15 +242,24 @@ const addImages = async (files: File[]) => {
     await processFiles()
 }
 
+// 所有的拖动函数
+// - 进入离开时isDragging变化
 const handleDragEnter = (event: DragEvent) => {
     isDragging.value = true
 }
 
 const handleDragLeave = (event: DragEvent) => {
-    const relatedTarget = event.relatedTarget as HTMLElement
-    if (dropArea.value && !dropArea.value.contains(relatedTarget)) {
+    // relatedTarget随着鼠标的移动会进行即时判断
+    // !dropArea.value.contains(relatedTarget) - 离开之后所进入的元素 并不包含在dropArea内的时间触发 排除掉从父元素即dropArea进入子元素的情况
+    const relatedTarget = event.relatedTarget as HTMLElement // 这里的relatedTarget在ts看来可能并非Node 但实际上这里不存在除了HTMLElement以外的情况 故断言为
+    if (!dropArea.value?.contains(relatedTarget)) {
         isDragging.value = false
     }
+}
+
+const handleDragOver = (event: Event) => {
+    event.preventDefault()
+    event.stopPropagation()
 }
 
 const handleDrop = (event: DragEvent) => {
@@ -265,6 +271,7 @@ const handleDrop = (event: DragEvent) => {
         addImages(Array.from(files))
     }
 }
+// --------------
 
 // 切换到指定图片
 const selectImage = (index: number) => {
@@ -356,13 +363,16 @@ onUnmounted(() => {
 
 <template>
     <div class="h-full flex gap-3 items-stretch">
+
         <!-- 左侧缩略图列表 -->
         <div v-if="images.length > 0" class="flex flex-col gap-2" :style="{ height: containerSize.height + 'px' }">
             <div class="flex gap-2 w-full justify-between">
                 <Button @btn-click="handleOpenFile">
                     📂
                 </Button>
-                <Button variant="secondary" class="p-2" @btn-click="handleScreenshot">✂️</Button>
+                <Button variant="secondary" class="p-2" @btn-click="handleScreenshot">
+                    ✂️
+                </Button>
             </div>
             <div ref="imagesPreviewContainer" :key="listKey"
                 class="gap-2 min-h-0 bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600 overflow-y-auto">
@@ -383,23 +393,27 @@ onUnmounted(() => {
 
             <!-- 有图片时显示 -->
             <div v-if="images.length > 0" ref="imageContainer"
-                class="lg:h-full w-full h-screen flex items-center justify-center relative">
+                class="size-full flex items-center justify-center relative">
                 <img :src="images[currentImageIndex]?.url" :alt="`当前图片 ${currentImageIndex + 1}`" draggable="false"
                     @load="onImageLoad" class="object-contain size-full pointer-events-none select-none" :style="{
                         maxWidth: containerSize.width + 'px',
                         maxHeight: containerSize.height + 'px'
                     }" />
 
+                <!-- 列表/沉浸模式的翻译气泡框slot 覆盖掉原本图片的原文 -->
                 <slot name="overlay" :natural-size="imageNaturalSize" :container-size="containerSize"></slot>
 
-                <!-- 图片信息 -->
+                <!-- 右上图片/pdf页码信息 -->
                 <div
                     class="absolute top-4 right-4 bg-black/60 text-white px-3 py-1.5 rounded text-sm backdrop-blur-sm pointer-events-none">
-                    <div>{{ currentImageIndex + 1 }} / {{ images.length }}</div>
+                    <div>
+                        {{ currentImageIndex + 1 }} / {{ images.length }}
+                    </div>
                     <div v-if="images[currentImageIndex]?.type === 'pdf-page'" class="text-xs opacity-75">
                         PDF 第 {{ images[currentImageIndex]?.pageNumber }} 页
                     </div>
                 </div>
+
             </div>
 
             <!-- 空状态 -->
@@ -413,7 +427,11 @@ onUnmounted(() => {
                         {{ isDragging ? '松开鼠标上传' : '文件预览区域' }}
                     </p>
                     <p class="text-sm mb-6 text-manga-600 dark:text-manga-400">
-                        支持拖拽 <span class="font-bold">图片 / PDF / ZIP</span> 文件到此处<br>
+                        支持拖拽
+                        <span class="font-bold">
+                            图片 / PDF / ZIP
+                        </span>
+                        文件到此处<br>
                         或点击下方按钮导入
                     </p>
 
@@ -421,7 +439,9 @@ onUnmounted(() => {
                         <Button @btn-click="handleOpenFile">
                             导入 / 打开文件 📁
                         </Button>
-                        <Button variant="secondary" @btn-click="handleScreenshot">截图 ✂️</Button>
+                        <Button variant="secondary" @btn-click="handleScreenshot">
+                            截图 ✂️
+                        </Button>
                     </div>
                 </div>
             </div>

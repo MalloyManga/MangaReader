@@ -1,13 +1,13 @@
 <!-- components/ConfirmModal.vue -->
 <script setup lang="ts">
 interface Props {
-    show: boolean // 外部控制显示隐藏状态的布尔值
-    title?: string // 标题
-    content?: string // 内容
-    confirmText?: string // 确认按钮的内容
-    cancelText?: string // 取消按钮的内容
-    isDanger?: boolean // 是否是危险操作（如果是，按钮变红）
-    loading?: boolean  // 是否正在处理中
+    show: boolean
+    title: string
+    content: string
+    confirmText?: string
+    cancelText?: string
+    isDanger?: boolean
+    loading?: boolean
 }
 
 const {
@@ -35,16 +35,16 @@ const emit = defineEmits<{
             <div v-if="show" class="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm"
                 @click="emit('cancel')">
 
-                <!-- 弹窗卡片 (阻止点击冒泡) -->
+                <!-- 弹窗卡片 -->
                 <div class="w-full max-w-sm bg-white dark:bg-manga-800 rounded-xl shadow-2xl p-6 transform transition-all scale-100 border border-manga-200 dark:border-manga-700"
                     @click.stop>
 
-                    <!-- 标题与图标 -->
+                    <!-- 图标 标题 内容 -->
                     <div class="flex items-start gap-4 mb-4">
-                        <div class="shrink-0 flex items-center justify-center w-10 h-10 rounded-full"
+                        <div class="shrink-0 flex items-center justify-center size-10 rounded-full"
                             :class="isDanger ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-600'">
                             <IconWarn v-if="isDanger" class="size-6" />
-                            <IconTip v-else class="w-6 h-6" />
+                            <IconTip v-else class="size-6" />
                         </div>
                         <div>
                             <h3 class="text-lg font-bold text-manga-900 dark:text-white">
@@ -56,25 +56,17 @@ const emit = defineEmits<{
                         </div>
                     </div>
 
-                    <!-- 按钮组 -->
+                    <!-- 取消及确认按钮 -->
                     <div class="flex justify-end gap-3 mt-6">
-                        <button @click="emit('cancel')" :disabled="loading"
-                            class="px-4 py-2 text-sm font-medium text-manga-600 dark:text-manga-300 bg-white dark:bg-manga-800 border border-manga-300 dark:border-manga-600 rounded-lg hover:bg-manga-50 dark:hover:bg-manga-700 focus:outline-none transition-colors cursor-pointer">
+                        <Button @btn-click="emit('cancel')" :disabled="loading" variant="outline" size="sm">
                             {{ cancelText }}
-                        </button>
-
-                        <button @click="emit('confirm')" :disabled="loading"
-                            class="px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm focus:outline-none transition-all flex items-center gap-2 cursor-pointer"
-                            :class="[
-                                isDanger
-                                    ? 'bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500'
-                                    : 'bg-blue-600 hover:bg-blue-700',
-                                loading ? 'opacity-70 cursor-not-allowed' : ''
-                            ]">
+                        </Button>
+                        <Button @btn-click="emit('confirm')" :disabled="loading" variant="danger" size="sm"
+                            :class="loading ? 'opacity-70 cursor-not-allowed' : ''">
                             <span v-if="loading"
                                 class="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></span>
                             {{ confirmText }}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>
