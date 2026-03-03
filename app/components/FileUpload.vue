@@ -366,14 +366,14 @@ onUnmounted(() => {
 
         <!-- 左侧缩略图列表 -->
         <div v-if="images.length > 0" class="flex flex-col gap-2" :style="{ height: containerSize.height + 'px' }">
-            <div class="flex gap-2 w-full justify-between">
+            <!-- <div class="flex gap-2 w-full justify-between">
                 <Button @btn-click="handleOpenFile">
                     📂
                 </Button>
                 <Button variant="secondary" class="p-2" @btn-click="handleScreenshot">
                     ✂️
                 </Button>
-            </div>
+            </div> -->
             <div ref="imagesPreviewContainer" :key="listKey"
                 class="gap-2 min-h-0 bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600 overflow-y-auto">
                 <ImageThumbnail v-for="(image, index) in images" :key="image.id" :image="image" :index="index"
