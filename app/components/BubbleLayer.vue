@@ -1,33 +1,29 @@
 <!-- components/BubbleLayer.vue -->
 <script setup lang="ts">
 import type { OcrBlock } from '~/types/interface'
-
-const props = defineProps<{
+interface Props {
     blocks: OcrBlock[]
     imageNaturalSize: { width: number, height: number }
     containerSize: { width: number, height: number }
-}>()
-
-const emit = defineEmits<{
-    (e: 'updateBlock', block: OcrBlock): void
-    (e: 'deleteBlock', id: string): void
-    (e: 'selectBlock', id: string): void
-    (e: 'reOcr', id: string): void
-}>()
+}
+const { blocks, imageNaturalSize, containerSize } = defineProps<Props>()
 
 const renderedRect = computed(() => {
-    const { width: nw, height: nh } = props.imageNaturalSize
-    const { width: cw, height: ch } = props.containerSize
+    const { width: nw, height: nh } = imageNaturalSize
+    const { width: cw, height: ch } = containerSize
 
     if (!nw || !nh || !cw || !ch) return { x: 0, y: 0, width: 0, height: 0, scale: 1 }
 
+    // 由于原始图片宽高比再经过了 objectcontain 的调整之后会缩水 故这里进行计算scale
     const rw = cw / nw
     const rh = ch / nh
     const scale = Math.min(rw, rh)
-
+    // 计算实际缩放 由于原图宽高比不变 故缩放比例为最小的那个
+    // actualWH 便为最后缩放之后的图片宽高
     const actualW = nw * scale
     const actualH = nh * scale
 
+    // 缩放之后 容器两边的留白
     const x = (cw - actualW) / 2
     const y = (ch - actualH) / 2
 
@@ -35,6 +31,7 @@ const renderedRect = computed(() => {
 })
 
 const getBlockStyle = (block: OcrBlock) => {
+    // 拿到容器里的图片四周的留白宽高 以及 图片的缩放比例
     const { x, y, scale } = renderedRect.value
 
     const text = block.showOriginal ? block.original : (block.translation || '...')
@@ -42,6 +39,7 @@ const getBlockStyle = (block: OcrBlock) => {
 
     const w = block.rect.width * scale
     const h = block.rect.height * scale
+    // block.rect.x 是这块文字在原图里的坐标
     const area = w * h
 
     let fontSize = Math.sqrt((area * 0.60) / len)
@@ -72,11 +70,18 @@ const toggleContent = (block: OcrBlock) => {
     emit('updateBlock', newBlock)
     emit('selectBlock', block.id)
 }
+
+const emit = defineEmits<{
+    updateBlock: [block: OcrBlock]
+    deleteBlock: [id: string]
+    selectBlock: [id: string]
+    reOcr: [id: string]
+}>()
 </script>
 
 <template>
     <div class="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-        <transition-group name="bubble">
+        <TransitionGroup name="bubble">
             <div v-for="block in blocks" :key="block.id"
                 class="absolute pointer-events-auto cursor-pointer select-none transition-all hover:ring-2 hover:ring-primary overflow-hidden flex flex-col"
                 :class="[
@@ -96,7 +101,7 @@ const toggleContent = (block: OcrBlock) => {
                     </span>
                 </div>
             </div>
-        </transition-group>
+        </TransitionGroup>
     </div>
 </template>
 

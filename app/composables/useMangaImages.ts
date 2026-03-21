@@ -1,4 +1,4 @@
-import type { ImageItem } from '~/types/interface'
+import type { ImageItem } from '~/types/interface.js'
 
 export const useMangaImages = () => {
     const images = useState<ImageItem[]>('manga-images', () => [])
@@ -7,7 +7,7 @@ export const useMangaImages = () => {
     const currentImage = computed(() => images.value[currentImageIndex.value])
 
     const addImagesToStore = (newImages: ImageItem[]) => {
-        const wasEmpty = images.value.length === 0
+        const wasEmpty = images.value.length === 0 // 用于调整当前图片索引 为真则跳转到第一张图片
         images.value.push(...newImages)
         if (wasEmpty) {
             currentImageIndex.value = 0

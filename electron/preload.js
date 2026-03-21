@@ -1,15 +1,10 @@
 // electron/preload.js
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-
-    // 支持发送消息(带或不带数据)
-    send: (channel, data) => {
-        ipcRenderer.send(channel, data) // 渲染进程向主进程发送异步消息不等待响应
-    },
-
-    on: (channel, func) => {
-        ipcRenderer.on(channel, (event, ...args) => func(...args))
+    // 打开模型文件夹
+    openModelFolder: () => {
+        ipcRenderer.send('open-model-folder')
     },
 
     // OCR 识别
@@ -29,7 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateBookProgress: (data) => ipcRenderer.invoke('library:update-progress', data),
     removeBook: (id) => ipcRenderer.invoke('library:remove', id),
     checkFileExists: (path) => ipcRenderer.invoke('fs:exists', path),
-    loadBook: (path) => ipcRenderer.invoke('book:load', path),
 
     // Dialogs
     openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
@@ -65,7 +59,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkModel: () => ipcRenderer.invoke('model:check'),
     downloadModel: () => ipcRenderer.invoke('model:download'),
     deleteModel: () => ipcRenderer.invoke('model:delete'),
-    // 检查后端状态
+    // 后端初始化完毕之后主动发送消息
+    backendStatus: (callback) => {
+        const handler = (_event, data) => callback(data)
+        ipcRenderer.on('backend-status', handler)
+        return () => ipcRenderer.removeListener('backend-status', handler)
+    },
+    // 主动检查后端状态
     checkBackendReady: () => ipcRenderer.invoke('backend:check-ready'),
     // 下载进度
     onDownloadProgress: (callback) => {
@@ -97,4 +97,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('backend:log', handler)
         return () => ipcRenderer.removeListener('backend:log', handler)
     },
+
+    // 获取图片路径
+    getPathForFile: (file) => webUtils.getPathForFile(file)
 })

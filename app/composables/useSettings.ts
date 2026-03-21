@@ -8,6 +8,7 @@ export const useSettings = () => {
         enableTranslation: false, // 启用翻译
         enableTokenization: true, // 启用分词
         translationApiKey: '', // 翻译APIkey
+        // 目前还没有开发该部分功能 后续需要添加防抖
         theme: 'system' as ThemeOption, // 默认为跟随系统
         ocrShortcut: '',
         prevImageShortcut: '',
@@ -16,7 +17,6 @@ export const useSettings = () => {
 
     const applyTheme = () => {
         if (!import.meta.client) return
-
         const html = document.documentElement
         const isDarkSystem = window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -41,15 +41,9 @@ export const useSettings = () => {
             try {
                 applyTheme()
                 if (!window.electronAPI) return
-
-                // [Fix] 使用 JSON 序列化/反序列化彻底去除 Proxy 包装
-                // 解决 "An object could not be cloned" 报错
-                const rawSettings = JSON.parse(JSON.stringify(newVal))
-
-                // 遍历保存每一个 key
+                const rawSettings = toRaw(newVal)
                 for (const [key, value] of Object.entries(rawSettings)) {
-                    // 注意：这里需要确保 saveSetting 存在，防止 SSR 报错
-                    window.electronAPI?.saveSetting(key, value)
+                    window.electronAPI.saveSetting(key, value)
                 }
 
                 // 批量更新所有快捷键
@@ -70,10 +64,9 @@ export const useSettings = () => {
         })
     }
 
-    // 打开模型文件夹 (调用 Electron)
     const openModelFolder = () => {
         if (import.meta.client) {
-            window.electronAPI?.send('open-model-folder')
+            window.electronAPI.openModelFolder('open-model-folder')
         }
     }
 
@@ -85,7 +78,6 @@ export const useSettings = () => {
     // 初始化：从 Electron 读取配置
     const initSettings = async () => {
         if (import.meta.client) {
-
             if (!window.electronAPI) {
                 console.warn('Electron API not available')
                 applyTheme()
@@ -95,7 +87,7 @@ export const useSettings = () => {
                 const storedSettings = await window.electronAPI.getSettings()
                 // 合并配置：用 store 里的覆盖默认值
                 Object.assign(settings.value, storedSettings)
-                // 初始化完成后立即应用一次主题
+                // 初始化完成后立即应用一次主题 storedSettings 会立刻覆盖 settings 完成存储设置的应用
                 applyTheme()
 
                 // 初始化所有快捷键

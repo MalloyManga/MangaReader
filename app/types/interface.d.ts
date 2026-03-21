@@ -13,12 +13,12 @@ export interface AppSettings {
     readingMode: ReadingMode
     enableTranslation: boolean
     enableTokenization: boolean
-    translationApiKey: string
+    translationApiKey: string // 翻译APIkey
+    // 目前还没有开发该部分功能 后续需要添加防抖
     theme: 'system' | 'light' | 'dark'
     ocrShortcut: string
     prevImageShortcut?: string
     nextImageShortcut?: string
-    [key: string]: any
 }
 
 // OCR 结果块
@@ -40,7 +40,7 @@ export interface OcrBlock {
 export interface ImageItem {
     id: string
     url: string
-    file: File
+    file?: File
     type: 'image' | 'pdf-page'
     pageNumber?: number
 }
@@ -55,22 +55,23 @@ export interface Book {
 }
 
 export interface IElectronAPI {
-    // 基础通信
-    send: (channel: string, data?: any) => void
-    on: (channel: string, func: (...args: any[]) => void) => void
-    invoke: (channel: string, ...args: any[]) => Promise<any>
+    backendStatus: (callback) => () => void
 
-    // Library
     getLibrary: () => Promise<Book[]>
     addBook: (path: string) => Promise<{ success: boolean, book?: Book, error?: string }>
     updateBookProgress: (data: { id: string, currentPage?: number, totalPage?: number, lastReadTime?: number }) => Promise<boolean>
     removeBook: (id: string) => Promise<boolean>
     checkFileExists: (path: string) => Promise<boolean>
-    loadBook: (path: string) => Promise<{ success: boolean, images?: { name: string, data: string }[], error?: string }>
 
-    // Dialogs
-    openFileDialog: () => Promise<{ canceled: boolean, filePaths: string[] }>
-    readImageFiles: (paths: string[]) => Promise<{ success: boolean, images?: { name: string, data: string }[], parentPath?: string, error?: string }>
+    openFileDialog: () => Promise<{
+        canceled: boolean,
+        filePaths: string[]
+    }>
+    readImageFiles: (paths: string[]) => Promise<{
+        success: boolean,
+        imagePaths?: string[],
+        error?: string
+    }>
 
     // OCR 核心
     recognizeText: (imageBase64: string) => Promise<{
@@ -90,12 +91,11 @@ export interface IElectronAPI {
     closeWindow: () => void
     onWindowStateChange: (callback: (state: 'maximized' | 'normal') => void) => void
 
-    // Settings (Config)
+    // 设置相关
     getSettings: () => Promise<AppSettings>
     saveSetting: (key: string, value: any) => void
     openConfigFile: () => void
 
-    openLink: (url: string) => Promise<void>
 
     // 快捷键
     updateShortcuts: (shortcuts: Record<string, string>) => Promise<boolean>
@@ -108,11 +108,15 @@ export interface IElectronAPI {
 
     // 后端状态检查
     checkBackendReady: () => Promise<boolean>
-
+    onBackendLog: (callback: (msg) => void) => () => void
     onDownloadProgress: (callback: (percent: number) => void) => () => void
     onInitStatus: (callback: (msg: string) => void) => () => void
     onInitProgress: (callback: (data: { percent: number, message: string }) => void) => () => void
     onInitError: (callback: (data: { message: string, detail: string }) => void) => () => void
+
+    getPathForFile: (file: File) => string
+    openModelFolder: (channel) => void
+    openLink: (url: string) => Promise<void>
 }
 
 declare global {

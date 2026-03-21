@@ -1,27 +1,26 @@
 <!-- components/TitleBar.vue -->
 <script setup lang="ts">
-// ... (保持你的 Script 逻辑不变) ...
+const isDark = ref(false)
+const isMaximized = ref(false)
+
 // 窗口控制事件
 const handleMinimize = () => {
-    window.electronAPI?.minimizeWindow?.()
+    window.electronAPI.minimizeWindow()
 }
 const handleMaximize = () => {
-    window.electronAPI?.maximizeWindow?.()
+    window.electronAPI.maximizeWindow()
 }
 const handleClose = () => {
-    window.electronAPI?.closeWindow?.()
+    window.electronAPI.closeWindow()
+}
+const toggleDark = () => {
+    isDark.value = !isDark.value
+    document.documentElement.classList.toggle('dark')
 }
 const emit = defineEmits<{
     openSettings: []
 }>()
 
-
-const isDark = ref(false) // dark light mode
-const isMaximized = ref(false) // 窗口状态
-const toggleDark = () => {
-    isDark.value = !isDark.value
-    document.documentElement.classList.toggle('dark')
-}
 onMounted(() => {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     if (prefersDark) {
@@ -44,13 +43,13 @@ onMounted(() => {
     <div
         class="h-12 flex justify-between bg-manga-100 dark:bg-manga-800 border-b border-manga-200 dark:border-manga-600 select-none">
 
-        <div class="flex-1 flex items-center gap-4 px-4 draggable h-full">
+        <div class="draggable flex-1 flex items-center gap-4 px-4 h-full">
             <h1 class="text-lg font-bold text-manga-900 dark:text-manga-100">
                 📚 MangaReader
             </h1>
         </div>
 
-        <div class="flex items-center gap-2 non-draggable px-2 h-full">
+        <div class="non-draggable flex items-center gap-2 px-2 h-full">
             <slot name="extra-buttons"></slot>
             <Button variant="secondary" size="sm" @btn-click="emit('openSettings')">
                 ⚙️ 设置
@@ -60,15 +59,10 @@ onMounted(() => {
             </Button>
         </div>
 
-        <!-- 右侧：窗口控制按钮组 -->
-        <div class="flex h-full non-draggable">
-            <!-- 最小化 -->
+        <!-- 窗口控制按钮组 -->
+        <div class="non-draggable flex h-full">
             <MinimizeButton @minimize-btn-click="handleMinimize" />
-
-            <!-- 最大化 -->
             <MaximizeButton :is-maximized="isMaximized" @maximize-btn-click="handleMaximize" />
-
-            <!-- 关闭 (特殊样式：背景变红，图标变白) -->
             <CloseButton @close-btn-click="handleClose" />
         </div>
     </div>

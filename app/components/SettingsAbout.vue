@@ -39,10 +39,12 @@ const openLink = (url: string) => {
         <div class="space-y-3">
             <div
                 class="w-16 h-16 mx-auto bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 overflow-hidden">
-                <img src="/MangaReaderLogo.png" alt="logo" class="w-full h-full object-cover">
+                <img src="/MangaReaderLogo.png" alt="logo" class="size-full object-cover">
             </div>
             <div>
-                <h2 class="text-xl font-bold text-manga-900 dark:text-white">{{ config.appName }}</h2>
+                <h2 class="text-xl font-bold text-manga-900 dark:text-white">
+                    {{ config.appName }}
+                </h2>
                 <div class="flex items-center justify-center gap-2 mt-2">
                     <span class="px-2 py-0.5 rounded text-xs font-mono bg-manga-100 dark:bg-manga-800 text-manga-500">
                         {{ config.appVersion }}
@@ -66,7 +68,9 @@ const openLink = (url: string) => {
                 </div>
                 <div>
                     <div class="text-[10px] text-manga-400 uppercase font-bold">Developed by</div>
-                    <div class="font-bold text-sm text-manga-900 dark:text-white">{{ config.developerName }}</div>
+                    <div class="font-bold text-sm text-manga-900 dark:text-white">
+                        {{ config.developerName }}
+                    </div>
                 </div>
             </div>
 
@@ -93,7 +97,6 @@ const openLink = (url: string) => {
                 <button v-for="tech in techStack" :key="tech.name" @click="openLink(tech.url)"
                     class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-manga-800 border border-manga-100 dark:border-manga-700 hover:border-manga-300 dark:hover:border-manga-500 hover:shadow-sm transition-all cursor-pointer group text-left">
 
-                    <!-- 内嵌简单 SVG 图标 -->
                     <div class="size-5 flex items-center justify-center">
                         <IconTechStack class="size-4 transition-transform group-hover:scale-110" :class="tech.color" />
                     </div>
@@ -106,7 +109,7 @@ const openLink = (url: string) => {
             </div>
         </div>
 
-        <!-- 4. 底部版权 -->
+        <!-- 底部版权 -->
         <div class="mt-auto pb-4 text-xs text-manga-400 flex flex-col gap-1">
             <p>Copyright © {{ config.currentYear }} {{ config.developerName }}.</p>
             <p>Released under the GPL License.</p>

@@ -4,13 +4,42 @@ const { settings, saveSettings } = useSettings()
 const { showToast } = useToast()
 const { model, checkModelStatus } = useModelStatus()
 
-// Check model status on mount to ensure we have the correct state
-onMounted(() => {
-    checkModelStatus()
-})
+const themeOptions: Record<ThemeOption, {
+    icon: string,
+    desc: string
+}> = {
+    'light': { icon: '☀️', desc: '浅色' },
+    'dark': { icon: '🌙', desc: '深色' },
+    'system': { icon: '💻', desc: '跟随系统' }
+}
 
+const isRecording = ref(false)
+// 记录当前正在录制哪个快捷键
+const recordingTarget = ref<'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut' | null>(null)
+
+const modeOptions = [
+    {
+        mode: 'study',
+        label: '精读模式',
+        desc: '经典的左图右文布局，适合逐句精读学习。',
+        hint: ''
+    },
+    {
+        mode: 'list',
+        label: '列表模式',
+        desc: 'OCR 结果以列表形式排列，适合快速浏览。',
+        hint: '建议配置ocr快捷键'
+    },
+    {
+        mode: 'immersive',
+        label: '沉浸模式',
+        desc: '全屏显示图片，翻译作为浮层显示。',
+        hint: '需要配置ocr快捷键'
+    }
+]
+
+// 判断模型是否不可用 study模式默认可用 (翻译)模型未下载时为不可用 true
 const isModeDisabled = (modeValue: string) => {
-    // Only 'list' and 'immersive' modes require the model (per user request)
     if (modeValue === 'study') return false
     return model.status !== 'downloaded'
 }
@@ -24,64 +53,36 @@ const handleModeClick = (modeValue: any) => {
     saveSettings()
 }
 
-const themeOptions = ['light', 'dark', 'system'] as const
-const modeOptions = [
-    {
-        value: 'study',
-        label: '精读模式',
-        desc: '经典的左图右文布局，适合逐句精读学习。',
-        hint: ''
-    },
-    {
-        value: 'list',
-        label: '列表模式',
-        desc: 'OCR 结果以列表形式排列，适合快速浏览。',
-        hint: '建议配置ocr快捷键'
-    },
-    {
-        value: 'immersive',
-        label: '沉浸模式',
-        desc: '全屏显示图片，翻译作为浮层显示。',
-        hint: '需要配置ocr快捷键'
-    }
-] as const
-
-const isRecording = ref(false)
-// 记录当前正在录制哪个快捷键
-const recordingTarget = ref<'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut' | null>(null)
-
+// 快捷键录制逻辑部分
 const startRecording = (target: 'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut') => {
     isRecording.value = true
     recordingTarget.value = target
     showToast('按下组合键，Enter 确认，Esc 取消', 3000)
 }
 
-const stopRecording = () => {
-    isRecording.value = false
-    recordingTarget.value = null
-    // 移除 ref 操作，依赖原生 focus/blur 行为即可
-}
-
 const handleKeyDown = (e: KeyboardEvent) => {
     if (!isRecording.value || !recordingTarget.value) return
-    e.preventDefault(); e.stopPropagation()
+    e.preventDefault()
+    e.stopPropagation()
 
+    // esc退出录制 enter确认 backspace清除
     if (e.key === 'Escape') {
         stopRecording();
+        // e.target 为 EventTarget 类型 不存在方法blur 但实际上这里不会出现除了 HTMLElement 以外的情况 故断言为
         (e.target as HTMLElement).blur()
         return
     }
-    if (e.key === 'Enter') {
-        saveSettings() // 确认后自动保存
+    else if (e.key === 'Enter') {
+        saveSettings()
         stopRecording();
         (e.target as HTMLElement).blur()
         return
     }
-    if (e.key === 'Backspace') {
+    else if (e.key === 'Backspace') {
         if (recordingTarget.value) {
             settings.value[recordingTarget.value] = ''
         }
-        // 清空后立即保存并退出录制，体验更流畅
+        // 清空后立即保存并退出录制
         saveSettings()
         stopRecording();
         (e.target as HTMLElement).blur()
@@ -89,6 +90,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
         return
     }
 
+    // 按下按键的每一帧进行处理
     const keys = []
     if (e.ctrlKey) keys.push('Ctrl')
     if (e.metaKey) keys.push('Cmd')
@@ -96,6 +98,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
     if (e.shiftKey) keys.push('Shift')
     const specialKeys = ['Control', 'Meta', 'Alt', 'Shift']
     if (!specialKeys.includes(e.key)) {
+        // 排除特殊按键以便对其他按键(字母数字)做特殊处理
         let keyName = e.key
 
         // Electron 快捷键名称映射
@@ -120,25 +123,38 @@ const handleKeyDown = (e: KeyboardEvent) => {
         settings.value[recordingTarget.value] = keys.join(' + ')
     }
 }
+
+
+const stopRecording = () => {
+    isRecording.value = false
+    recordingTarget.value = null
+    // 移除 ref 操作，依赖原生 focus/blur 行为即可
+}
+
+onMounted(() => {
+    checkModelStatus()
+})
 </script>
 
 <template>
     <div class="space-y-8 animate-fade-in">
 
         <section>
+            <!-- 阅读模式设置部分 -->
             <h3 class="text-lg font-bold text-manga-900 dark:text-white mb-3">阅读模式</h3>
             <div class="flex flex-col gap-3">
-                <button v-for="mode in modeOptions" :key="mode.value" @click="handleModeClick(mode.value)"
+                <button v-for="modeOption in modeOptions" :key="modeOption.mode"
+                    @click="handleModeClick(modeOption.mode)"
                     class="flex items-center text-left w-full p-3 rounded-xl border transition-all cursor-pointer group relative overflow-hidden"
                     :class="[
-                        settings.readingMode === mode.value
+                        settings.readingMode === modeOption.mode
                             ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 ring-1 ring-blue-200 dark:ring-blue-800'
                             : 'bg-white dark:bg-manga-900 border-manga-200 dark:border-manga-700 hover:bg-manga-50 dark:hover:bg-manga-800',
-                        isModeDisabled(mode.value) ? 'opacity-60 cursor-not-allowed grayscale' : ''
+                        isModeDisabled(modeOption.mode) ? 'opacity-60 cursor-not-allowed grayscale' : ''
                     ]">
 
                     <!-- Disabled overlay / hint -->
-                    <div v-if="isModeDisabled(mode.value)"
+                    <div v-if="isModeDisabled(modeOption.mode)"
                         class="absolute inset-0 z-10 bg-white/50 dark:bg-black/50 flex items-center justify-center backdrop-blur-[1px]">
                         <span
                             class="bg-black/75 text-white text-[10px] px-2 py-1 rounded-full font-medium tracking-wide shadow-sm">
@@ -147,36 +163,39 @@ const handleKeyDown = (e: KeyboardEvent) => {
                     </div>
 
                     <div class="mr-3 p-2 rounded-lg shrink-0"
-                        :class="settings.readingMode === mode.value ? 'bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-200' : 'bg-manga-100 dark:bg-manga-800 text-manga-500'">
-                        <IconBook v-if="mode.value === 'study'" class="size-5" />
-                        <IconChatBubble v-if="mode.value === 'list'" class="size-5" />
-                        <IconFullScreen v-if="mode.value === 'immersive'" class="size-5" />
+                        :class="settings.readingMode === modeOption.mode ? 'bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-200' : 'bg-manga-100 dark:bg-manga-800 text-manga-500'">
+                        <IconBook v-if="modeOption.mode === 'study'" class="size-5" />
+                        <IconChatBubble v-if="modeOption.mode === 'list'" class="size-5" />
+                        <IconFullScreen v-if="modeOption.mode === 'immersive'" class="size-5" />
                     </div>
 
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 mb-0.5">
                             <div class="font-bold text-sm"
-                                :class="settings.readingMode === mode.value ? 'text-blue-700 dark:text-blue-300' : 'text-manga-900 dark:text-gray-200'">
-                                {{ mode.label }}</div>
+                                :class="settings.readingMode === modeOption.mode ? 'text-blue-700 dark:text-blue-300' : 'text-manga-900 dark:text-gray-200'">
+                                {{ modeOption.label }}
+                            </div>
                         </div>
                         <div class="text-xs leading-relaxed"
-                            :class="settings.readingMode === mode.value ? 'text-blue-600/80 dark:text-blue-400/80' : 'text-manga-500 dark:text-gray-400'">
-                            {{ mode.desc }}</div>
-                        <div v-if="mode.hint" class="mt-1.5 text-[10px] inline-flex px-1.5 py-0.5 rounded border"
-                            :class="settings.readingMode === mode.value ? 'bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-500 dark:border-amber-800/50'">
-                            {{ mode.hint }}
+                            :class="settings.readingMode === modeOption.mode ? 'text-blue-600/80 dark:text-blue-400/80' : 'text-manga-500 dark:text-gray-400'">
+                            {{ modeOption.desc }}
+                        </div>
+                        <div v-if="modeOption.hint" class="mt-1.5 text-[10px] inline-flex px-1.5 py-0.5 rounded border"
+                            :class="settings.readingMode === modeOption.mode ? 'bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-500 dark:border-amber-800/50'">
+                            {{ modeOption.hint }}
                         </div>
                     </div>
 
                     <!-- Checkmark -->
-                    <div v-if="settings.readingMode === mode.value"
+                    <div v-if="settings.readingMode === modeOption.mode"
                         class="ml-3 text-blue-600 dark:text-blue-400 shrink-0">
                         <IconCheckMark class="size-5" />
                     </div>
                 </button>
             </div>
+            <!-- ------------------------------ -->
 
-            <!-- Mouse Instruction Box -->
+            <!-- 鼠标操作提示栏 -->
             <div
                 class="mt-3 px-3 py-2.5 rounded-lg bg-manga-50 dark:bg-manga-900/40 border border-manga-100 dark:border-manga-700/50 text-xs text-manga-600 dark:text-manga-400">
                 <div class="font-bold mb-1.5 flex items-center gap-1.5 text-manga-700 dark:text-manga-300">
@@ -246,6 +265,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
             <div>
                 <label class="text-xs text-manga-500 mb-1 block">OCR 截图</label>
                 <div class="relative group">
+                    <!-- 判断 只有正在录制并且录制的为ocr快捷键true 才会显示设置的快捷键或者提示文本 false时显示已经设置的快捷键或者提示文本 即保证总是显示快捷键 -->
                     <input type="text" readonly
                         :value="(isRecording && recordingTarget === 'ocrShortcut') ? (settings.ocrShortcut || '请按下按键...') : (settings.ocrShortcut || '未设置')"
                         @click="startRecording('ocrShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
@@ -324,19 +344,22 @@ const handleKeyDown = (e: KeyboardEvent) => {
         <div class="space-y-4">
             <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">外观</h4>
             <div class="grid grid-cols-3 gap-3">
-                <button v-for="mode in themeOptions" :key="mode" @click="settings.theme = mode; saveSettings()"
+                <button v-for="(theme, themeId) in themeOptions" :key="themeId"
+                    @click="settings.theme = themeId; saveSettings()"
                     class="flex flex-col items-center justify-center py-3 px-2 rounded-lg border transition-all cursor-pointer"
                     :class="[
-                        settings.theme === mode
+                        settings.theme === themeId
                             ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
                             : 'bg-white dark:bg-manga-900 border-manga-200 dark:border-manga-700 text-manga-500 hover:bg-manga-50 dark:hover:bg-manga-800'
                     ]">
                     <!-- 简单的图标示意 -->
                     <span class="text-xl mb-1">
-                        {{ mode === 'light' ? '☀️' : mode === 'dark' ? '🌙' : '💻' }}
+                        <!-- {{ mode === 'light' ? '☀️' : mode === 'dark' ? '🌙' : '💻' }} -->
+                        {{ theme.icon }}
                     </span>
                     <span class="text-xs font-medium">
-                        {{ mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '跟随系统' }}
+                        <!-- {{ mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '跟随系统' }} -->
+                        {{ theme.desc }}
                     </span>
                 </button>
             </div>

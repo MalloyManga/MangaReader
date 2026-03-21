@@ -3,12 +3,34 @@ const { spawn } = require('child_process')
 const path = require('path')
 const { EventEmitter } = require('events')
 
+/**
+ * @typedef {Object} PythonResponse
+ * @property {string} [type] - 进度或状态事件的类型
+ * @property {string} [status] - 状态标记 (如 'ready')
+ * @property {number} [id] - 请求对应的 ID
+ * @property {boolean} [success] - 核心任务是否成功
+ * @property {string} [text] - OCR 识别出的文本
+ * @property {Array} [tokens] - 分词结果
+ * @property {string} [translation] - 翻译结果
+ * @property {boolean} [exists] - 模型是否存在
+ * @property {string} [error] - 报错信息
+ */
+
+/**
+ * @typedef {Object} RequestPayload
+ * @property {string} command - 指令名称 (如 'recognize', 'tokenize')
+ * @property {string} [image] - 图片 Base64
+ * @property {string} [text] - 待处理的文本
+ * @property {string} [path] - 文件路径
+ */
+
 class BackendService extends EventEmitter {
     constructor(modelPath) {
         super()
         this.modelPath = modelPath
         this.process = null
         this.isReady = false
+        /** @type {Map<number, {resolve: Function, reject: Function}>} */
         this.pendingRequests = new Map()
         this.requestId = 0
         this.responseBuffer = ''
@@ -19,19 +41,19 @@ class BackendService extends EventEmitter {
         let pythonPath, scriptPath
 
         if (isDev) {
-            // 注意：这里路径根据你的项目结构微调，确保能找到 python.exe
+            // 确保能找到 python.exe
             pythonPath = path.join(__dirname, '../services/venv/Scripts/python.exe')
             scriptPath = path.join(__dirname, '../services/backend_service.py')
         } else {
-            // 生产环境：直接调用打包好的 exe
-            // 注意：electron-forge extraResource 会将文件放在 resources 根目录下
+            // 生产环境直接调用打包好的 exe
+            // electron-forge extraResource 会将文件放在 resources 根目录下
             pythonPath = path.join(process.resourcesPath, 'backend', 'backend.exe')
             scriptPath = null
         }
 
         const args = []
         if (scriptPath) {
-            args.push('-u', scriptPath)
+            args.push('-u', scriptPath) // 控制py解释器不使用缓存
         }
 
         // 传入模型路径参数
@@ -43,12 +65,13 @@ class BackendService extends EventEmitter {
         console.log('[INFO] Model Path:', this.modelPath)
 
         this.process = spawn(pythonPath, args, {
+            // spawn 调用之后 py子进程就开始运行了
             stdio: ['pipe', 'pipe', 'pipe'],
             env: {
                 ...process.env,
-                PYTHONUNBUFFERED: '1',
+                PYTHONUNBUFFERED: '1', // 关闭py的流缓冲
                 PYTHONIOENCODING: 'utf-8',
-                // 可以在这里设置 HF 镜像，如果用户在国内
+                // 设置 HF 镜像
                 HF_ENDPOINT: 'https://hf-mirror.com'
             }
         })
@@ -58,19 +81,22 @@ class BackendService extends EventEmitter {
         this.process.stderr.setEncoding('utf-8')
 
         // 监听日志 (stderr)
-        this.process.stderr.on('data', (data) => {
-            const msg = data.toString().trim()
+        this.process.stderr.on('data',/** @param {Buffer} data */(data) => {
+            const msg = data.toString().trim() // toString() 将buffer编码之后转换
+            // 这里考虑到简洁性不做粘包半包处理 同时trim()处理掉py的print打印之后自带的/n避免与console的重复
             console.log('[OCR Core]', msg)
             // 发送日志事件，以便 main.js 可以转发给前端
             this.emit('log', msg)
         })
 
-        // 监听数据 (stdout)
-        this.process.stdout.on('data', (data) => {
-            this.responseBuffer += data
+        // 监听py返回的数据 (stdout)
+        this.process.stdout.on('data', (chunk) => {
+            // 处理半包粘包问题
+            this.responseBuffer += chunk
             const lines = this.responseBuffer.split('\n')
             this.responseBuffer = lines.pop() || ''
 
+            // 对剩下的完整数据包进行操作
             lines.forEach(line => {
                 line = line.trim()
                 if (!line) return
@@ -84,6 +110,7 @@ class BackendService extends EventEmitter {
             })
         })
 
+        // 监听由nodejs底层引擎emit的事件
         this.process.on('error', (err) => {
             console.error('OCR Process Error:', err)
             this.emit('log', `[Process Error] ${err.message}`)
@@ -93,26 +120,16 @@ class BackendService extends EventEmitter {
             console.log(`OCR Process exited: ${code}`)
             this.emit('log', `[Process Exit] Code: ${code}`)
             this.isReady = false
+            // ocr退出之后 终止所有的请求后清空请求列表
             this.pendingRequests.forEach(r => r.reject(new Error('OCR Service Exited')))
             this.pendingRequests.clear()
         })
     }
 
+    /**
+     * @param {PythonResponse} response 
+     */
     _handleResponse(response) {
-        // console.log('[Backend Service] [DEBUG] Raw response object:', JSON.stringify(response).substring(0, 100) + '...')
-
-        if (response.status === 'ready') {
-            this.isReady = true
-            console.log('OCR Service is Ready!')
-            this.emit('ready')
-            return
-        }
-
-        if (response.type === 'download_progress') {
-            // 向外发射 'download-progress' 事件
-            this.emit('download-progress', response.percent)
-            return
-        }
 
         //  处理初始化阶段的下载进度
         if (response.type === 'init_progress') {
@@ -130,24 +147,40 @@ class BackendService extends EventEmitter {
             return
         }
 
+        if (response.status === 'ready') {
+            this.isReady = true
+            console.log('OCR Service is Ready!')
+            this.emit('ready')
+            return
+        }
+
+        // 触发 download-progress 事件 不断汇报下载进度
+        if (response.type === 'download_progress') {
+            this.emit('download-progress', response.percent)
+            return
+        }
+
         const { id, success, text, tokens, translation, exists, error } = response
 
         if (id !== undefined && this.pendingRequests.has(id)) {
             console.log(`[Backend Service] [DEBUG] Resolving request ID: ${id}, Success: ${success}`)
+            /**
+             * @type {{resolve: Function, reject: Function}}
+             */
             const { resolve, reject } = this.pendingRequests.get(id)
             this.pendingRequests.delete(id)
 
             if (success) {
-                if (tokens) {
+                if (tokens) { // 分词
                     resolve({ tokens: tokens })
-                } else if (translation) {
+                } else if (translation) { // 翻译
                     resolve({ translation: translation })
-                } else if (response.cover) {
+                } else if (response.cover) { // 书籍封面缩略图
                     resolve({ cover: response.cover })
-                } else if (exists !== undefined) {
+                } else if (exists !== undefined) { // 模型存在
                     resolve({ exists })
-                } else {
-                    resolve(text || true)
+                } else { // ocr文本
+                    resolve({ text: text })
                 }
             } else {
                 reject(new Error(error))
@@ -157,6 +190,10 @@ class BackendService extends EventEmitter {
         }
     }
 
+    /**
+     * @param {RequestPayload} payload 
+     * @param {number} timeout 
+     */
     _sendRequest(payload, timeout = 120000) {
         return new Promise((resolve, reject) => {
             if (!this.isReady) {
@@ -168,18 +205,18 @@ class BackendService extends EventEmitter {
             const id = this.requestId++
             this.pendingRequests.set(id, { resolve, reject })
 
-            // 合并 ID 和 具体的请求数据
+            // 合并 ID 和 具体的请求数据id在后为避免被恶意覆盖
             const request = { ...payload, id }
 
             console.log(`[Backend Service] [DEBUG] Sending request ID: ${id}, Command: ${payload.command}`)
 
             try {
-                // [Fix Encoding] 使用 Base64 传输，彻底避免 Windows 管道编码问题
+                // 用 Base64 传输，避免 Windows 管道编码问题
                 const jsonStr = JSON.stringify(request)
-                const base64Str = Buffer.from(jsonStr, 'utf-8').toString('base64')
+                const base64Str = Buffer.from(jsonStr, 'utf-8').toString('base64') // 这里是对request序列化之后得到的json字符串先utf8编码为二进制的字节 之后再base64编码 py端收到之后再进行反向操作
 
                 console.log(`[Backend Service] [DEBUG] Writing Base64 payload to stdin (Length: ${base64Str.length})`)
-                this.process.stdin.write(base64Str + '\n')
+                this.process.stdin.write(base64Str + '\n') // 发送给子进程py处理
             } catch (e) {
                 console.error('[Backend Service] [ERROR] Failed to write to stdin:', e)
                 this.pendingRequests.delete(id)
@@ -198,24 +235,33 @@ class BackendService extends EventEmitter {
         })
     }
 
-    // 1. OCR 识别
+    /**
+    * OCR 识别
+    * @param {string} imageBase64 
+    * @returns {Promise<{ text: string }>}
+    */
     async recognize(imageBase64) {
-        // 调用通用方法
         return this._sendRequest({ command: 'recognize', image: imageBase64 })
     }
 
-    // 2. 分词
+    /**
+     * 分词
+     * @param {string} text 
+     * @returns {Promise<{ tokens: any[] }>}
+     */
     async tokenize(text) {
-        // 调用通用方法，分词比较快，超时设短一点也没关系 (比如 10秒)
-        // 注意：这里传的是 text，不是 image
         // _handleResponse 会返回 { tokens: [...] }
         return this._sendRequest({ command: 'tokenize', text: text }, 30000)
     }
 
-    // 3. 翻译
+    /**
+     * 翻译
+     * @param {string} text 
+     * @returns {Promise<{ translation: string }>}
+     */
     async translate(text) {
         console.log(`[Backend Service] [DEBUG] translate() called with text length: ${text.length}`)
-        // 超时设长一点，因为第一次要下载模型 (比如 10分钟 = 600000ms)
+        // 超时时间较长，第一次要下载模型 (比如 10分钟 = 600000ms)
         return this._sendRequest({ command: 'translate', text: text }, 600000)
     }
 
@@ -233,7 +279,6 @@ class BackendService extends EventEmitter {
     }
 
     async extractCover(path) {
-        // Extracting cover might take a moment purely due to file IO
         return this._sendRequest({ command: 'extract_cover', path: path }, 30000)
     }
 

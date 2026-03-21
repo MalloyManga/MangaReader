@@ -38,7 +38,6 @@ const handleClick = () => {
         <!-- 使用 ruby 标签实现振假名 -->
         <ruby class="font-ja text-sm font-medium">
             {{ word }}
-            <!-- 只有当 reading 存在时才显示注音 -->
             <rt v-if="reading"
                 class="text-[0.6rem] text-white/90 font-normal select-none opacity-80 group-hover:opacity-100">
                 {{ reading }}

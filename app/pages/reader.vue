@@ -1,12 +1,18 @@
 <!-- app/pages/index.vue -->
 <script setup lang="ts">
-import type { OcrBlock } from '~/types/interface'
+import type { ImageItem, OcrBlock } from '~/types/interface'
 
 const route = useRoute()
 const router = useRouter()
 const { nextImage, prevImage, addImagesToStore, setImage, currentImageIndex, clearImages, images, tempBookPath } = useMangaImages()
+const { processImages, processZip, convertPdfToImages } = useFileProcessor()
+const { initSettings, settings } = useSettings()
+const { showToast } = useToast()
 
-// Book State
+const showSettingsModal = ref(false)
+
+const _staticText = ref('今日はいい天気ですね。漫画を読みながら日本語を勉強します。')
+
 const currentBookId = ref<string | null>(null)
 const isGuestMode = computed(() => !currentBookId.value)
 
@@ -26,14 +32,12 @@ watch(currentImageIndex, (newIndex) => {
 })
 
 const goBackToLibrary = async () => {
-    // 访客模式（没有 ID）
+    // 新建图书（没有图书 ID）
     if (isGuestMode.value) {
         // 情况 A: 有源文件路径 -> 自动加入书架
         if (tempBookPath.value) {
             const res = await window.electronAPI.addBook(tempBookPath.value)
             if (res.success) {
-                // [Fix] Automatically save progress (Total Pages) for the newly added book
-                // So the progress bar shows up correctly in the library immediately
                 if (res.book && res.book.id) {
                     await window.electronAPI.updateBookProgress({
                         id: res.book.id,
@@ -43,6 +47,9 @@ const goBackToLibrary = async () => {
                     })
                 }
                 showToast('✅ 已自动加入书架', 1000)
+            }
+            else {
+                showToast('❌ 加入书架失败！', 1000)
             }
         }
         // 情况 B: 纯内存数据 -> 仅提示
@@ -56,24 +63,31 @@ const goBackToLibrary = async () => {
     // 书架模式 (有 ID)
     else if (currentBookId.value) {
         // 强制保存一次进度再退出
-        await window.electronAPI?.updateBookProgress({
+        await window.electronAPI.updateBookProgress({
             id: currentBookId.value,
             currentPage: currentImageIndex.value,
             lastReadTime: Date.now()
         })
         clearImages()
     }
+    // 返回到书架
     router.push('/')
 }
 
-// Ocr Block State
-const ocrBlocks = ref<OcrBlock[]>([])
-// Store blocks for each page: Record<ImageID, Blocks[]>
-const allPageBlocks = ref<Record<string, OcrBlock[]>>({})
-const activeBlockId = ref<string | undefined>(undefined)
-const _staticText = ref('今日はいい天気ですね。漫画を読みながら日本語を勉強します。')
+// 每一本书籍只显示一次ocr提示
+const hasShownOcrHint = ref(false)
+const handleOcr = () => {
+    if (!hasShownOcrHint.value) {
+        showToast('🖱️ 拖动鼠标框选识别区域 · 按 ESC 取消', 3000)
+        hasShownOcrHint.value = true
+    }
+    isOcrMode.value = true
+}
 
-// 双向绑定代理：如果有选中 Block，则读写 Block；否则读写静态文本
+const ocrBlocks = ref<OcrBlock[]>([]) // 当前页面的翻译框
+const activeBlockId = ref<string | undefined>(undefined)
+
+// 如果有选中 Block，则读写 Block；否则读写静态文本
 const originalText = computed({
     get: () => {
         const block = ocrBlocks.value.find(b => b.id === activeBlockId.value)
@@ -89,58 +103,35 @@ const originalText = computed({
     }
 })
 
-// [Fix] Persist blocks across page navigation
 const currentImgId = computed(() => images.value[currentImageIndex.value]?.id)
 
-// Save blocks when leaving a page, Load blocks when entering a page
+// 进入下一页时 保存上一页的翻译框 同时每进入一页就显示之前保存的翻译框
+// 每一页漫画都保存的翻译框 保存方式为 id OcrBlock数组 的对象
+const allPageBlocks = ref<Record<string, OcrBlock[]>>({})
 watch(currentImgId, (newId, oldId) => {
-    // 1. Save current blocks to map using old ID
     if (oldId) {
         allPageBlocks.value[oldId] = [...ocrBlocks.value]
     }
 
-    // 2. Load blocks for new ID
     if (newId && allPageBlocks.value[newId]) {
         ocrBlocks.value = [...allPageBlocks.value[newId]]
     } else {
         ocrBlocks.value = []
     }
 
-    // Reset selection state
+    // 进入新的漫画页就重置选中状态
     activeBlockId.value = undefined
     _staticText.value = ''
 })
-
-// [Optional] Sync changes immediately to map (Safety net)
+// 热更新ocrBlocks
 watch(ocrBlocks, (newBlocks) => {
     if (currentImgId.value) {
         allPageBlocks.value[currentImgId.value] = newBlocks
     }
 }, { deep: true })
 
-const showSettingsModal = ref(false) // settingModal显示
-const isOcrMode = ref(false) // ocr模式 鼠标十字crosshair
-const isOcrRecognizing = ref(false) // 正在调用模型识别
-const { showToast } = useToast()
-
-// OCR Hint Logic (Show once per book session)
-const hasShownOcrHint = ref(false)
-watch(currentBookId, () => {
-    hasShownOcrHint.value = false
-})
-
-const handleOcr = () => {
-    // 启动ocr时显示一个tooltip提示 (Only once per session)
-    if (!hasShownOcrHint.value) {
-        showToast('🖱️ 拖动鼠标框选识别区域 · 按 ESC 取消', 3000)
-        hasShownOcrHint.value = true
-    }
-
-    // 激活 OCR 模式，显示框选 overlay
-    isOcrMode.value = true
-}
-
-const { initSettings, settings } = useSettings()
+const isOcrMode = ref(false)
+const isOcrRecognizing = ref(false)
 
 const handleOcrCapture = async (selectionData: { left: number, top: number, width: number, height: number }) => {
     isOcrMode.value = false
@@ -155,7 +146,6 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         if (!imgElement) {
             throw new Error('未找到图片元素,请先上传图片')
         }
-
         if (!imgElement.complete || !imgElement.naturalWidth) {
             throw new Error('图片未加载完成')
         }
@@ -180,14 +170,16 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         const gapX = (rect.width - realW) / 2
         const gapY = (rect.height - realH) / 2
 
-        // 3. 将屏幕坐标映射回原图坐标
-        // selectionData.left/top 是相对于视口的坐标
-        // rect.left/top 也是相对于视口的坐标
-        // 减去 rect.left/top 得到相对于 img 元素的坐标
-        // 再减去 gapX/gapY 得到相对于渲染图片内容的坐标
-        // 最后除以 ratio 还原为原图尺寸
+        // 3. 将屏幕上的 框选 坐标，逆向推导回高清原图中的真实坐标
+        // - selectionData.left/top: 鼠标在屏幕上画框的绝对坐标 (包含浏览器边距)
+        // - rect.left/top: 图片容器在屏幕上的起始坐标
+        // 两者相减，得出：鼠标框选相对于图片容器左上角的偏移量。
+        // - gapX/gapY: Object-contain 居中产生的黑边留白。
+        // 再减去留白，得出：鼠标框选相对于“真实图片内容区域”的偏移量。
+        // 最后除以 ratio (缩放比例)，将屏幕上的小尺寸，放大还原为原图里的大尺寸。
         let sourceX = (selectionData.left - rect.left - gapX) / ratio
         let sourceY = (selectionData.top - rect.top - gapY) / ratio
+        // 将框选的 屏幕宽高 映射到原图片物理级别的宽高
         let sourceW = selectionData.width / ratio
         let sourceH = selectionData.height / ratio
 
@@ -222,11 +214,10 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         canvas.height = sourceH
         const ctx = canvas.getContext('2d')!
 
-        // drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
         ctx.drawImage(
             imgElement,
             sourceX, sourceY, sourceW, sourceH, // 原图采样区域
-            0, 0, sourceW, sourceH              // Canvas 绘制区域
+            0, 0, sourceW, sourceH              // Canvas 绘制区域 0 0 为左上角 sourceW, sourceH 保证不缩放
         )
 
         // 转换为 base64
@@ -239,6 +230,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
 
         // 调用 OCR 识别
         const result = await window.electronAPI.recognizeText(imageBase64)
+        console.log(' OCR 识别成功:', result.text)
 
         if (result.success && result.text) {
             const newBlock: OcrBlock = {
@@ -250,12 +242,11 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
                 status: 'done',
                 showOriginal: false
             }
-            // Add block first
+            // 得到结果之后先添加
             ocrBlocks.value.push(newBlock)
             activeBlockId.value = newBlock.id
-            console.log(' OCR 识别成功:', result.text)
 
-            // Trigger translation if enabled
+            // 直接调用翻译
             if (settings.value.enableTranslation) {
                 translateBlock(newBlock.id, result.text)
             }
@@ -271,12 +262,11 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         isOcrRecognizing.value = false
     }
 }
-
 const handleOcrCancel = () => {
-    // 用户主动按下esc推出ocr模式
     isOcrMode.value = false
 }
 
+// 翻译翻译框
 const translateBlock = async (id: string, text: string) => {
     try {
         if (!window.electronAPI || !window.electronAPI.translate) return
@@ -292,24 +282,26 @@ const translateBlock = async (id: string, text: string) => {
             // 重新获取索引以防数组变动
             const currentIndex = ocrBlocks.value.findIndex(b => b.id === id)
             if (currentIndex !== -1 && ocrBlocks.value[currentIndex]) {
-                ocrBlocks.value[currentIndex]!.translation = response.translation
-                ocrBlocks.value[currentIndex]!.status = 'done'
+                ocrBlocks.value[currentIndex].translation = response.translation
+                ocrBlocks.value[currentIndex].status = 'done'
             }
         } else {
             const errorIndex = ocrBlocks.value.findIndex(b => b.id === id)
-            if (errorIndex !== -1 && ocrBlocks.value[errorIndex]) ocrBlocks.value[errorIndex]!.status = 'error'
+            if (errorIndex !== -1 && ocrBlocks.value[errorIndex]) ocrBlocks.value[errorIndex].status = 'error'
         }
     } catch (e) {
         console.error('Translation failed:', e)
         const errorIndex = ocrBlocks.value.findIndex(b => b.id === id)
-        if (errorIndex !== -1) ocrBlocks.value[errorIndex]!.status = 'error'
+        if (errorIndex !== -1 && ocrBlocks.value[errorIndex]) ocrBlocks.value[errorIndex].status = 'error'
     }
 }
 
+// 用户右键删除翻译框
 const handleDeleteBlock = (id: string) => {
     ocrBlocks.value = ocrBlocks.value.filter(b => b.id !== id)
     if (activeBlockId.value === id) {
-        activeBlockId.value = ocrBlocks.value.length > 0 ? ocrBlocks.value[ocrBlocks.value.length - 1]!.id : undefined
+        // 用户右键删除的block若为active block 则转移active到上一个
+        activeBlockId.value = ocrBlocks.value.length > 0 ? ocrBlocks.value[ocrBlocks.value.length - 1]?.id : undefined
     }
 }
 
@@ -325,7 +317,7 @@ const handleUpdateBlock = (updatedBlock: OcrBlock) => {
     }
 }
 
-// Re-OCR Logic (Double Click)
+// 重新ocr 左键双击
 const handleReOcr = async (id: string) => {
     const block = ocrBlocks.value.find(b => b.id === id)
     if (!block) return
@@ -351,7 +343,7 @@ const handleReOcr = async (id: string) => {
         const imageBase64 = canvas.toDataURL('image/png')
 
         showToast('🔁 重新识别中...')
-        block.status = 'loading' // Optimistic update
+        block.status = 'loading'
 
         if (!window.electronAPI || !window.electronAPI.recognizeText) throw new Error('API Unavailable')
 
@@ -380,15 +372,15 @@ const handleSelectBlock = (id: string) => {
     activeBlockId.value = id
 }
 
-// Global Paste Handler
+// 处理全局粘贴
 const handlePaste = (event: ClipboardEvent) => {
-    // 1. 冲突检查：检查是否有输入框聚焦
+    // 检查是否有输入框聚焦 如果说焦点在ipt上面则不进行操作
     const activeElement = document.activeElement as HTMLElement
     if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
         return // 如果用户在输入文字，则不拦截，让浏览器默认处理
     }
 
-    // 2. 检查剪贴板数据
+    // 检查剪贴板数据
     if (!event.clipboardData || !event.clipboardData.items) return
 
     const items = event.clipboardData.items
@@ -403,24 +395,15 @@ const handlePaste = (event: ClipboardEvent) => {
     }
 
     if (blob) {
-        event.preventDefault() // 阻止默认粘贴行为（防止重复）
-
         const url = URL.createObjectURL(blob)
-        // 构造 ImageItem（模拟 Result）
-        // 这里不需要显式引入接口，只要结构匹配即可，TypeScript 在 Vue setup 中通常能推断
-        const newImageItem = {
+        const newImageItem: ImageItem = {
             id: `${Date.now()}-paste`,
             url: url,
             file: blob,
             type: 'image'
-        } as any
-
-        // 添加到 Store
+        }
         addImagesToStore([newImageItem])
-
-        // 4. 清除旧的 OCR 结果和翻译
         originalText.value = ''
-
         showToast('✅ 已从剪贴板加载图片')
     } else {
         showToast('⚠️ 剪贴板中没有图片')
@@ -432,42 +415,44 @@ let cleanup: (() => void) | undefined = undefined
 onMounted(async () => {
     initSettings()
 
-    // 1. Check Route Query (Existing Book)
     const path = route.query.path as string
     const id = route.query.id as string
     const page = route.query.current ? parseInt(route.query.current as string) : 0
 
     if (path && window.electronAPI) {
-        // [UX] Show toast for loading since it might take a second for large folders
         showToast('正在打开书籍，请稍候...', 2000)
 
         currentBookId.value = id
-        // Load files from path
         try {
-            const res = await window.electronAPI.loadBook(path)
-            if (res.success && res.images && res.images.length > 0) {
-                const items = res.images.map((img: any) => ({
-                    id: img.name,
-                    url: img.data, // base64 string
-                    file: new File([], img.name), // 占位File
-                    type: 'image' as const
-                }))
-                addImagesToStore(items)
-
-                // Initialize page
-                if (page > 0) setImage(page)
-
-                // [Fix] Update Total Page Count to Store
-                // Ensure the progress bar in the library shows the total pages even if we don't flip a page
-                if (window.electronAPI) {
-                    window.electronAPI.updateBookProgress({
-                        id: currentBookId.value!,
-                        totalPage: items.length
-                    })
+            const tempImages: ImageItem[] = []
+            const fileExt = path.split('.').pop()?.toLowerCase() || ''
+            if (fileExt == 'pdf') {
+                tempImages.push(...(await convertPdfToImages(path)))
+            }
+            else if (fileExt == 'zip') {
+                const arrayBuffer = await (await fetch(`manga://${path}`)).arrayBuffer()
+                tempImages.push(...(await processZip(arrayBuffer)))
+            }
+            else {
+                const res = await window.electronAPI.readImageFiles([path])
+                if (res.success && res.imagePaths) {
+                    for (const imagePath of res.imagePaths) {
+                        tempImages.push(...processImages(imagePath))
+                    }
                 }
+            }
+            if (tempImages.length > 0) {
+                addImagesToStore(tempImages)
+            }
 
-            } else {
-                showToast(res.error || '无法加载书籍')
+            // 跳转到记录的page
+            if (page > 0) setImage(page)
+
+            if (window.electronAPI) {
+                window.electronAPI.updateBookProgress({
+                    id: currentBookId.value!,
+                    totalPage: tempImages.length
+                })
             }
         } catch (e) {
             console.error('Load book error:', e)
@@ -500,11 +485,11 @@ onMounted(async () => {
         }
     })
 
-    // 页面卸载时清理监听 (虽然 index.vue 通常不卸载，但这是好习惯)
-    onUnmounted(() => {
-        if (cleanup) cleanup()
-        window.removeEventListener('paste', handlePaste)
-    })
+})
+// 页面卸载时清理监听 
+onUnmounted(() => {
+    if (cleanup) cleanup()
+    window.removeEventListener('paste', handlePaste)
 })
 </script>
 
@@ -516,14 +501,17 @@ onMounted(async () => {
         <!-- 自定义标题栏 -->
         <TitleBar @open-settings="showSettingsModal = true">
             <template #extra-buttons>
-                <Button class="text-sm font-bold" variant="secondary" @btn-click="goBackToLibrary">📚 返回书架</Button>
+                <Button class="text-sm font-bold" variant="secondary" @btn-click="goBackToLibrary">
+                    📚 返回书架
+                </Button>
             </template>
         </TitleBar>
+
         <main class="max-w-screen-2xl mx-auto p-6" :class="{ 'max-w-full p-2': settings.readingMode === 'immersive' }">
             <div class="grid grid-cols-1 gap-6 h-[calc(100vh-120px)]"
                 :class="settings.readingMode === 'immersive' ? '' : 'lg:grid-cols-5'">
 
-                <!-- Image Area -->
+                <!-- ocr框与图片区域 -->
                 <div class="relative h-full"
                     :class="settings.readingMode === 'immersive' ? 'lg:col-span-5' : 'lg:col-span-3'">
                     <FileUpload>
@@ -538,11 +526,11 @@ onMounted(async () => {
                     <OcrOverlay v-if="isOcrMode" @capture-complete="handleOcrCapture" @cancel="handleOcrCancel" />
                 </div>
 
-                <!-- Sidebar Area -->
+                <!-- 右侧功能区域 非沉浸阅读就显示 -->
                 <div v-if="settings.readingMode !== 'immersive'"
                     class="lg:col-span-2 overflow-hidden flex flex-col h-full">
 
-                    <!-- List Mode -->
+                    <!-- 列表模式 -->
                     <div v-if="settings.readingMode === 'list'" class="h-full flex flex-col gap-4">
                         <OcrButton @ocr-btn-click="handleOcr" :is-recognizing="isOcrRecognizing"
                             :is-in-ocr="isOcrMode" />
@@ -551,7 +539,7 @@ onMounted(async () => {
                             @delete-block="handleDeleteBlock" />
                     </div>
 
-                    <!-- Study Mode (Classic) -->
+                    <!-- 默认学习模式 -->
                     <div v-else class="space-y-4 overflow-y-auto pr-2 pb-4">
                         <OcrButton @ocr-btn-click="handleOcr" :is-recognizing="isOcrRecognizing"
                             :is-in-ocr="isOcrMode" />
@@ -559,6 +547,7 @@ onMounted(async () => {
                         <TokenizedWords v-if="settings.enableTokenization" :origin-text="originalText" />
                         <Translation v-if="settings.enableTranslation" :original-text="originalText" />
                     </div>
+
                 </div>
             </div>
         </main>

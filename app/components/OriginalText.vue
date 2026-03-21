@@ -15,7 +15,6 @@ const localText = defineModel('localText', { type: String })
                 {{ isRecognizing ? '😎 正在识别' : '📝 识别原文' }}
             </div>
             <CopyButton :textToCopy="localText ?? ''" />
-            <!-- 将localtext传递给CopyButton来实现点击button复制 值可能为空 故条件运算符 ?? '' 如为空传递'' -->
         </div>
 
         <textarea v-model="localText"

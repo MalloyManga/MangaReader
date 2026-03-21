@@ -1,32 +1,10 @@
 <!-- components/FileUpload.vue -->
 <script setup lang="ts">
 import Sortable from 'sortablejs'
-import JSZip from 'jszip'
 import type { ImageItem } from '~/types/interface'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-
 const { showToast } = useToast()
 const { images, currentImageIndex, addImagesToStore, setImage, removeImage: removeImageFromStore, tempBookPath } = useMangaImages()
-
-// 使用动态导入 PDF.js
-const pdfjsLib = ref<any>(null)
-const isPdfJsLoaded = ref(false)
-
-const initPdfJs = async () => {
-    if (isPdfJsLoaded.value || !import.meta.client) return
-    try {
-        const lib = await import('pdfjs-dist')
-        pdfjsLib.value = lib
-
-        // 配置 Worker
-        lib.GlobalWorkerOptions.workerSrc = `${pdfWorker}`
-        isPdfJsLoaded.value = true
-        console.log('✅ PDF.js loaded successfully')
-    } catch (error) {
-        console.error('❌ Failed to load PDF.js:', error)
-        showToast('PDF.js 加载失败，请重试', 2000)
-    }
-}
+const { processImages, processZip, convertPdfToImages } = useFileProcessor()
 
 const listKey = ref(0)
 
@@ -35,59 +13,6 @@ const dropArea = useTemplateRef<HTMLDivElement>('dropArea')
 const imageContainer = useTemplateRef<HTMLDivElement>('imageContainer')
 const imagesPreviewContainer = useTemplateRef<HTMLElement>('imagesPreviewContainer')
 
-// Base64 转 File
-const base64ToFile = (dataurl: string, filename: string): File => {
-    try {
-        const arr = dataurl.split(',')
-        const match = arr[0]?.match(/:(.*?);/)
-        const mime = match ? match[1] : 'application/octet-stream'
-        const bstr = atob(arr[1] ?? '')
-        let n = bstr.length
-        const u8arr = new Uint8Array(n)
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n)
-        }
-        return new File([u8arr], filename, { type: mime })
-    } catch (e) {
-        console.error('Base64 conversion failed', e)
-        return new File([], filename)
-    }
-}
-
-const handleOpenFile = async () => {
-    if (!window.electronAPI) return
-    try {
-        const { canceled, filePaths } = await window.electronAPI.openFileDialog()
-        if (canceled || filePaths.length === 0) return
-
-        showToast('正在加载文件...', 2000)
-
-        const res = await window.electronAPI.readImageFiles(filePaths)
-        if (res.success && res.images) {
-            // 设置推断的父路径 (用于保存到书架)
-            if (res.parentPath) {
-                tempBookPath.value = res.parentPath
-            }
-
-            // 将 Base64 转换回 File 对象，复用 addImages 的逻辑 (支持 PDF/Zip/图片)
-            const files: File[] = res.images.map((img: any) => base64ToFile(img.data, img.name))
-
-            // 使用 addImages 处理（包含 PDF 转换, ZIP 解压等逻辑）
-            // 注意：因为这里的 File 对象没有 path 属性，addImages 内部的路径推断会被跳过，
-            // 但我们已经在上面手动设置了 tempBookPath，所以逻辑是正确的。
-            await addImages(files)
-
-            showToast(`✅ 加载成功`)
-        } else {
-            showToast('加载失败: ' + res.error)
-        }
-    } catch (e) {
-        console.error(e)
-        showToast('打开文件出错')
-    }
-}
-
-// 拖拽状态
 const isDragging = ref(false)
 
 // 图片容器的宽高
@@ -126,152 +51,133 @@ onMounted(() => {
     window.addEventListener('resize', updateContainerSize)
 })
 
-// PDF 转图片
-const convertPdfToImages = async (file: File): Promise<ImageItem[]> => {
-    if (!isPdfJsLoaded.value) {
-        await initPdfJs()
-    }
-
-    if (!pdfjsLib.value) {
-        throw new Error('PDF.js 加载失败')
-    }
-
-    const arrayBuffer = await file.arrayBuffer()
-    const pdf = await pdfjsLib.value.getDocument({ data: arrayBuffer }).promise
-    const pageCount = pdf.numPages
-
-    // 构建图片数组
-    const images: ImageItem[] = []
-
-    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
-        const page = await pdf.getPage(pageNum)
-        const viewport = page.getViewport({ scale: 2.0 }) // 2倍缩放提高清晰度
-
-        const canvas = document.createElement('canvas')
-        const context = canvas.getContext('2d')!
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-
-        await page.render({
-            canvasContext: context,
-            viewport: viewport,
-            canvas: canvas
-        }).promise
-
-        // 转换为 Blob
-        const blob = await new Promise<Blob>((resolve) => {
-            canvas.toBlob((blob) => resolve(blob!), 'image/png')
-        })
-
-        const url = URL.createObjectURL(blob)
-        const imageFile = new File([blob], `${file.name}_page_${pageNum}.png`, { type: 'image/png' })
-
-        images.push({
-            id: `${Date.now()}-${pageNum}-${Math.random()}`,
-            url,
-            file: imageFile,
-            type: 'pdf-page',
-            pageNumber: pageNum
-        })
-    }
-
-    return images
-}
-
-// 添加图片
-const addImages = async (files: File[]) => {
-    // 尝试记录来源路径 (用于保存到书架)
-    if (images.value.length === 0 && files.length > 0) {
-        const first = files[0] as any
-        if (first.path) {
-            // 简单的路径推断
-            if (first.name.endsWith('.zip') || first.name.endsWith('.pdf') || first.type === 'application/pdf' || first.type === 'application/zip') {
-                tempBookPath.value = first.path
-            } else {
-                // 如果是图片，取所在的文件夹
-                const p = first.path
-                const dir = p.substring(0, Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')))
-                tempBookPath.value = dir
+// 这里data为File[] string[] 当中任选一个 可能需要重构
+const storePath = (data: File[] | string[]) => {
+    // 存储来源路径 保存到书架 不论类型
+    // data为File数组
+    if (data[0] instanceof File) {
+        if (data && data[0]) {
+            const filePath = window.electronAPI.getPathForFile(data[0])
+            if (data[0].name.endsWith('.pdf') || data[0].type == 'application/pdf' || data[0].name.endsWith('.zip') || data[0].type == 'application/zip') { // 当文件为pdf zip时 直接存储路径
+                tempBookPath.value = filePath
+            }
+            else if (data[0].type.startsWith('image/')) {
+                // 文件为图片时获取到父级文件夹路径存储
+                const index = filePath.replaceAll('\\', '/').lastIndexOf('/')
+                const fileFolderPath = filePath.substring(0, index)
+                tempBookPath.value = fileFolderPath
+            }
+            else if (data[0].type == '') { // 如果是文件夹直接存储
+                tempBookPath.value = filePath
             }
         }
     }
+    // data为路径数组
+    else if (typeof data[0] == 'string') {
+        const fileExt = data[0].split('.').pop()?.toLowerCase() || ''
+        if (fileExt.endsWith('pdf') || fileExt.endsWith('zip')) {
+            tempBookPath.value = data[0]
+        }
+        else if (fileExt.match(/^(png|jpe?g|webp|gif)$/i)) {
+            const index = data[0].replaceAll('\\', '/').lastIndexOf('/')
+            tempBookPath.value = data[0].substring(0, index)
+        }
+    }
+}
 
-    const imageFilesToAdd: ImageItem[] = []
-    const processFiles = async () => {
-        for (const file of files) {
-            try {
-                // 处理 PDF 文件
-                if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-                    showToast(`正在处理 PDF: ${file.name}...`, 2000)
-                    const pdfImages = await convertPdfToImages(file)
-                    imageFilesToAdd.push(...pdfImages)
-                    showToast(`PDF 转换完成: ${pdfImages.length} 页`, 2000)
+// 点击按钮打开dialog导入图片(得到参数为路径数组 string[])
+const handleOpenFile = async () => {
+    if (!window.electronAPI) return
+    try {
+        const { canceled, filePaths } = await window.electronAPI.openFileDialog()
+
+        if (canceled || filePaths.length === 0) return
+        showToast('正在加载文件...', 2000)
+
+        const res = await window.electronAPI.readImageFiles(filePaths)
+        if (res.success && res.imagePaths) {
+            storePath(res.imagePaths)
+            const files: ImageItem[] = []
+            for (const filePath of res.imagePaths) {
+                const fileExt = filePath.split('.').pop()?.toLowerCase() || ''
+                if (fileExt.match(/^(png|jpe?g|webp|gif)$/i)) {
+                    files.push(...processImages(filePath))
                 }
-                // 处理 ZIP 文件
-                else if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
-                    const zip = await JSZip.loadAsync(file)
-                    for (const filename in zip.files) {
-                        const zipEntry = zip.files[filename]
-                        if (zipEntry && !zipEntry.dir && /\.(jpe?g|png|gif|webp|bmp)$/i.test(zipEntry.name)) {
-                            const blob = await zipEntry.async('blob')
-                            const imageFile = new File([blob], zipEntry.name, { type: blob.type })
-                            const id = `${Date.now()}-${Math.random()}`
-                            const url = URL.createObjectURL(imageFile)
-                            imageFilesToAdd.push({ id, url, file: imageFile, type: 'image' })
-                        }
+                else if (fileExt.endsWith('pdf')) {
+                    // const arrayBuffer = await (await fetch(`manga://${filePath}`)).arrayBuffer()
+                    const tempImages = await convertPdfToImages(`manga://${filePath}`)
+                    files.push(...tempImages)
+                }
+                else if (fileExt.endsWith('zip')) {
+                    const arrayBuffer = await (await fetch(`manga://${filePath}`)).arrayBuffer()
+                    files.push(...(await processZip(arrayBuffer)))
+                }
+            }
+            if (files.length > 0) {
+                addImagesToStore(files)
+            }
+            showToast(`✅ 加载成功`)
+        } else {
+            showToast('加载失败: ' + res.error)
+        }
+    } catch (e) {
+        console.error(e)
+        showToast('打开文件出错')
+    }
+}
+
+// 拖拽导入图片(得到参数为 File[])
+const addImages = async (files: File[]) => {
+    // 存储来源路径 保存到书架 不论类型
+    storePath(files)
+
+    const processOneFile = async (file: File): Promise<ImageItem[]> => {
+        const tempImages: ImageItem[] = []
+        try {
+            const filePath = window.electronAPI.getPathForFile(file)
+            const fileExt = filePath.split('.').pop()?.toLowerCase() || ''
+            // pdf
+            if (fileExt.endsWith('pdf') && file.type == 'application/pdf') {
+                showToast(`正在处理PDF: ${file.name}`, 2000)
+                // const arrayBuffer = await file.arrayBuffer()
+                const pdfToImages = await convertPdfToImages(filePath)
+                showToast(`PDF转换完成 ${pdfToImages.length} 页`, 2000)
+                tempImages.push(...pdfToImages)
+            }
+            // zip包
+            else if (fileExt.endsWith('zip') && file.type == 'application/zip') {
+                showToast(`正在解压 ${file.name}`, 3000)
+                tempImages.push(...(await processZip(file)))
+            }
+            // 图片
+            else if (file.type.startsWith('image/')) {
+                tempImages.push(...processImages(filePath, file))
+            }
+            // 文件夹 文件夹仅有一个路径 故依靠后端读取文件能力处理
+            else if (file.type == '') {
+                const res = await window.electronAPI.readImageFiles([filePath])
+                if (res.success && res.imagePaths) {
+                    for (const imagePath of res.imagePaths) {
+                        tempImages.push(...processImages(imagePath))
                     }
                 }
-                // 处理图片文件
-                else if (file.type.startsWith('image/')) {
-                    const id = `${Date.now()}-${Math.random()}`
-                    const url = URL.createObjectURL(file)
-                    imageFilesToAdd.push({ id, url, file, type: 'image' })
-                }
-            } catch (error) {
-                console.error(`处理文件失败: ${file.name}`, error)
-                showToast(`处理失败: ${file.name}`, 2000)
             }
+            return tempImages
+        } catch (error) {
+            console.error(`文件处理失败: ${file.name}`, error)
+            showToast(`导入中断！ 文件 ${file.name} 损坏 请修复之后再次尝试导入！`, 5000)
+            throw error
         }
-
-        // 统一添加图片到 ref
-        if (imageFilesToAdd.length > 0) {
-            addImagesToStore(imageFilesToAdd)
-        }
     }
 
-    await processFiles()
-}
-
-// 所有的拖动函数
-// - 进入离开时isDragging变化
-const handleDragEnter = (event: DragEvent) => {
-    isDragging.value = true
-}
-
-const handleDragLeave = (event: DragEvent) => {
-    // relatedTarget随着鼠标的移动会进行即时判断
-    // !dropArea.value.contains(relatedTarget) - 离开之后所进入的元素 并不包含在dropArea内的时间触发 排除掉从父元素即dropArea进入子元素的情况
-    const relatedTarget = event.relatedTarget as HTMLElement // 这里的relatedTarget在ts看来可能并非Node 但实际上这里不存在除了HTMLElement以外的情况 故断言为
-    if (!dropArea.value?.contains(relatedTarget)) {
-        isDragging.value = false
+    const tasks = files.map((file) => {
+        return processOneFile(file)
+    })
+    const results = (await Promise.all(tasks)).flat()
+    if (results.length > 0) {
+        addImagesToStore(results)
     }
 }
-
-const handleDragOver = (event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-}
-
-const handleDrop = (event: DragEvent) => {
-    event.preventDefault()
-    isDragging.value = false
-
-    const files = event.dataTransfer?.files
-    if (files && files.length > 0) {
-        addImages(Array.from(files))
-    }
-}
-// --------------
 
 // 切换到指定图片
 const selectImage = (index: number) => {
@@ -321,30 +227,30 @@ watch([() => images.value.length, listKey], () => {
     })
 })
 
-const handleScreenshot = () => {
-    if (!window.electronAPI) {
-        showToast('截图功能仅在桌面版可用', 2000)
-        return
-    }
-    window.electronAPI.send('window:capture-open')
-}
+// const handleScreenshot = () => {
+//     if (!window.electronAPI) {
+//         showToast('截图功能仅在桌面版可用', 2000)
+//         return
+//     }
+//     window.electronAPI.send('window:capture-open')
+// }
 
 // 监听截图完成事件
-onMounted(() => {
-    if (window.electronAPI) {
-        window.electronAPI.on('screenshot:captured', (base64Data: string) => {
-            fetch(base64Data)
-                .then(res => res.blob())
-                .then(blob => {
-                    const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' })
-                    addImages([file])
-                })
-                .catch(err => {
-                    console.error('截图数据处理失败:', err)
-                })
-        })
-    }
-})
+// onMounted(() => {
+//     if (window.electronAPI) {
+//         window.electronAPI.on('screenshot:captured', (base64Data: string) => {
+//             fetch(base64Data)
+//                 .then(res => res.blob())
+//                 .then(blob => {
+//                     const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' })
+//                     addImages([file])
+//                 })
+//                 .catch(err => {
+//                     console.error('截图数据处理失败:', err)
+//                 })
+//         })
+//     }
+// })
 
 // 组件卸载时清理
 onUnmounted(() => {
@@ -359,6 +265,37 @@ onUnmounted(() => {
         sortableInstance = null
     }
 })
+
+// 所有的拖动函数
+// - 进入离开时isDragging变化
+const handleDragEnter = (_event: DragEvent) => {
+    isDragging.value = true
+}
+
+const handleDragLeave = (event: DragEvent) => {
+    // relatedTarget随着鼠标的移动会进行即时判断
+    // !dropArea.value.contains(relatedTarget) - 离开之后所进入的元素 并不包含在dropArea内的时间触发 排除掉从父元素即dropArea进入子元素的情况
+    const relatedTarget = event.relatedTarget as HTMLElement // 这里的relatedTarget在ts看来可能并非Node 但实际上这里不存在除了HTMLElement以外的情况 故断言为
+    if (!dropArea.value?.contains(relatedTarget)) {
+        isDragging.value = false
+    }
+}
+
+const handleDragOver = (event: Event) => {
+    event.preventDefault()
+    event.stopPropagation()
+}
+
+const handleDrop = (event: DragEvent) => {
+    event.preventDefault()
+    isDragging.value = false
+
+    const files = event.dataTransfer?.files
+    if (files && files.length > 0) {
+        addImages(Array.from(files))
+    }
+}
+// --------------
 </script>
 
 <template>
@@ -439,9 +376,9 @@ onUnmounted(() => {
                         <Button @btn-click="handleOpenFile">
                             导入 / 打开文件 📁
                         </Button>
-                        <Button variant="secondary" @btn-click="handleScreenshot">
+                        <!-- <Button variant="secondary" @btn-click="handleScreenshot">
                             截图 ✂️
-                        </Button>
+                        </Button> -->
                     </div>
                 </div>
             </div>

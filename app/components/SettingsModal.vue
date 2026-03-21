@@ -9,20 +9,25 @@ interface Props {
     show: boolean
 }
 defineProps<Props>()
-const emit = defineEmits<{
-    close: []
-}>()
-
 // 当前选中的 Tab
 type TabType = 'general' | 'translate' | 'about'
+interface MenuItem {
+    id: TabType,
+    label: string,
+    icon: string
+}
 const currentTab = ref<TabType>('general')
 
 // 侧边栏菜单配置
-const menuItems = [
+const menuItems: MenuItem[] = [
     { id: 'general', label: '常规设置', icon: 'CogIcon' },
     { id: 'translate', label: '翻译模型', icon: 'LanguageIcon' },
     { id: 'about', label: '关于', icon: 'InfoIcon' },
-] as const
+]
+
+const emit = defineEmits<{
+    close: []
+}>()
 
 const handleClose = () => {
     emit('close')
@@ -32,14 +37,15 @@ const handleClose = () => {
 <template>
     <Teleport to="body">
         <div class="fixed inset-0 z-50 flex items-center justify-center" :class="{ 'pointer-events-none': !show }">
-            <!-- 背景遮罩 -->
+
+            <!-- 背景黑色透明遮罩 -->
             <Transition enter-active-class="transition duration-200 ease-out"
                 leave-active-class="transition duration-150 ease-in" enter-from-class="opacity-0"
                 leave-to-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100">
                 <div v-if="show" class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="handleClose"></div>
             </Transition>
 
-            <!-- 弹窗主体 -->
+            <!-- 弹窗内容主体 -->
             <Transition enter-active-class="transition duration-300 ease-out delay-75"
                 leave-active-class="transition duration-150 ease-in" enter-from-class="opacity-0 scale-95 translate-y-4"
                 leave-to-class="opacity-0 scale-95 translate-y-4" enter-to-class="opacity-100 scale-100 translate-y-0"
@@ -48,7 +54,7 @@ const handleClose = () => {
                 <div v-if="show"
                     class="relative w-full max-w-2xl h-[600px] bg-white dark:bg-manga-800 rounded-xl shadow-2xl border border-manga-200 dark:border-manga-700 flex overflow-hidden">
 
-                    <!-- 左侧边栏 -->
+                    <!-- 左侧tab边栏 -->
                     <div
                         class="w-48 bg-manga-50 dark:bg-manga-900 border-r border-manga-200 dark:border-manga-700 flex flex-col pt-6 pb-4">
                         <div class="px-6 mb-6">
@@ -63,7 +69,6 @@ const handleClose = () => {
                                         ? 'bg-white dark:bg-manga-800 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                                         : 'text-manga-500 dark:text-manga-400 hover:bg-manga-100 dark:hover:bg-manga-800 hover:text-manga-900 dark:hover:text-manga-200'
                                 ]">
-                                <!-- 图标 SVG -->
                                 <IconCog v-if="item.id === 'general'" class="size-5" />
                                 <IconTranslate v-else-if="item.id === 'translate'" class="size-5" />
                                 <IconInfo v-else class="size-5" />
@@ -74,12 +79,11 @@ const handleClose = () => {
 
                     <!-- 右侧内容区域 -->
                     <div class="flex-1 bg-white dark:bg-manga-800 flex flex-col min-w-0">
-                        <!-- 右上角关闭 X (可选) -->
+
                         <div class="absolute top-4 right-4 z-10">
                             <SettingsCloseButton @settings-close-btn-click="handleClose" />
                         </div>
 
-                        <!-- 动态组件渲染区域 -->
                         <div class="flex-1 overflow-y-auto custom-scrollbar p-8">
                             <Transition enter-active-class="transition duration-200 ease-out"
                                 enter-from-class="opacity-0 translate-y-2" enter-to-class="opacity-100 translate-y-0"

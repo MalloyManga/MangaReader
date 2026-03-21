@@ -3,7 +3,7 @@
 interface ImageItem {
     id: string
     url: string
-    file: File
+    file?: File
 }
 
 interface Props {

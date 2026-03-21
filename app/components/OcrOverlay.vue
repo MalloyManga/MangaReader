@@ -7,19 +7,6 @@ interface SelectionArea {
     endY: number
 }
 
-const emit = defineEmits<{
-    captureComplete: [
-        selectionData: {
-            left: number
-            top: number
-            width: number
-            height: number
-        }
-    ]
-    cancel: []
-}>()
-
-const overlayRef = useTemplateRef<HTMLDivElement>('overlayRef')
 const isSelecting = ref(false)
 const selection = ref<SelectionArea>({
     startX: 0,
@@ -68,28 +55,37 @@ const handleMouseUp = () => {
     const width = Math.abs(selection.value.endX - selection.value.startX)
     const height = Math.abs(selection.value.endY - selection.value.startY)
 
-    // 传递选区坐标,由父组件处理截图
+    // 传递选区坐标,由父组件收到截图并处理ocr
     emit('captureComplete', { left, top, width, height })
-
-    console.log(isSelecting.value || (selection.value.endX !== selection.value.startX && selection.value.endY !== selection.value.startY))
 }
 
 const handleCancel = () => {
     emit('cancel')
 }
 
-// ESC 取消
-onMounted(() => {
-    // 注册一个 esc 的全局快捷键
-    const handleEsc = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-            handleCancel()
+const emit = defineEmits<{
+    captureComplete: [
+        selectionData: {
+            left: number
+            top: number
+            width: number
+            height: number
         }
+    ]
+    cancel: []
+}>()
+
+// ESC 取消
+const handleEsc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+        handleCancel()
     }
+}
+onMounted(() => {
     window.addEventListener('keydown', handleEsc)
-    onUnmounted(() => {
-        window.removeEventListener('keydown', handleEsc)
-    })
+})
+onUnmounted(() => {
+    window.removeEventListener('keydown', handleEsc)
 })
 </script>
 

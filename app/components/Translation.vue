@@ -1,11 +1,11 @@
 <!-- app/components/Translation.vue -->
 <script setup lang="ts">
+const { showToast } = useToast()
+
 interface Prop {
     originalText: string
 }
 const { originalText } = defineProps<Prop>()
-const { showToast } = useToast()
-
 const isTranslationLoading = ref(false)
 const translatedText = ref<string | null>(null)
 const showTranslation = ref(true)
@@ -26,15 +26,12 @@ const fetchTranslation = async (text: string) => {
         if (!window.electronAPI || !window.electronAPI.translate) {
             throw new Error('Electron API 不可用')
         }
-        console.log('[Frontend] [Translation.vue] Initiating translation request for:', text)
-        console.log('[Frontend] [Translation.vue] Calling window.electronAPI.translate...')
+        console.log('[Frontend] [Translation.vue] Initiating translation request for:', text, 'Calling window.electronAPI.translate...')
 
         const response = await window.electronAPI.translate(text)
 
-        console.log('[Frontend] [Translation.vue] Received response:', response)
-
         if (response.success && response.translation) {
-            translatedText.value = response.translation
+            translatedText.value = response.translation // 核心: 替换接收到的翻译文本
             console.log('[Frontend] [Translation.vue] Translation success:', translatedText.value)
         } else {
             const errMsg = response.error || '未知错误'
@@ -78,7 +75,7 @@ watch(() => originalText, (newText) => {
         return
     }
 
-    // 2. 只要文本变了，立即显示“翻译中”状态，给用户反馈
+    // 2. 只要文本变了，立即显示“翻译中”状态
     isTranslationLoading.value = true
     errorType.value = null
     // 3. 清除上一次的定时器 (防抖核心)
@@ -89,19 +86,19 @@ watch(() => originalText, (newText) => {
     // 4. 设置新的定时器 (800ms 后没有新输入才真正请求)
     debounceTimer = setTimeout(() => {
         fetchTranslation(newText)
-    }, 800) // 800ms 延迟，既不显得太卡，又能有效防止频繁请求
+    }, 800)
 
-}, { immediate: true }) //  immediate: true 保证组件一加载如果有字也翻译
+}, { immediate: true })
 
 // 手动重新翻译 (不走防抖，立即触发)
-const handleRetranslate = async () => {
+const handleRetranslate = () => {
     if (!originalText) return
-    translatedText.value = null // 为了视觉上让用户感到“刷新了”，先清空一下
+    translatedText.value = null
     // 立即清除可能存在的防抖定时器，避免冲突
     if (debounceTimer) clearTimeout(debounceTimer)
     // 用户手动点击肯定不是首次加载
     isFirstLoad.value = false
-    await fetchTranslation(originalText)
+    fetchTranslation(originalText)
 }
 
 // 显隐切换
@@ -130,19 +127,22 @@ onUnmounted(() => {
         <Transition enter-active-class="transition-opacity duration-300" enter-from-class="opacity-0"
             leave-to-class="opacity-0">
             <div v-if="showTranslation">
-                <!-- 加载状态：包括 防抖等待期 和 API请求期 -->
                 <div v-if="isTranslationLoading"
                     class="flex items-center gap-2 text-manga-600 dark:text-manga-400 min-h-6">
                     <div class="animate-spin h-4 w-4 border-2 rounded-full border-primary border-t-transparent"></div>
-                    <span class="text-sm">翻译中...</span>
+                    <span class="text-sm">
+                        翻译中...
+                    </span>
                 </div>
 
-                <!-- 模型缺失提示 (纯文字提示) -->
+                <!-- 模型缺失提示 -->
                 <div v-else-if="errorType === 'MODEL_MISSING'"
                     class="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-800">
                     <div class="flex items-center gap-2 mb-1">
                         <IconWarn class="size-4" />
-                        <span class="font-bold">模型未就绪</span>
+                        <span class="font-bold">
+                            模型未就绪
+                        </span>
                     </div>
                     <p class="text-xs opacity-90 pl-6">
                         请前往 <span class="font-bold underline">设置 > 翻译模型</span> 下载并安装模型。
@@ -164,12 +164,12 @@ onUnmounted(() => {
 
         <!-- 操作按钮组 -->
         <div class="mt-3 flex gap-2">
-            <!-- 显隐按钮 -->
+
             <Button size="sm" @btn-click="toggleTranslation">
                 {{ showTranslation ? "隐藏" : "显示" }}翻译
             </Button>
 
-            <!-- 重新翻译按钮：始终显示，方便用户随时重试或刷新API结果 -->
+            <!-- 重新翻译按钮：始终显示 -->
             <!-- 只有当有原文时才允许点击 -->
             <Button v-if="showTranslation" variant="secondary" size="sm"
                 :disabled="isTranslationLoading || !originalText" @btn-click="handleRetranslate">

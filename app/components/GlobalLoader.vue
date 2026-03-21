@@ -5,12 +5,12 @@ const { openModelFolder } = useSettings()
 const isVisible = ref(true)
 const isFading = ref(false) // 控制消失动画
 const loadingText = ref('Initializing...')
-const downloadPercent = ref(0) // 下载进度
+const downloadPercent = ref(0)
 
-// 错误处理状态
 const hasError = ref(false)
 const errorMessage = ref('')
 const errorDetail = ref('')
+let hasFinished = false
 
 const emit = defineEmits<{
     ready: []
@@ -22,19 +22,30 @@ const openGithubHelp = () => {
 
 // 监听后端状态
 onMounted(async () => {
-
     if (!window.electronAPI) {
         console.warn('Loader: Electron API not available')
         loadingText.value = "Electron API not available"
         finishLoading()
         return
     }
-    window.electronAPI.on('backend-status', (data) => {
+
+    // 监听后端初始化
+    const cleanup = window.electronAPI.backendStatus((data: { status: string }) => {
         console.log('Loader received signal:', data)
         if (data.status === 'ready') {
             finishLoading()
         }
     })
+    onUnmounted(() => {
+        cleanup()
+    })
+    // 前端主动监听后端状态 防止后端send前端未监听到的边缘情况
+    const isReady = await window.electronAPI.checkBackendReady()
+    if (isReady) {
+        loadingText.value = "Welcome Back!"
+        finishLoading()
+    }
+
     window.electronAPI.onInitStatus((message: string) => {
         if (!hasError.value) loadingText.value = message
     })
@@ -55,12 +66,6 @@ onMounted(async () => {
         loadingText.value = "Initialization Failed"
     })
 
-    const isReady = await window.electronAPI.checkBackendReady()
-    if (isReady) {
-        loadingText.value = "Welcome Back!"
-        finishLoading()
-    }
-    // 超时强制显示 防止后端挂了
     setTimeout(() => {
         if (isVisible.value && !hasError.value) {
             console.warn('Loader: Timeout triggered (Backend slow or failed)')
@@ -70,35 +75,31 @@ onMounted(async () => {
 })
 
 const finishLoading = () => {
+    if (hasFinished) return
+    hasFinished = true
     isFading.value = true
-    setTimeout(() => {
-        isVisible.value = false
-        emit('ready')
-
-        const hasSeenHint = localStorage.getItem('has_seen_intro_hint')
-        if (!hasSeenHint) {
-            showToast('👋 欢迎使用！建议在【设置】配置翻译模型及阅读模式', 6000)
-            localStorage.setItem('has_seen_intro_hint', 'true')
-        } else {
-            showToast('资源加载完毕 🚀', 2000)
-        }
-    }, 500)
+    isVisible.value = false
+    const hasSeenHint = localStorage.getItem('has_seen_intro_hint')
+    if (!hasSeenHint) {
+        showToast('👋 欢迎使用！建议在【设置】配置翻译模型及阅读模式', 6000)
+        localStorage.setItem('has_seen_intro_hint', 'true')
+    } else {
+        showToast('资源加载完毕 🚀', 2000)
+    }
 }
 </script>
 
 <template>
-    <!-- 全屏遮罩 -->
-    <!-- 使用 Teleport 确保它永远在最上层 -->
     <Teleport to="body">
         <Transition enter-active-class="transition duration-300"
-            leave-active-class="transition duration-500 ease-in-out" leave-to-class="opacity-0 blur-sm scale-105">
+            leave-active-class="transition duration-500 ease-in-out" leave-to-class="opacity-0 blur-sm scale-105"
+            @after-leave="emit('ready')">
             <div v-if="isVisible"
-                class="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-manga-50 dark:bg-manga-800 transition-colors"
+                class="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-manga-50 dark:bg-manga-800"
                 :class="{ 'pointer-events-none': isFading }">
-                <!-- 动画容器 (无错误时显示) -->
-                <div v-if="!hasError" class="loader-container mb-8">
-                    <!-- 跳跃的 あ -->
-                    <div class="jumping-char text-4xl font-black text-primary dark:text-blue-400 select-none">
+                <div v-if="!hasError" class="loader-container relative w-30 h-[90px] mb-8">
+                    <div
+                        class="jumping-char absolute bottom-[30px] left-[45px] w-10 h-10 flex items-center justify-center text-4xl font-black text-primary dark:text-blue-400 select-none">
                         あ
                     </div>
                 </div>
@@ -124,8 +125,12 @@ const finishLoading = () => {
                     <div v-else class="space-y-4">
                         <div
                             class="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
-                            <p class="font-bold text-red-700 dark:text-red-300 text-sm mb-1">{{ errorMessage }}</p>
-                            <p class="text-xs text-red-600 dark:text-red-400">{{ errorDetail }}</p>
+                            <p class="font-bold text-red-700 dark:text-red-300 text-sm mb-1">
+                                {{ errorMessage }}
+                            </p>
+                            <p class="text-xs text-red-600 dark:text-red-400">
+                                {{ errorDetail }}
+                            </p>
                         </div>
 
                         <div class="flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -155,30 +160,10 @@ const finishLoading = () => {
 </template>
 
 <style scoped>
-.loader-container {
-    position: relative;
-    width: 120px;
-    height: 90px;
-}
-
-/* 1. 跳跃的 あ (对应原来的 loader:before) */
 .jumping-char {
-    position: absolute;
-    bottom: 30px;
-    left: 45px;
-    /* 微调居中 */
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    /* 动画：跳跃 + 形变 */
     animation: jump-bounce 0.5s ease-in-out infinite alternate;
 }
 
-/* 2. 滚动的台阶 (对应原来的 loader:after) */
-/* 使用伪元素画出台阶阴影 */
 .loader-container::after {
     content: "";
     position: absolute;
@@ -187,18 +172,14 @@ const finishLoading = () => {
     height: 7px;
     width: 45px;
     border-radius: 4px;
-    /* 初始状态的阴影 */
     box-shadow: 0 5px 0 #cbd5e1, -35px 50px 0 #cbd5e1, -70px 95px 0 #cbd5e1;
     animation: step-scroll 1s ease-in-out infinite;
 }
 
-/* 深色模式适配 */
 :global(.dark) .loader-container::after {
     box-shadow: 0 5px 0 #475569, -35px 50px 0 #475569, -70px 95px 0 #475569;
     animation: step-scroll-dark 1s ease-in-out infinite;
 }
-
-/* --- 关键帧定义 --- */
 
 @keyframes jump-bounce {
     0% {

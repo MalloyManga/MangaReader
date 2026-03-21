@@ -14,9 +14,8 @@ onMounted(() => {
 	// 调试日志
 	console.log('🚀 App Launched. Initial Route:', route.fullPath)
 
-	// 监听后端日志并打印到控制台
-	if ((window as any).electronAPI?.onBackendLog) {
-		(window as any).electronAPI.onBackendLog((msg: string) => {
+	if (window.electronAPI.onBackendLog) {
+		window.electronAPI.onBackendLog((msg: string) => {
 			console.log('%c[Backend]', 'color: #bada55', msg)
 		})
 	}
@@ -34,7 +33,7 @@ onMounted(() => {
 <template>
 	<div class="min-h-screen transition-colors">
 		<GlobalLoader v-if="!isAppReady" @ready="handleAppReady" />
-		<div v-show="isAppReady">
+		<div>
 			<NuxtPage />
 		</div>
 	</div>
