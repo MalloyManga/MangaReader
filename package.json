@@ -25,7 +25,6 @@
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
     "jszip": "^3.10.1",
-    "pdf-dist": "^1.0.0",
     "pdfjs-dist": "^5.4.530",
     "sortablejs": "^1.15.6"
   },
