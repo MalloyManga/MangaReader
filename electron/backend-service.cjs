@@ -160,6 +160,11 @@ class BackendService extends EventEmitter {
             return
         }
 
+        if (response.type === 'dictionary_download_progress') {
+            this.emit('dictionary-download-progress', response.percent)
+            return
+        }
+
         const { id, success, text, tokens, translation, exists, error } = response
 
         if (id !== undefined && this.pendingRequests.has(id)) {
@@ -276,6 +281,18 @@ class BackendService extends EventEmitter {
 
     async deleteModel() {
         return this._sendRequest({ command: 'delete_model' }, 20000)
+    }
+
+    async checkDictionary() {
+        return this._sendRequest({ command: 'check_dictionary' }, 10000)
+    }
+
+    async downloadDictionary() {
+        return this._sendRequest({ command: 'download_dictionary' }, 900000)
+    }
+
+    async deleteDictionary() {
+        return this._sendRequest({ command: 'delete_dictionary' }, 20000)
     }
 
     async extractCover(path) {

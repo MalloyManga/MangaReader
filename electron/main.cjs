@@ -446,6 +446,36 @@ ipcMain.handle('model:delete', async () => {
     }
 })
 
+ipcMain.handle('dictionary:check', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        const result = await backendService.checkDictionary()
+        return { success: true, exists: result.exists }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('dictionary:download', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        await backendService.downloadDictionary()
+        return { success: true }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('dictionary:delete', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        await backendService.deleteDictionary()
+        return { success: true }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
 //  打开模型文件夹
 ipcMain.on('open-model-folder', () => {
     const modelsRoot = getModelsPath()
@@ -540,6 +570,12 @@ app.whenReady().then(async () => {
         backendService.on('download-progress', (percent) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('model:download-progress', percent)
+            }
+        })
+
+        backendService.on('dictionary-download-progress', (percent) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('dictionary:download-progress', percent)
             }
         })
 

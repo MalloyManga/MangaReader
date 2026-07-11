@@ -104,12 +104,16 @@ export interface IElectronAPI {
     checkModel: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
     downloadModel: () => Promise<{ success: boolean; error?: string }>
     deleteModel: () => Promise<{ success: boolean; error?: string }>
+    checkDictionary: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
+    downloadDictionary: () => Promise<{ success: boolean; error?: string }>
+    deleteDictionary: () => Promise<{ success: boolean; error?: string }>
     translate: (text: string) => Promise<{ success: boolean; translation?: string; error?: string }>
 
     // 后端状态检查
     checkBackendReady: () => Promise<boolean>
     onBackendLog: (callback: (msg) => void) => () => void
     onDownloadProgress: (callback: (percent: number) => void) => () => void
+    onDictionaryDownloadProgress: (callback: (percent: number) => void) => () => void
     onInitStatus: (callback: (msg: string) => void) => () => void
     onInitProgress: (callback: (data: { percent: number, message: string }) => void) => () => void
     onInitError: (callback: (data: { message: string, detail: string }) => void) => () => void

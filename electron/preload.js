@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkModel: () => ipcRenderer.invoke('model:check'),
     downloadModel: () => ipcRenderer.invoke('model:download'),
     deleteModel: () => ipcRenderer.invoke('model:delete'),
+    checkDictionary: () => ipcRenderer.invoke('dictionary:check'),
+    downloadDictionary: () => ipcRenderer.invoke('dictionary:download'),
+    deleteDictionary: () => ipcRenderer.invoke('dictionary:delete'),
     // 后端初始化完毕之后主动发送消息
     backendStatus: (callback) => {
         const handler = (_event, data) => callback(data)
@@ -73,6 +76,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('model:download-progress', handler)
         // 返回清理函数
         return () => ipcRenderer.removeListener('model:download-progress', handler)
+    },
+    onDictionaryDownloadProgress: (callback) => {
+        const handler = (_event, percent) => callback(percent)
+        ipcRenderer.on('dictionary:download-progress', handler)
+        return () => ipcRenderer.removeListener('dictionary:download-progress', handler)
     },
     onInitStatus: (callback) => {
         const handler = (_event, message) => callback(message)
