@@ -59,8 +59,10 @@ export interface TranslationModel {
     id: string
     name: string
     size: string
+    size_bytes?: number
     description: string
     engine: string
+    adapted_types?: string[]
 }
 
 export interface IElectronAPI {
