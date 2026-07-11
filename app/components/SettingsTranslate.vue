@@ -3,10 +3,15 @@
 const { openModelFolder } = useSettings()
 const { showToast } = useToast()
 const { model, checkModelStatus } = useModelStatus()
+const { dictionary, checkDictionaryStatus } = useDictionaryStatus()
 
 const showDeleteModal = ref(false)
+const showDeleteDictionaryModal = ref(false)
 const isDeleting = ref(false)
+const isDeletingDictionary = ref(false)
 const models = computed(() => [model])
+let cleanupModelProgress: (() => void) | null = null
+let cleanupDictionaryProgress: (() => void) | null = null
 
 const handleDownload = async () => {
     if (model.status === 'downloading') return
@@ -30,8 +35,33 @@ const handleDownload = async () => {
     }
 }
 
+const handleDownloadDictionary = async () => {
+    if (dictionary.status === 'downloading') return
+    dictionary.status = 'downloading'
+    dictionary.progress = 0
+
+    try {
+        const res = await window.electronAPI.downloadDictionary()
+
+        if (res.success) {
+            dictionary.progress = 100
+            dictionary.status = 'downloaded'
+        } else {
+            showToast(`下载失败: ${res.error}`)
+            dictionary.status = 'not_downloaded'
+        }
+    } catch (e) {
+        dictionary.status = 'not_downloaded'
+        showToast('下载出错')
+    }
+}
+
 const handleClickDelete = () => {
     showDeleteModal.value = true
+}
+
+const handleClickDeleteDictionary = () => {
+    showDeleteDictionaryModal.value = true
 }
 
 const confirmDelete = async () => {
@@ -52,6 +82,24 @@ const confirmDelete = async () => {
     }
 }
 
+const confirmDeleteDictionary = async () => {
+    isDeletingDictionary.value = true
+    try {
+        const res = await window.electronAPI.deleteDictionary()
+        if (res.success) {
+            dictionary.status = 'not_downloaded'
+            dictionary.progress = 0
+            showDeleteDictionaryModal.value = false
+        } else {
+            showToast('删除失败')
+        }
+    } catch (e) {
+        showToast('删除出错')
+    } finally {
+        isDeletingDictionary.value = false
+    }
+}
+
 const openLink = (url: string) => {
     window.electronAPI.openLink(url)
 }
@@ -60,13 +108,14 @@ const openLink = (url: string) => {
 onMounted(() => {
     // 触发即忘不必等待
     checkModelStatus()
+    checkDictionaryStatus()
 
     if (!window.electronAPI) {
         console.warn('SettingsTranslate: Electron API not available')
         return
     }
     // 保存清理函数，组件销毁时取消监听
-    const cleanup = window.electronAPI.onDownloadProgress((percent: number) => {
+    cleanupModelProgress = window.electronAPI.onDownloadProgress((percent: number) => {
         // 只有当前状态是 downloading 时才更新
         if (model.status === 'downloading') {
             model.progress = percent
@@ -77,9 +126,20 @@ onMounted(() => {
         }
     })
 
-    onUnmounted(() => {
-        cleanup()
+    cleanupDictionaryProgress = window.electronAPI.onDictionaryDownloadProgress((percent: number) => {
+        if (dictionary.status === 'downloading') {
+            dictionary.progress = percent
+
+            if (percent >= 100) {
+                dictionary.status = 'downloaded'
+            }
+        }
     })
+})
+
+onUnmounted(() => {
+    cleanupModelProgress?.()
+    cleanupDictionaryProgress?.()
 })
 </script>
 
@@ -163,6 +223,62 @@ onMounted(() => {
             </div>
         </div>
 
+        <div
+            class="bg-white dark:bg-manga-900 border border-manga-200 dark:border-manga-700 rounded-lg p-5 shadow-sm transition-all hover:shadow-md hover:border-manga-300">
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h4 class="font-bold text-manga-900 dark:text-white text-base">
+                            {{ dictionary.name }}
+                        </h4>
+                        <span
+                            class="px-2 py-0.5 rounded text-[10px] font-bold bg-manga-100 dark:bg-manga-800 text-manga-600 dark:text-manga-400">
+                            {{ dictionary.size }}
+                        </span>
+                    </div>
+                    <p class="text-sm text-manga-500 mt-1">
+                        {{ dictionary.description }}
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <div v-if="dictionary.status === 'checking'" class="text-xs text-manga-400">
+                        检查中...
+                    </div>
+
+                    <div v-else-if="dictionary.status === 'downloaded'" class="flex items-center gap-1">
+                        <span class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                            <IconSuccess class="size-4" />
+                            已就绪
+                        </span>
+                        <button @click="handleClickDeleteDictionary" title="删除词典"
+                            class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer">
+                            <IconTresh class="size-5" />
+                        </button>
+                    </div>
+
+                    <div v-else-if="dictionary.status === 'downloading'" class="w-32">
+                        <div class="flex justify-between text-xs text-manga-500 mb-1">
+                            <span>下载中...</span>
+                            <span>{{ Math.round(dictionary.progress) }}%</span>
+                        </div>
+                        <div class="w-full bg-manga-100 dark:bg-manga-700 rounded-full h-1.5 overflow-hidden">
+                            <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                                :style="{ width: dictionary.progress + '%' }"></div>
+                        </div>
+                    </div>
+
+                    <div v-else>
+                        <button @click="handleDownloadDictionary"
+                            class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer white-space-nowrap">
+                            <IconDownload class="size-4" />
+                            <span class="whitespace-nowrap">下载</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 底部提示区 -->
         <div class="pt-5 border-t border-manga-100 dark:border-manga-700">
             <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-100 dark:border-blue-800/50">
@@ -204,5 +320,10 @@ onMounted(() => {
         <ConfirmModal :show="showDeleteModal" title="删除模型文件？"
             :content="`确定要删除 ${model.name} 吗？这将释放约 ${model.size} 的磁盘空间。`" confirm-text="确认删除" :is-danger="true"
             :loading="isDeleting" @cancel="showDeleteModal = false" @confirm="confirmDelete" />
+
+        <ConfirmModal :show="showDeleteDictionaryModal" title="删除分词词典？"
+            :content="`确定要删除 ${dictionary.name} 吗？这将释放约 ${dictionary.size} 的磁盘空间。`" confirm-text="确认删除"
+            :is-danger="true" :loading="isDeletingDictionary" @cancel="showDeleteDictionaryModal = false"
+            @confirm="confirmDeleteDictionary" />
     </div>
 </template>

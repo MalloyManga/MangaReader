@@ -15,32 +15,44 @@ const { originText } = defineProps<Props>()
 // 分词结果状态
 const tokens = ref<Token[]>([])
 const isTokenizing = ref(false)
+const errorMessage = ref('')
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // 分词 API 调用函数
 const tokenizeText = async (text: string) => {
     if (!text.trim()) {
         tokens.value = []
+        errorMessage.value = ''
         return
     }
 
     isTokenizing.value = true
+    errorMessage.value = ''
 
     try {
         if (window.electronAPI && window.electronAPI.tokenize) {
             const result = await window.electronAPI.tokenize(text)
             if (result && result.success && result.tokens) {
                 tokens.value = result.tokens
+                errorMessage.value = ''
+            } else if (result?.error === 'DICTIONARY_NOT_FOUND') {
+                tokens.value = []
+                errorMessage.value = '需要先在设置 > 翻译模型中下载日语分词词典。'
             } else {
                 console.error('Backend error:', result.error)
+                errorMessage.value = '分词失败，请稍后重试。'
             }
         } else {
             console.warn('Electron API not found (Browser mode?)')
+            errorMessage.value = '当前环境无法调用分词服务。'
         }
 
     } catch (error) {
         console.error('分词失败:', error)
         tokens.value = []
+        errorMessage.value = error instanceof Error && error.message === 'DICTIONARY_NOT_FOUND'
+            ? '需要先在设置 > 翻译模型中下载日语分词词典。'
+            : '分词失败，请稍后重试。'
     } finally {
         isTokenizing.value = false
     }
@@ -56,6 +68,7 @@ watch(() => originText, (newText) => {
     // 如果文本为空，立即清空分词结果
     if (!newText.trim()) {
         tokens.value = []
+        errorMessage.value = ''
         isTokenizing.value = false
         return
     }
@@ -94,6 +107,10 @@ onUnmounted(() => {
         <div v-else-if="tokens.length > 0" class="flex gap-2 flex-wrap items-end">
             <TokenButton v-for="(token, index) in tokens" :key="index" :word="token.word" :type="token.type"
                 :reading="token.reading" />
+        </div>
+
+        <div v-else-if="errorMessage" class="text-sm text-amber-700 dark:text-amber-300">
+            {{ errorMessage }}
         </div>
 
         <!-- 空状态 没有在等待API同时tokens.length长度小于等于0 -->
