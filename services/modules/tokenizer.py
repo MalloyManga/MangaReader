@@ -20,12 +20,13 @@ class JapaneseTokenizer:
         "記号": "other",
     }
 
-    def __init__(self):
+    def __init__(self, dict_path=None):
         self.tokenizer = None
         self.mode = SplitMode.C
         try:
             log_message("Initializing Sudachi Tokenizer...")
-            self.tokenizer = dictionary.Dictionary(dict="core").create()
+            dict_arg = dict_path if dict_path else "core"
+            self.tokenizer = dictionary.Dictionary(dict=dict_arg).create()
             log_message(" Tokenizer Initialized.")
         except Exception as e:
             log_message(f"[ERROR] Tokenizer Init Failed: {e}")

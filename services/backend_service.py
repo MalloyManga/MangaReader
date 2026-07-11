@@ -162,6 +162,7 @@ def main():
             models_root = os.path.join(os.getcwd(), "models")
 
     translation_root = os.path.join(models_root, "translation")
+    dictionary_root = os.path.join(models_root, "dictionary", "sudachi")
 
     if not os.path.exists(translation_root):
         os.makedirs(translation_root, exist_ok=True)
@@ -209,11 +210,11 @@ def main():
         )
         sys.exit(1)
 
-    # 初始化分词器
-    send_response({"type": "init_status", "message": "正在加载日语分词组件..."})
+    from modules.sudachi_dictionary import SudachiDictionaryManager
     from modules.tokenizer import JapaneseTokenizer
 
-    tokenizer = JapaneseTokenizer()
+    dictionary_manager = SudachiDictionaryManager(dictionary_root)
+    tokenizer = None
 
     # [MODIFIED] Translator is already instantiated above for pre-loading.
     # We just need to ensure it's assigned to the variable we use later.
@@ -268,6 +269,10 @@ def main():
                 try:
                     text = request.get("text", "")
                     log_message(f"Processing tokenize request for: {repr(text)}")
+                    if not dictionary_manager.check_exists():
+                        raise Exception("DICTIONARY_NOT_FOUND")
+                    if tokenizer is None:
+                        tokenizer = JapaneseTokenizer(dictionary_manager.dictionary_path)
                     tokens = tokenizer.tokenize(text)
                     send_response({"id": req_id, "success": True, "tokens": tokens})
                 except Exception as e:
@@ -337,6 +342,24 @@ def main():
                 send_response({"id": req_id, "success": success})
 
             # 4. 提取封面 (New)
+            elif command == "check_dictionary":
+                exists = dictionary_manager.check_exists()
+                send_response({"id": req_id, "success": True, "exists": exists})
+
+            elif command == "download_dictionary":
+                try:
+                    dictionary_manager.download()
+                    tokenizer = JapaneseTokenizer(dictionary_manager.dictionary_path)
+                    send_response({"id": req_id, "success": True})
+                except Exception as e:
+                    tokenizer = None
+                    send_response({"id": req_id, "success": False, "error": str(e)})
+
+            elif command == "delete_dictionary":
+                tokenizer = None
+                success = dictionary_manager.delete()
+                send_response({"id": req_id, "success": success})
+
             elif command == "extract_cover":
                 try:
                     path_arg = request.get("path", "")
