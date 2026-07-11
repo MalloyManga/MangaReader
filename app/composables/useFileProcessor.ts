@@ -1,7 +1,7 @@
 import type { ImageItem } from '~/types/interface.js'
 import JSZip from 'jszip'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-type PDFJS = typeof import("e:/VS code/MangaReader/MangaReader/node_modules/pdfjs-dist/types/src/pdf")
+type PDFJS = typeof import('pdfjs-dist')
 const { showToast } = useToast()
 
 export const useFileProcessor = () => {
@@ -57,7 +57,7 @@ export const useFileProcessor = () => {
         }
     }
     // PDF 转图片
-    const convertPdfToImages = async (url: string): Promise<ImageItem[]> => {
+    const convertPdfToImages = async (source: string | ArrayBuffer): Promise<ImageItem[]> => {
         if (!isPdfJsLoaded.value) {
             await initPdfJs()
         }
@@ -65,7 +65,16 @@ export const useFileProcessor = () => {
             throw new Error('PDF.js 加载失败')
         }
 
-        const pdf = await pdfjsLib.value.getDocument(url).promise
+        const pdfData = typeof source === 'string'
+            ? await fetch(source.startsWith('manga://') ? source : `manga://${source}`).then((response) => {
+                if (!response.ok) {
+                    throw new Error(`PDF fetch failed: ${response.status}`)
+                }
+                return response.arrayBuffer()
+            })
+            : source
+
+        const pdf = await pdfjsLib.value.getDocument({ data: pdfData }).promise
         const pageCount = pdf.numPages
 
         // 构建图片数组

@@ -29,6 +29,15 @@ class SakuraEngine(BaseTranslator):
         self.llm = None
         self.lock = threading.Lock()
 
+    def unload(self):
+        if self.llm:
+            try:
+                del self.llm
+            except Exception:
+                pass
+        self.llm = None
+        self.is_ready = False
+
     def check_model_exists(self):
         # 检查物理文件是否存在
         # 注意：使用 hf_hub_download 后，实际文件可能是一个 symlink 指向 .cache
@@ -43,12 +52,7 @@ class SakuraEngine(BaseTranslator):
         # 1. 释放内存
         if self.llm:
             log_message("[INFO] Unloading model...")
-            try:
-                del self.llm
-                self.llm = None
-                self.is_ready = False
-            except:
-                pass
+            self.unload()
 
         deleted = False
 

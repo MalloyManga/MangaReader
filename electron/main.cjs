@@ -85,6 +85,7 @@ async function initStore() {
         name: 'config', // 文件名为 config.json
         defaults: {     // 默认配置，防止首次运行为空
             enableTranslation: false,
+            translationModelId: '',
             enableTokenization: true,
             translationApiKey: '',
             theme: 'system',
@@ -96,13 +97,17 @@ async function initStore() {
 }
 
 function createMainWindow() {
+    const iconPath = isDev
+        ? path.join(__dirname, '../public/MangaReaderLogo.ico')
+        : path.join(__dirname, '../.output/public/MangaReaderLogo.ico')
+
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         minWidth: 1200,
         minHeight: 800,
         frame: false,
-        icon: path.join(__dirname, '../public/MangaReaderLogo.ico'),
+        icon: iconPath,
         webPreferences: {
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js')
@@ -397,11 +402,11 @@ ipcMain.handle('ocr:tokenize', async (_event, text) => {
 })
 
 // 翻译请求
-ipcMain.handle('ocr:translate', async (_event, text) => {
+ipcMain.handle('ocr:translate', async (_event, text, modelId) => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.translate(text)
-        return { success: true, translation: result.translation }
+        const result = await backendService.translate(text, modelId)
+        return { success: true, translation: result.translation, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }
@@ -409,33 +414,73 @@ ipcMain.handle('ocr:translate', async (_event, text) => {
 // -------------------------------------------
 
 // 模型相关
-// 检查模型状态
-ipcMain.handle('model:check', async () => {
+ipcMain.handle('model:list', async () => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.checkModel()
-        return { success: true, exists: result.exists }
+        const result = await backendService.listTranslationModels()
+        return { success: true, ...result }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+// 检查模型状态
+ipcMain.handle('model:check', async (_event, modelId) => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        const result = await backendService.checkModel(modelId)
+        return { success: true, exists: result.exists, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }
 })
 
 // 下载模型
-ipcMain.handle('model:download', async () => {
+ipcMain.handle('model:download', async (_event, modelId) => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.downloadModel()
-        return { success: true }
+        const result = await backendService.downloadModel(modelId)
+        return { success: true, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }
 })
 
 // 删除模型
-ipcMain.handle('model:delete', async () => {
+ipcMain.handle('model:delete', async (_event, modelId) => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.deleteModel()
+        const result = await backendService.deleteModel(modelId)
+        return { success: true, modelId: result.modelId }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('dictionary:check', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        const result = await backendService.checkDictionary()
+        return { success: true, exists: result.exists }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('dictionary:download', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        await backendService.downloadDictionary()
+        return { success: true }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('dictionary:delete', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        await backendService.deleteDictionary()
         return { success: true }
     } catch (e) {
         return { success: false, error: e.message }
@@ -536,6 +581,12 @@ app.whenReady().then(async () => {
         backendService.on('download-progress', (percent) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('model:download-progress', percent)
+            }
+        })
+
+        backendService.on('dictionary-download-progress', (percent) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('dictionary:download-progress', percent)
             }
         })
 

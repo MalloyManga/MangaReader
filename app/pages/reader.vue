@@ -276,7 +276,7 @@ const translateBlock = async (id: string, text: string) => {
 
         ocrBlocks.value[idx]!.status = 'loading'
 
-        const response = await window.electronAPI.translate(text)
+        const response = await window.electronAPI.translate(text, settings.value.translationModelId)
 
         if (response.success && response.translation) {
             // 重新获取索引以防数组变动

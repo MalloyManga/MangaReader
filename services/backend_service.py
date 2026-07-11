@@ -41,7 +41,12 @@ except AttributeError:
 
 # 导入业务模块
 from modules.utils import log_message, send_response
-from modules.translator import get_translator_engine
+from modules.translator import (
+    DEFAULT_TRANSLATOR_ID,
+    get_translator_engine,
+    list_translator_models,
+    normalize_translator_id,
+)
 
 # --- Helper Functions for Cover Extraction ---
 
@@ -162,21 +167,38 @@ def main():
             models_root = os.path.join(os.getcwd(), "models")
 
     translation_root = os.path.join(models_root, "translation")
+    dictionary_root = os.path.join(models_root, "dictionary", "sudachi")
 
     if not os.path.exists(translation_root):
         os.makedirs(translation_root, exist_ok=True)
 
-    # [CRITICAL] Initialize Translator (Sakura/llama_cpp) FIRST
-    # This is to ensure the C++ backend initializes before Torch pollutes the process space.
+    # [CRITICAL] Instantiate the default translator first. For llama.cpp engines this keeps
+    # the old load order without initializing model weights at startup.
     send_response({"type": "init_status", "message": "正在预加载翻译引擎组件..."})
+    translators = {}
+    current_translator_id = DEFAULT_TRANSLATOR_ID
     translator = None
+
+    def get_or_create_translator(model_id=None):
+        normalized_id = normalize_translator_id(model_id)
+        if normalized_id not in translators:
+            translators[normalized_id] = get_translator_engine(
+                normalized_id, translation_root
+            )
+        return normalized_id, translators[normalized_id]
+
+    def select_translator(model_id=None):
+        nonlocal current_translator_id, translator
+        normalized_id, engine = get_or_create_translator(model_id)
+        if translator is not None and translator is not engine and translator.is_ready:
+            translator.unload()
+        current_translator_id = normalized_id
+        translator = engine
+        return normalized_id, engine
+
     try:
-        log_message(f"Init Translator (Sakura) root: {translation_root}")
-        # 强制指定使用 sakura
-        # 仅实例化对象，不进行任何底层 C++ 初始化
-        # 真正的初始化 (load_model) 会在 check_model_exists() 返回 True 后，
-        # 在 translate 命令中按需触发。
-        translator = get_translator_engine("sakura", translation_root)
+        log_message(f"Init Translator ({DEFAULT_TRANSLATOR_ID}) root: {translation_root}")
+        select_translator(DEFAULT_TRANSLATOR_ID)
 
     except Exception as e:
         log_message(f"[WARNING] Translator Pre-init Failed (Non-fatal): {e}")
@@ -209,16 +231,16 @@ def main():
         )
         sys.exit(1)
 
-    # 初始化分词器
-    send_response({"type": "init_status", "message": "正在加载日语分词组件..."})
+    from modules.sudachi_dictionary import SudachiDictionaryManager
     from modules.tokenizer import JapaneseTokenizer
 
-    tokenizer = JapaneseTokenizer()
+    dictionary_manager = SudachiDictionaryManager(dictionary_root)
+    tokenizer = None
 
     # [MODIFIED] Translator is already instantiated above for pre-loading.
     # We just need to ensure it's assigned to the variable we use later.
     if translator is None:
-        translator = get_translator_engine("sakura", translation_root)
+        select_translator(DEFAULT_TRANSLATOR_ID)
 
     # 准备就绪
     send_response({"type": "init_status", "message": "资源加载完毕，即将进入..."})
@@ -268,6 +290,10 @@ def main():
                 try:
                     text = request.get("text", "")
                     log_message(f"Processing tokenize request for: {repr(text)}")
+                    if not dictionary_manager.check_exists():
+                        raise Exception("DICTIONARY_NOT_FOUND")
+                    if tokenizer is None:
+                        tokenizer = JapaneseTokenizer(dictionary_manager.dictionary_path)
                     tokens = tokenizer.tokenize(text)
                     send_response({"id": req_id, "success": True, "tokens": tokens})
                 except Exception as e:
@@ -278,32 +304,39 @@ def main():
             elif command == "translate":
                 try:
                     text = request.get("text", "")
+                    model_id = request.get("model_id") or request.get("modelId")
+                    selected_model_id, selected_translator = select_translator(model_id)
                     log_message(
-                        f"[DEBUG] Processing translate request for: {repr(text)[:50]}..."
+                        f"[DEBUG] Processing translate request with {selected_model_id}: {repr(text)[:50]}..."
                     )
 
                     # 1. 检查是否已加载
-                    if not translator.is_ready:
+                    if not selected_translator.is_ready:
                         log_message(
                             "[DEBUG] Translator not ready. Checking model existence..."
                         )
                         # 2. 检查物理文件是否存在
-                        if translator.check_model_exists():
+                        if selected_translator.check_model_exists():
                             # 存在则加载
                             log_message(
                                 "[DEBUG] Model exists. Initializing translator..."
                             )
-                            translator.initialize()
+                            selected_translator.initialize()
                         else:
                             log_message("[ERROR] Model not found.")
                             raise Exception("MODEL_NOT_FOUND")
 
                     # 3. 执行翻译
                     log_message("[DEBUG] Executing translator.translate()...")
-                    result = translator.translate(text)
+                    result = selected_translator.translate(text)
                     log_message(f"[DEBUG] Translation result: {repr(result)[:50]}...")
                     send_response(
-                        {"id": req_id, "success": True, "translation": result}
+                        {
+                            "id": req_id,
+                            "success": True,
+                            "translation": result,
+                            "model_id": selected_model_id,
+                        }
                     )
 
                 except Exception as e:
@@ -316,27 +349,82 @@ def main():
 
             # --- Model Management (New) ---
 
+            elif command == "list_translation_models":
+                send_response(
+                    {
+                        "id": req_id,
+                        "success": True,
+                        "models": list_translator_models(),
+                        "default_model_id": DEFAULT_TRANSLATOR_ID,
+                        "current_model_id": current_translator_id,
+                    }
+                )
+
             # 1. 检查模型状态
             elif command == "check_model":
-                exists = translator.check_model_exists()
-                send_response({"id": req_id, "success": True, "exists": exists})
+                model_id = request.get("model_id") or request.get("modelId")
+                selected_model_id, selected_translator = select_translator(model_id)
+                exists = selected_translator.check_model_exists()
+                send_response(
+                    {
+                        "id": req_id,
+                        "success": True,
+                        "exists": exists,
+                        "model_id": selected_model_id,
+                    }
+                )
 
             # 2. 下载模型
             elif command == "download_model":
                 try:
-                    translator.download_model()
-                    # 下载完顺便初始化一下，确保可用
-                    translator.initialize()
-                    send_response({"id": req_id, "success": True})
+                    model_id = request.get("model_id") or request.get("modelId")
+                    selected_model_id, selected_translator = select_translator(model_id)
+                    selected_translator.download_model()
+                    # 下载只校验文件完整性，翻译时再懒加载模型
+                    if not selected_translator.check_model_exists():
+                        raise Exception("MODEL_INSTALL_FAILED")
+                    send_response(
+                        {
+                            "id": req_id,
+                            "success": True,
+                            "model_id": selected_model_id,
+                        }
+                    )
                 except Exception as e:
                     send_response({"id": req_id, "success": False, "error": str(e)})
 
             # 3. 删除模型
             elif command == "delete_model":
-                success = translator.delete_model()
-                send_response({"id": req_id, "success": success})
+                model_id = request.get("model_id") or request.get("modelId")
+                selected_model_id, selected_translator = select_translator(model_id)
+                success = selected_translator.delete_model()
+                send_response(
+                    {
+                        "id": req_id,
+                        "success": success,
+                        "model_id": selected_model_id,
+                    }
+                )
 
             # 4. 提取封面 (New)
+            elif command == "check_dictionary":
+                exists = dictionary_manager.check_exists()
+                send_response({"id": req_id, "success": True, "exists": exists})
+
+            elif command == "download_dictionary":
+                try:
+                    dictionary_manager.download()
+                    tokenizer = JapaneseTokenizer(dictionary_manager.dictionary_path)
+                    send_response({"id": req_id, "success": True})
+                except Exception as e:
+                    tokenizer = None
+                    send_response({"id": req_id, "success": False, "error": str(e)})
+
+            elif command == "delete_dictionary":
+                tokenizer = None
+                success = dictionary_manager.delete()
+                send_response({"id": req_id, "success": success})
+
             elif command == "extract_cover":
                 try:
                     path_arg = request.get("path", "")
@@ -368,97 +456,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# --- Helper Functions for Cover Extraction ---
-
-
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-
-def natural_keys(text):
-    """
-    alist.sort(key=natural_keys) sorts in human order
-    http://nedbatchelder.com/blog/200712/human_sorting.html
-    """
-    return [atoi(c) for c in re.split(r"(\d+)", text.lower())]
-
-
-def resize_image(img_data, max_height=300):
-    try:
-        image = Image.open(io.BytesIO(img_data))
-
-        # Convert to RGB (in case of RGBA or CMYK) to save as JPEG
-        if image.mode in ("RGBA", "P"):
-            image = image.convert("RGB")
-
-        # Calculate new size
-        width, height = image.size
-        if height > max_height:
-            ratio = max_height / height
-            new_width = int(width * ratio)
-            new_height = max_height
-            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-        # Save to buffer
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=85)
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-    except Exception as e:
-        log_message(f"Error resizing image: {e}")
-        return None
-
-
-def extract_cover_image(path):
-    """
-    Extracts the first image from a folder or ZIP file and returns it as a Base64 string.
-    Uses natural sorting to ensure '1.jpg' comes before '10.jpg'.
-    """
-    allowed_exts = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
-
-    try:
-        if os.path.isdir(path):
-            files = [f for f in os.listdir(path) if not f.startswith(".")]
-            # Use natural sort
-            try:
-                files.sort(key=natural_keys)
-            except Exception as sort_err:
-                log_message(f"Natural sort failed, using default sort: {sort_err}")
-                files.sort()
-
-            # Log first few files to debug sort order
-            log_message(f"Cover candidates for {path}: {files[:3]}")
-
-            for f in files:
-                if f.lower().endswith(allowed_exts):
-                    full_path = os.path.join(path, f)
-                    try:
-                        with open(full_path, "rb") as image_file:
-                            return resize_image(image_file.read())
-                    except Exception as img_err:
-                        log_message(f"Failed to read image {f}: {img_err}")
-                        continue
-
-        elif zipfile.is_zipfile(path):
-            with zipfile.ZipFile(path, "r") as zip_ref:
-                file_list = zip_ref.namelist()
-                file_list.sort(key=natural_keys)
-
-                for file_name in file_list:
-                    # Ignore directories in zip
-                    if file_name.endswith("/"):
-                        continue
-                    if file_name.lower().endswith(allowed_exts):
-                        try:
-                            with zip_ref.open(file_name) as file:
-                                return resize_image(file.read())
-                        except Exception as img_err:
-                            log_message(
-                                f"Failed to read zip entry {file_name}: {img_err}"
-                            )
-                            continue
-
-    except Exception as e:
-        log_message(f"Failed to extract cover from {path}: {str(e)}")
-        return None
-    return None

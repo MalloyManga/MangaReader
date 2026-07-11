@@ -12,6 +12,7 @@ export type ReadingMode = 'study' | 'list' | 'immersive'
 export interface AppSettings {
     readingMode: ReadingMode
     enableTranslation: boolean
+    translationModelId: string
     enableTokenization: boolean
     translationApiKey: string // 翻译APIkey
     // 目前还没有开发该部分功能 后续需要添加防抖
@@ -52,6 +53,16 @@ export interface Book {
     totalPage: number
     currentPage: number
     lastReadTime: number
+}
+
+export interface TranslationModel {
+    id: string
+    name: string
+    size: string
+    size_bytes?: number
+    description: string
+    engine: string
+    adapted_types?: string[]
 }
 
 export interface IElectronAPI {
@@ -101,15 +112,26 @@ export interface IElectronAPI {
     updateShortcuts: (shortcuts: Record<string, string>) => Promise<boolean>
     onShortcutTriggered: (callback: (action: string) => void) => () => void
 
-    checkModel: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
-    downloadModel: () => Promise<{ success: boolean; error?: string }>
-    deleteModel: () => Promise<{ success: boolean; error?: string }>
-    translate: (text: string) => Promise<{ success: boolean; translation?: string; error?: string }>
+    listTranslationModels: () => Promise<{
+        success: boolean
+        models?: TranslationModel[]
+        defaultModelId?: string
+        currentModelId?: string
+        error?: string
+    }>
+    checkModel: (modelId?: string) => Promise<{ success: boolean; exists?: boolean; modelId?: string; error?: string }>
+    downloadModel: (modelId?: string) => Promise<{ success: boolean; modelId?: string; error?: string }>
+    deleteModel: (modelId?: string) => Promise<{ success: boolean; modelId?: string; error?: string }>
+    checkDictionary: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
+    downloadDictionary: () => Promise<{ success: boolean; error?: string }>
+    deleteDictionary: () => Promise<{ success: boolean; error?: string }>
+    translate: (text: string, modelId?: string) => Promise<{ success: boolean; translation?: string; modelId?: string; error?: string }>
 
     // 后端状态检查
     checkBackendReady: () => Promise<boolean>
     onBackendLog: (callback: (msg) => void) => () => void
     onDownloadProgress: (callback: (percent: number) => void) => () => void
+    onDictionaryDownloadProgress: (callback: (percent: number) => void) => () => void
     onInitStatus: (callback: (msg: string) => void) => () => void
     onInitProgress: (callback: (data: { percent: number, message: string }) => void) => () => void
     onInitError: (callback: (data: { message: string, detail: string }) => void) => () => void

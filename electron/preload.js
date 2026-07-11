@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     tokenize: (text) => ipcRenderer.invoke('ocr:tokenize', text),
 
     // 翻译
-    translate: (text) => ipcRenderer.invoke('ocr:translate', text),
+    translate: (text, modelId) => ipcRenderer.invoke('ocr:translate', text, modelId),
 
     // Library System
     getLibrary: () => ipcRenderer.invoke('library:get-all'),
@@ -56,9 +56,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // 模型API管理
-    checkModel: () => ipcRenderer.invoke('model:check'),
-    downloadModel: () => ipcRenderer.invoke('model:download'),
-    deleteModel: () => ipcRenderer.invoke('model:delete'),
+    listTranslationModels: () => ipcRenderer.invoke('model:list'),
+    checkModel: (modelId) => ipcRenderer.invoke('model:check', modelId),
+    downloadModel: (modelId) => ipcRenderer.invoke('model:download', modelId),
+    deleteModel: (modelId) => ipcRenderer.invoke('model:delete', modelId),
+    checkDictionary: () => ipcRenderer.invoke('dictionary:check'),
+    downloadDictionary: () => ipcRenderer.invoke('dictionary:download'),
+    deleteDictionary: () => ipcRenderer.invoke('dictionary:delete'),
     // 后端初始化完毕之后主动发送消息
     backendStatus: (callback) => {
         const handler = (_event, data) => callback(data)
@@ -73,6 +77,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('model:download-progress', handler)
         // 返回清理函数
         return () => ipcRenderer.removeListener('model:download-progress', handler)
+    },
+    onDictionaryDownloadProgress: (callback) => {
+        const handler = (_event, percent) => callback(percent)
+        ipcRenderer.on('dictionary:download-progress', handler)
+        return () => ipcRenderer.removeListener('dictionary:download-progress', handler)
     },
     onInitStatus: (callback) => {
         const handler = (_event, message) => callback(message)

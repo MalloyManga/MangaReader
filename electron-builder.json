@@ -1,6 +1,12 @@
 {
   "appId": "com.malloy.mangareader",
   "productName": "MangaReader",
+  "electronLanguages": [
+    "zh-CN",
+    "zh-TW",
+    "en-US",
+    "ja"
+  ],
   "directories": {
     "output": "dist_electron"
   },
@@ -8,7 +14,9 @@
     "electron/**/*",
     "package.json",
     ".output/public/**/*",
-    "public/**/*"
+    "!node_modules/pdfjs-dist/**/*",
+    "!node_modules/@napi-rs/canvas/**/*",
+    "!node_modules/@napi-rs/canvas-win32-x64-msvc/**/*"
   ],
   "extraResources": [
     {

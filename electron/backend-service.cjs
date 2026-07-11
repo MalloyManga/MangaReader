@@ -160,7 +160,12 @@ class BackendService extends EventEmitter {
             return
         }
 
-        const { id, success, text, tokens, translation, exists, error } = response
+        if (response.type === 'dictionary_download_progress') {
+            this.emit('dictionary-download-progress', response.percent)
+            return
+        }
+
+        const { id, success, text, tokens, translation, exists, error, models, model_id, default_model_id, current_model_id } = response
 
         if (id !== undefined && this.pendingRequests.has(id)) {
             console.log(`[Backend Service] [DEBUG] Resolving request ID: ${id}, Success: ${success}`)
@@ -171,16 +176,23 @@ class BackendService extends EventEmitter {
             this.pendingRequests.delete(id)
 
             if (success) {
-                if (tokens) { // 分词
-                    resolve({ tokens: tokens })
+                if (models) {
+                    resolve({
+                        success: true,
+                        models,
+                        defaultModelId: default_model_id,
+                        currentModelId: current_model_id,
+                    })
+                } else if (tokens) { // 分词
+                    resolve({ success: true, tokens: tokens })
                 } else if (translation) { // 翻译
-                    resolve({ translation: translation })
+                    resolve({ success: true, translation: translation, modelId: model_id })
                 } else if (response.cover) { // 书籍封面缩略图
-                    resolve({ cover: response.cover })
+                    resolve({ success: true, cover: response.cover })
                 } else if (exists !== undefined) { // 模型存在
-                    resolve({ exists })
+                    resolve({ success: true, exists, modelId: model_id })
                 } else { // ocr文本
-                    resolve({ text: text })
+                    resolve({ success: true, text: text, modelId: model_id })
                 }
             } else {
                 reject(new Error(error))
@@ -259,23 +271,39 @@ class BackendService extends EventEmitter {
      * @param {string} text 
      * @returns {Promise<{ translation: string }>}
      */
-    async translate(text) {
+    async translate(text, modelId) {
         console.log(`[Backend Service] [DEBUG] translate() called with text length: ${text.length}`)
         // 超时时间较长，第一次要下载模型 (比如 10分钟 = 600000ms)
-        return this._sendRequest({ command: 'translate', text: text }, 600000)
+        return this._sendRequest({ command: 'translate', text: text, model_id: modelId }, 600000)
     }
 
-    async checkModel() {
-        return this._sendRequest({ command: 'check_model' }, 10000)
+    async listTranslationModels() {
+        return this._sendRequest({ command: 'list_translation_models' }, 10000)
     }
 
-    async downloadModel() {
+    async checkModel(modelId) {
+        return this._sendRequest({ command: 'check_model', model_id: modelId }, 10000)
+    }
+
+    async downloadModel(modelId) {
         // 下载 1.2GB 可能很慢，给 30 分钟超时
-        return this._sendRequest({ command: 'download_model' }, 1800000)
+        return this._sendRequest({ command: 'download_model', model_id: modelId }, 1800000)
     }
 
-    async deleteModel() {
-        return this._sendRequest({ command: 'delete_model' }, 20000)
+    async deleteModel(modelId) {
+        return this._sendRequest({ command: 'delete_model', model_id: modelId }, 20000)
+    }
+
+    async checkDictionary() {
+        return this._sendRequest({ command: 'check_dictionary' }, 10000)
+    }
+
+    async downloadDictionary() {
+        return this._sendRequest({ command: 'download_dictionary' }, 900000)
+    }
+
+    async deleteDictionary() {
+        return this._sendRequest({ command: 'delete_dictionary' }, 20000)
     }
 
     async extractCover(path) {
