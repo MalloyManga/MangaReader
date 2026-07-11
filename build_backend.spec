@@ -20,6 +20,36 @@ excludes = [
     'transformers.testing_utils',
 ]
 
+
+def filter_collected_artifacts(entries):
+    filtered = []
+    for entry in entries:
+        src = entry[0].replace('\\', '/').lower()
+        dest = entry[1].replace('\\', '/').lower()
+        if src.endswith('.lib'):
+            continue
+        if '/tests/' in dest or dest.endswith('/tests'):
+            continue
+        if '/include/' in dest or dest.endswith('/include'):
+            continue
+        filtered.append(entry)
+    return filtered
+
+
+def filter_hiddenimports(imports):
+    filtered = []
+    for name in imports:
+        if name.startswith(('numpy.tests', 'numpy.testing', 'numpy.f2py.tests')):
+            continue
+        if name.startswith('numpy._pyinstaller'):
+            continue
+        if '.tests' in name or name.endswith('.tests'):
+            continue
+        if name.endswith(('_tests', '.conftest', '.setup')):
+            continue
+        filtered.append(name)
+    return filtered
+
 # 手动处理 torch 依赖 (避免 collect_all 卡死，同时解决 DLL 缺失)
 torch_root = os.path.dirname(torch.__file__)
 torch_lib = os.path.join(torch_root, 'lib')
@@ -100,7 +130,7 @@ hiddenimports += ['torch']
 
 # 针对 llama_cpp 的处理
 tmp_ret = collect_all('llama_cpp')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += filter_collected_artifacts(tmp_ret[0]); binaries += filter_collected_artifacts(tmp_ret[1]); hiddenimports += tmp_ret[2]
 
 # [CRITICAL FIX] 遍历 site-packages/llama_cpp/lib 下的所有 DLL
 # 将它们强制复制到打包后的根目录 '.'，确保 backend_service.py 能在最外层找到它们
@@ -152,7 +182,7 @@ else:
 
 # 修复 numpy 缺失问题
 tmp_ret = collect_all('numpy')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += filter_collected_artifacts(tmp_ret[0]); binaries += filter_collected_artifacts(tmp_ret[1]); hiddenimports += filter_hiddenimports(tmp_ret[2])
 hiddenimports += ['numpy']
 
 
