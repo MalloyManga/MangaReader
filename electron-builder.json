@@ -7,7 +7,9 @@
   "files": [
     "electron/**/*",
     "package.json",
-    ".output/public/**/*"
+    ".output/public/**/*",
+    "!node_modules/@napi-rs/canvas/**/*",
+    "!node_modules/@napi-rs/canvas-win32-x64-msvc/**/*"
   ],
   "extraResources": [
     {
