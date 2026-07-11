@@ -1,7 +1,7 @@
 import type { ImageItem } from '~/types/interface.js'
 import JSZip from 'jszip'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-type PDFJS = typeof import("e:/VS code/MangaReader/MangaReader/node_modules/pdfjs-dist/types/src/pdf")
+type PDFJS = typeof import('pdfjs-dist')
 const { showToast } = useToast()
 
 export const useFileProcessor = () => {
