@@ -8,6 +8,17 @@ import os
 datas = []
 binaries = []
 hiddenimports = []
+excludes = [
+    'numpy.testing',
+    'numpy.tests',
+    'numpy.f2py.tests',
+    'numpy._pyinstaller',
+    'torch.utils.tensorboard',
+    'torchaudio',
+    'transformers.commands',
+    'transformers.onnx',
+    'transformers.testing_utils',
+]
 
 # 手动处理 torch 依赖 (避免 collect_all 卡死，同时解决 DLL 缺失)
 torch_root = os.path.dirname(torch.__file__)
@@ -156,7 +167,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
