@@ -15,6 +15,8 @@ excludes = [
     'numpy._pyinstaller',
     'torch.utils.tensorboard',
     'torchaudio',
+    'sudachidict_core',
+    'sudachidict_core.resources',
     'transformers.commands',
     'transformers.onnx',
     'transformers.testing_utils',
@@ -39,6 +41,8 @@ def filter_collected_artifacts(entries):
 def filter_hiddenimports(imports):
     filtered = []
     for name in imports:
+        if name.startswith('sudachidict_core'):
+            continue
         if name.startswith(('numpy.tests', 'numpy.testing', 'numpy.f2py.tests')):
             continue
         if name.startswith('numpy._pyinstaller'):
@@ -48,6 +52,16 @@ def filter_hiddenimports(imports):
         if name.endswith(('_tests', '.conftest', '.setup')):
             continue
         filtered.append(name)
+    return filtered
+
+
+def filter_sudachidict_artifacts(entries):
+    filtered = []
+    for entry in entries:
+        entry_text = ' '.join(str(part).replace('\\', '/').lower() for part in entry)
+        if 'sudachidict_core' in entry_text or 'sudachidict-core' in entry_text:
+            continue
+        filtered.append(entry)
     return filtered
 
 # 手动处理 torch 依赖 (避免 collect_all 卡死，同时解决 DLL 缺失)
@@ -89,10 +103,12 @@ else:
 
 # 收集所有必要的库 (防止漏掉)
 tmp_ret = collect_all('sudachipy')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += filter_sudachidict_artifacts(tmp_ret[0])
+binaries += filter_sudachidict_artifacts(tmp_ret[1])
+hiddenimports += filter_hiddenimports(tmp_ret[2])
 
-tmp_ret = collect_all('sudachidict_core')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# SudachiDict-core is downloaded on demand into models/dictionary/sudachi.
+# Do not bundle sudachidict_core/resources/system.dic in the packaged backend.
 
 tmp_ret = collect_all('manga_ocr')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
@@ -155,6 +171,10 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
+a.datas = filter_sudachidict_artifacts(a.datas)
+a.binaries = filter_sudachidict_artifacts(a.binaries)
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
