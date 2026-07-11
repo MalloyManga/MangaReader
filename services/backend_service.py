@@ -380,8 +380,9 @@ def main():
                     model_id = request.get("model_id") or request.get("modelId")
                     selected_model_id, selected_translator = select_translator(model_id)
                     selected_translator.download_model()
-                    # 下载完顺便初始化一下，确保可用
-                    selected_translator.initialize()
+                    # 下载只校验文件完整性，翻译时再懒加载模型
+                    if not selected_translator.check_model_exists():
+                        raise Exception("MODEL_INSTALL_FAILED")
                     send_response(
                         {
                             "id": req_id,

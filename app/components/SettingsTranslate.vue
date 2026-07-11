@@ -114,7 +114,7 @@ onUnmounted(() => {
             </p>
         </div>
 
-        <div class="flex-1 space-y-4 overflow-y-auto pr-1">
+        <div class="model-list-scroll flex-1 space-y-4 overflow-y-auto pr-1">
             <div v-for="item in models" :key="item.id"
                 class="bg-white dark:bg-manga-900 border rounded-lg p-5 shadow-sm transition-all hover:shadow-md"
                 :class="selectedModel?.id === item.id
@@ -218,3 +218,14 @@ onUnmounted(() => {
             @confirm="confirmDelete" />
     </div>
 </template>
+
+<style scoped>
+.model-list-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.model-list-scroll::-webkit-scrollbar {
+    display: none;
+}
+</style>
