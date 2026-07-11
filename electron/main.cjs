@@ -401,11 +401,11 @@ ipcMain.handle('ocr:tokenize', async (_event, text) => {
 })
 
 // 翻译请求
-ipcMain.handle('ocr:translate', async (_event, text) => {
+ipcMain.handle('ocr:translate', async (_event, text, modelId) => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.translate(text)
-        return { success: true, translation: result.translation }
+        const result = await backendService.translate(text, modelId)
+        return { success: true, translation: result.translation, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }
@@ -413,34 +413,44 @@ ipcMain.handle('ocr:translate', async (_event, text) => {
 // -------------------------------------------
 
 // 模型相关
-// 检查模型状态
-ipcMain.handle('model:check', async () => {
+ipcMain.handle('model:list', async () => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.checkModel()
-        return { success: true, exists: result.exists }
+        const result = await backendService.listTranslationModels()
+        return { success: true, ...result }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+// 检查模型状态
+ipcMain.handle('model:check', async (_event, modelId) => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        const result = await backendService.checkModel(modelId)
+        return { success: true, exists: result.exists, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }
 })
 
 // 下载模型
-ipcMain.handle('model:download', async () => {
+ipcMain.handle('model:download', async (_event, modelId) => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.downloadModel()
-        return { success: true }
+        const result = await backendService.downloadModel(modelId)
+        return { success: true, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }
 })
 
 // 删除模型
-ipcMain.handle('model:delete', async () => {
+ipcMain.handle('model:delete', async (_event, modelId) => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.deleteModel()
-        return { success: true }
+        const result = await backendService.deleteModel(modelId)
+        return { success: true, modelId: result.modelId }
     } catch (e) {
         return { success: false, error: e.message }
     }

@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     tokenize: (text) => ipcRenderer.invoke('ocr:tokenize', text),
 
     // 翻译
-    translate: (text) => ipcRenderer.invoke('ocr:translate', text),
+    translate: (text, modelId) => ipcRenderer.invoke('ocr:translate', text, modelId),
 
     // Library System
     getLibrary: () => ipcRenderer.invoke('library:get-all'),
@@ -56,9 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // 模型API管理
-    checkModel: () => ipcRenderer.invoke('model:check'),
-    downloadModel: () => ipcRenderer.invoke('model:download'),
-    deleteModel: () => ipcRenderer.invoke('model:delete'),
+    listTranslationModels: () => ipcRenderer.invoke('model:list'),
+    checkModel: (modelId) => ipcRenderer.invoke('model:check', modelId),
+    downloadModel: (modelId) => ipcRenderer.invoke('model:download', modelId),
+    deleteModel: (modelId) => ipcRenderer.invoke('model:delete', modelId),
     checkDictionary: () => ipcRenderer.invoke('dictionary:check'),
     downloadDictionary: () => ipcRenderer.invoke('dictionary:download'),
     deleteDictionary: () => ipcRenderer.invoke('dictionary:delete'),

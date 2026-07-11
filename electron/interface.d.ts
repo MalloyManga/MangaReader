@@ -54,6 +54,14 @@ export interface Book {
     lastReadTime: number
 }
 
+export interface TranslationModel {
+    id: string
+    name: string
+    size: string
+    description: string
+    engine: string
+}
+
 export interface IElectronAPI {
     backendStatus: (callback) => () => void
 
@@ -101,13 +109,20 @@ export interface IElectronAPI {
     updateShortcuts: (shortcuts: Record<string, string>) => Promise<boolean>
     onShortcutTriggered: (callback: (action: string) => void) => () => void
 
-    checkModel: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
-    downloadModel: () => Promise<{ success: boolean; error?: string }>
-    deleteModel: () => Promise<{ success: boolean; error?: string }>
+    listTranslationModels: () => Promise<{
+        success: boolean
+        models?: TranslationModel[]
+        defaultModelId?: string
+        currentModelId?: string
+        error?: string
+    }>
+    checkModel: (modelId?: string) => Promise<{ success: boolean; exists?: boolean; modelId?: string; error?: string }>
+    downloadModel: (modelId?: string) => Promise<{ success: boolean; modelId?: string; error?: string }>
+    deleteModel: (modelId?: string) => Promise<{ success: boolean; modelId?: string; error?: string }>
     checkDictionary: () => Promise<{ success: boolean; exists?: boolean; error?: string }>
     downloadDictionary: () => Promise<{ success: boolean; error?: string }>
     deleteDictionary: () => Promise<{ success: boolean; error?: string }>
-    translate: (text: string) => Promise<{ success: boolean; translation?: string; error?: string }>
+    translate: (text: string, modelId?: string) => Promise<{ success: boolean; translation?: string; modelId?: string; error?: string }>
 
     // 后端状态检查
     checkBackendReady: () => Promise<boolean>
