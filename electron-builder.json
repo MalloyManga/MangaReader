@@ -7,8 +7,7 @@
   "files": [
     "electron/**/*",
     "package.json",
-    ".output/public/**/*",
-    "public/**/*"
+    ".output/public/**/*"
   ],
   "extraResources": [
     {

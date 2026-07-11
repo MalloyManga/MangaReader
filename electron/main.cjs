@@ -96,13 +96,17 @@ async function initStore() {
 }
 
 function createMainWindow() {
+    const iconPath = isDev
+        ? path.join(__dirname, '../public/MangaReaderLogo.ico')
+        : path.join(__dirname, '../.output/public/MangaReaderLogo.ico')
+
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         minWidth: 1200,
         minHeight: 800,
         frame: false,
-        icon: path.join(__dirname, '../public/MangaReaderLogo.ico'),
+        icon: iconPath,
         webPreferences: {
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js')
