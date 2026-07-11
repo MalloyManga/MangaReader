@@ -1,11 +1,11 @@
 import os
 import shutil
 import threading
-
-from huggingface_hub import snapshot_download
+import urllib.parse
+import urllib.request
 
 from .base import BaseTranslator
-from ..utils import log_message, patch_tqdm
+from ..utils import log_message, send_response
 
 
 class OpusMtJaZhEngine(BaseTranslator):
@@ -14,7 +14,21 @@ class OpusMtJaZhEngine(BaseTranslator):
         super().__init__(path)
 
         self.repo_id = "shun89/opus-mt-ja-zh"
-        self.required_files = [
+        self.download_bases = [
+            "https://hf-mirror.com",
+            "https://huggingface.co",
+        ]
+        self.required_files = {
+            "config.json": 1640,
+            "generation_config.json": 258,
+            "pytorch_model.bin": 310022978,
+            "source.spm": 1309375,
+            "special_tokens_map.json": 72,
+            "target.spm": 1309375,
+            "tokenizer_config.json": 42,
+            "vocab.json": 1803912,
+        }
+        self.integrity_files = [
             "config.json",
             "pytorch_model.bin",
             "source.spm",
@@ -34,7 +48,7 @@ class OpusMtJaZhEngine(BaseTranslator):
     def check_model_exists(self):
         if not os.path.isdir(self.model_dir):
             return False
-        for filename in self.required_files:
+        for filename in self.integrity_files:
             path = os.path.join(self.model_dir, filename)
             if not os.path.exists(path) or os.path.getsize(path) == 0:
                 log_message(f"[INFO] OPUS model missing file: {filename}")
@@ -53,22 +67,118 @@ class OpusMtJaZhEngine(BaseTranslator):
         log_message(f"   Repo: {self.repo_id}")
         os.makedirs(self.model_dir, exist_ok=True)
 
-        with patch_tqdm(
-            msg_type="download_progress", msg_key="filename", default_msg="opus-mt-ja-zh"
-        ):
-            snapshot_download(
-                repo_id=self.repo_id,
-                local_dir=self.model_dir,
-                allow_patterns=self.required_files
-                + ["generation_config.json", "special_tokens_map.json"],
-                token=False,
-            )
+        total_bytes = sum(self.required_files.values())
+        downloaded_bytes = 0
+        last_percent_step = -1
+
+        for filename, expected_size in self.required_files.items():
+            target_path = os.path.join(self.model_dir, filename)
+            if os.path.exists(target_path) and os.path.getsize(target_path) >= expected_size:
+                downloaded_bytes += expected_size
+                continue
+
+            file_downloaded = False
+            for base_url in self.download_bases:
+                for attempt in range(1, 4):
+                    try:
+                        downloaded = self._download_file(
+                            base_url,
+                            filename,
+                            target_path,
+                            expected_size,
+                            downloaded_bytes,
+                            total_bytes,
+                            last_percent_step,
+                        )
+                        downloaded_bytes += downloaded
+                        last_percent_step = int(downloaded_bytes / total_bytes * 200)
+                        file_downloaded = True
+                        break
+                    except Exception as exc:
+                        log_message(
+                            f"[WARN] OPUS file download failed from {base_url} "
+                            f"(attempt {attempt}/3): {exc}"
+                        )
+                if file_downloaded:
+                    break
+
+            if not file_downloaded:
+                raise Exception(f"MODEL_DOWNLOAD_FAILED: {filename}")
 
         if not self.check_model_exists():
             raise Exception("MODEL_INSTALL_FAILED")
 
+        send_response(
+            {
+                "type": "download_progress",
+                "percent": 100,
+                "filename": "opus-mt-ja-zh",
+            }
+        )
         log_message("[INFO] OPUS-MT ja-zh download complete.")
         return True
+
+    def _download_file(
+        self,
+        base_url,
+        filename,
+        target_path,
+        expected_size,
+        previous_bytes,
+        total_bytes,
+        last_percent_step,
+    ):
+        quoted_repo = "/".join(urllib.parse.quote(part) for part in self.repo_id.split("/"))
+        quoted_filename = urllib.parse.quote(filename)
+        url = f"{base_url}/{quoted_repo}/resolve/main/{quoted_filename}"
+        tmp_path = target_path + ".tmp"
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "MangaReader/1.3 OPUSModelDownloader",
+                "Connection": "close",
+            },
+        )
+        downloaded = 0
+
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                with open(tmp_path, "wb") as output:
+                    while True:
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        downloaded += len(chunk)
+
+                        percent = round(
+                            (previous_bytes + downloaded) / total_bytes * 100, 1
+                        )
+                        step = int(percent * 2)
+                        if step > last_percent_step:
+                            last_percent_step = step
+                            send_response(
+                                {
+                                    "type": "download_progress",
+                                    "percent": min(percent, 99.0),
+                                    "filename": filename,
+                                }
+                            )
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
+
+        if downloaded < expected_size:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise Exception(f"incomplete download: {downloaded}/{expected_size} bytes")
+
+        os.replace(tmp_path, target_path)
+        return downloaded
 
     def initialize(self):
         if not self.check_model_exists():
