@@ -1,4 +1,5 @@
 from .opus_engine import OpusMtJaZhEngine
+from .qwen3_engine import Qwen3GgufEngine
 from .sakura_engine import SakuraEngine
 
 TRANSLATOR_MODELS = [
@@ -10,6 +11,15 @@ TRANSLATOR_MODELS = [
         "description": "轻小说/漫画向本地 GGUF 翻译模型",
         "engine": "sakura",
         "adapted_types": ["manga", "light_novel", "galgame"],
+    },
+    {
+        "id": "qwen3-4b-instruct-2507-q4-k-m",
+        "name": "Qwen3-4B-Instruct-2507 Q4_K_M",
+        "size": "约 2.5 GB",
+        "size_bytes": 2497280736,
+        "description": "通用指令日译中 GGUF 模型，质量更高但下载和运行占用更大",
+        "engine": "qwen3-gguf",
+        "adapted_types": ["manga", "general", "dialogue"],
     },
     {
         "id": "opus-mt-ja-zh",
@@ -37,6 +47,9 @@ _ALIASES = {
     "sakura-1.5b": "sakura-1.5b",
     "opus": "opus-mt-ja-zh",
     "opus-mt-ja-zh": "opus-mt-ja-zh",
+    "qwen3": "qwen3-4b-instruct-2507-q4-k-m",
+    "qwen3-4b": "qwen3-4b-instruct-2507-q4-k-m",
+    "qwen3-4b-instruct-2507-q4-k-m": "qwen3-4b-instruct-2507-q4-k-m",
 }
 
 
@@ -62,4 +75,6 @@ def get_translator_engine(model_id, model_root_dir):
         return SakuraEngine(model_root_dir)
     if normalized == "opus-mt-ja-zh":
         return OpusMtJaZhEngine(model_root_dir)
+    if normalized == "qwen3-4b-instruct-2507-q4-k-m":
+        return Qwen3GgufEngine(model_root_dir)
     raise ValueError(f"Unknown translator model: {model_id}")
