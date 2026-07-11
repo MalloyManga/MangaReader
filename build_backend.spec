@@ -17,13 +17,8 @@ torch_lib = os.path.join(torch_root, 'lib')
 if os.path.exists(torch_lib):
     for file in os.listdir(torch_lib):
         if file.endswith('.dll'):
-            # 方案 A: 保持结构 (为了 torch 内部路径查找)
+            # 保持 PyTorch 标准目录结构，避免同一 DLL 被复制到三个位置。
             binaries.append((os.path.join(torch_lib, file), 'torch/lib'))
-            # 方案 B: 暴力复制到根目录 (为了解决 WinError 1114)
-            binaries.append((os.path.join(torch_lib, file), '.'))
-            
-            # 方案 C: 复制到 torch/bin (某些版本的 torch 会在这里找)
-            binaries.append((os.path.join(torch_lib, file), 'torch/bin'))
 
 # 2. 额外检查 torch 根目录下的 DLL (如 libiomp5md.dll 可能在根目录)
 for file in os.listdir(torch_root):
