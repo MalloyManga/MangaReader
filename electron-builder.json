@@ -1,6 +1,12 @@
 {
   "appId": "com.malloy.mangareader",
   "productName": "MangaReader",
+  "electronLanguages": [
+    "zh-CN",
+    "zh-TW",
+    "en-US",
+    "ja"
+  ],
   "directories": {
     "output": "dist_electron"
   },
