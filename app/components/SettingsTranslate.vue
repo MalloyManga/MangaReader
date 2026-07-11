@@ -17,6 +17,10 @@ let cleanupModelProgress: (() => void) | null = null
 
 const handleDownload = async (model: any) => {
     if (model.status === 'downloading') return
+    if (isAnyModelDownloading.value) {
+        showToast('请等待当前模型下载完成后再下载其他模型')
+        return
+    }
     model.status = 'downloading'
     model.progress = 0
 
@@ -165,8 +169,8 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <button v-else @click="handleDownload(item)"
-                            class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap">
+                        <button v-else @click="handleDownload(item)" :disabled="isAnyModelDownloading"
+                            class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-manga-900 dark:disabled:hover:bg-manga-700">
                             <IconDownload class="size-4" />
                             下载
                         </button>
