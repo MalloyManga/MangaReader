@@ -8,7 +8,8 @@
   "private": true,
   "electronMirror": "https://npmmirror.com/mirrors/electron/",
   "scripts": {
-    "build": "nuxt build",
+    "build": "nuxt generate && node fix-paths.cjs",
+    "build:nuxt": "nuxt build",
     "dev": "nuxt prepare && nuxt dev",
     "generate": "nuxt generate && node fix-paths.cjs",
     "preview": "nuxt preview",
@@ -16,7 +17,7 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "build:win": "electron-builder --win"
+    "build:win": "npm run generate && electron-builder --win"
   },
   "config": {
     "forge": "./forge.config.cjs"
