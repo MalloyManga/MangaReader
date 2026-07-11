@@ -127,10 +127,6 @@ onUnmounted(() => {
                                 class="px-2 py-0.5 rounded text-[10px] font-bold bg-manga-100 dark:bg-manga-800 text-manga-600 dark:text-manga-400">
                                 {{ item.size }}
                             </span>
-                            <span v-if="selectedModel?.id === item.id"
-                                class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                                当前使用
-                            </span>
                         </div>
                         <p class="text-sm text-manga-500 mt-1">
                             {{ item.description }}
@@ -142,15 +138,14 @@ onUnmounted(() => {
                             检查中...
                         </div>
 
-                        <div v-else-if="item.status === 'downloaded'" class="flex items-center gap-2">
+                        <div v-else-if="item.status === 'downloaded'" class="flex items-center justify-end gap-2 min-w-28">
                             <button v-if="selectedModel?.id !== item.id" @click="handleUseModel(item)"
-                                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer">
+                                class="w-20 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer">
                                 使用
                             </button>
                             <span v-else
-                                class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
-                                <IconSuccess class="size-4" />
-                                已就绪
+                                class="w-20 text-center px-2 py-1.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                                当前使用
                             </span>
                             <button @click="deleteTarget = item" title="删除模型"
                                 :disabled="isAnyModelDownloading"
