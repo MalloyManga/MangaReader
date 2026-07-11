@@ -6,17 +6,25 @@ class BaseTranslator(ABC):
         self.model_dir = model_dir
         self.is_ready = False
 
+    def unload(self):
+        self.is_ready = False
+
     @abstractmethod
     def initialize(self):
-        """初始化/加载模型"""
         pass
 
     @abstractmethod
     def translate(self, text):
-        """执行翻译"""
         pass
 
     @abstractmethod
     def download_model(self, progress_callback=None):
-        """下载模型文件"""
+        pass
+
+    @abstractmethod
+    def check_model_exists(self):
+        pass
+
+    @abstractmethod
+    def delete_model(self):
         pass

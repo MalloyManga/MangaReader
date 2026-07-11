@@ -41,7 +41,12 @@ except AttributeError:
 
 # 导入业务模块
 from modules.utils import log_message, send_response
-from modules.translator import get_translator_engine
+from modules.translator import (
+    DEFAULT_TRANSLATOR_ID,
+    get_translator_engine,
+    list_translator_models,
+    normalize_translator_id,
+)
 
 # --- Helper Functions for Cover Extraction ---
 
@@ -167,17 +172,33 @@ def main():
     if not os.path.exists(translation_root):
         os.makedirs(translation_root, exist_ok=True)
 
-    # [CRITICAL] Initialize Translator (Sakura/llama_cpp) FIRST
-    # This is to ensure the C++ backend initializes before Torch pollutes the process space.
+    # [CRITICAL] Instantiate the default translator first. For llama.cpp engines this keeps
+    # the old load order without initializing model weights at startup.
     send_response({"type": "init_status", "message": "正在预加载翻译引擎组件..."})
+    translators = {}
+    current_translator_id = DEFAULT_TRANSLATOR_ID
     translator = None
+
+    def get_or_create_translator(model_id=None):
+        normalized_id = normalize_translator_id(model_id)
+        if normalized_id not in translators:
+            translators[normalized_id] = get_translator_engine(
+                normalized_id, translation_root
+            )
+        return normalized_id, translators[normalized_id]
+
+    def select_translator(model_id=None):
+        nonlocal current_translator_id, translator
+        normalized_id, engine = get_or_create_translator(model_id)
+        if translator is not None and translator is not engine and translator.is_ready:
+            translator.unload()
+        current_translator_id = normalized_id
+        translator = engine
+        return normalized_id, engine
+
     try:
-        log_message(f"Init Translator (Sakura) root: {translation_root}")
-        # 强制指定使用 sakura
-        # 仅实例化对象，不进行任何底层 C++ 初始化
-        # 真正的初始化 (load_model) 会在 check_model_exists() 返回 True 后，
-        # 在 translate 命令中按需触发。
-        translator = get_translator_engine("sakura", translation_root)
+        log_message(f"Init Translator ({DEFAULT_TRANSLATOR_ID}) root: {translation_root}")
+        select_translator(DEFAULT_TRANSLATOR_ID)
 
     except Exception as e:
         log_message(f"[WARNING] Translator Pre-init Failed (Non-fatal): {e}")
@@ -219,7 +240,7 @@ def main():
     # [MODIFIED] Translator is already instantiated above for pre-loading.
     # We just need to ensure it's assigned to the variable we use later.
     if translator is None:
-        translator = get_translator_engine("sakura", translation_root)
+        select_translator(DEFAULT_TRANSLATOR_ID)
 
     # 准备就绪
     send_response({"type": "init_status", "message": "资源加载完毕，即将进入..."})
@@ -283,32 +304,39 @@ def main():
             elif command == "translate":
                 try:
                     text = request.get("text", "")
+                    model_id = request.get("model_id") or request.get("modelId")
+                    selected_model_id, selected_translator = select_translator(model_id)
                     log_message(
-                        f"[DEBUG] Processing translate request for: {repr(text)[:50]}..."
+                        f"[DEBUG] Processing translate request with {selected_model_id}: {repr(text)[:50]}..."
                     )
 
                     # 1. 检查是否已加载
-                    if not translator.is_ready:
+                    if not selected_translator.is_ready:
                         log_message(
                             "[DEBUG] Translator not ready. Checking model existence..."
                         )
                         # 2. 检查物理文件是否存在
-                        if translator.check_model_exists():
+                        if selected_translator.check_model_exists():
                             # 存在则加载
                             log_message(
                                 "[DEBUG] Model exists. Initializing translator..."
                             )
-                            translator.initialize()
+                            selected_translator.initialize()
                         else:
                             log_message("[ERROR] Model not found.")
                             raise Exception("MODEL_NOT_FOUND")
 
                     # 3. 执行翻译
                     log_message("[DEBUG] Executing translator.translate()...")
-                    result = translator.translate(text)
+                    result = selected_translator.translate(text)
                     log_message(f"[DEBUG] Translation result: {repr(result)[:50]}...")
                     send_response(
-                        {"id": req_id, "success": True, "translation": result}
+                        {
+                            "id": req_id,
+                            "success": True,
+                            "translation": result,
+                            "model_id": selected_model_id,
+                        }
                     )
 
                 except Exception as e:
@@ -321,25 +349,61 @@ def main():
 
             # --- Model Management (New) ---
 
+            elif command == "list_translation_models":
+                send_response(
+                    {
+                        "id": req_id,
+                        "success": True,
+                        "models": list_translator_models(),
+                        "default_model_id": DEFAULT_TRANSLATOR_ID,
+                        "current_model_id": current_translator_id,
+                    }
+                )
+
             # 1. 检查模型状态
             elif command == "check_model":
-                exists = translator.check_model_exists()
-                send_response({"id": req_id, "success": True, "exists": exists})
+                model_id = request.get("model_id") or request.get("modelId")
+                selected_model_id, selected_translator = select_translator(model_id)
+                exists = selected_translator.check_model_exists()
+                send_response(
+                    {
+                        "id": req_id,
+                        "success": True,
+                        "exists": exists,
+                        "model_id": selected_model_id,
+                    }
+                )
 
             # 2. 下载模型
             elif command == "download_model":
                 try:
-                    translator.download_model()
+                    model_id = request.get("model_id") or request.get("modelId")
+                    selected_model_id, selected_translator = select_translator(model_id)
+                    selected_translator.download_model()
                     # 下载完顺便初始化一下，确保可用
-                    translator.initialize()
-                    send_response({"id": req_id, "success": True})
+                    selected_translator.initialize()
+                    send_response(
+                        {
+                            "id": req_id,
+                            "success": True,
+                            "model_id": selected_model_id,
+                        }
+                    )
                 except Exception as e:
                     send_response({"id": req_id, "success": False, "error": str(e)})
 
             # 3. 删除模型
             elif command == "delete_model":
-                success = translator.delete_model()
-                send_response({"id": req_id, "success": success})
+                model_id = request.get("model_id") or request.get("modelId")
+                selected_model_id, selected_translator = select_translator(model_id)
+                success = selected_translator.delete_model()
+                send_response(
+                    {
+                        "id": req_id,
+                        "success": success,
+                        "model_id": selected_model_id,
+                    }
+                )
 
             # 4. 提取封面 (New)
             elif command == "check_dictionary":
