@@ -72,7 +72,7 @@ class BackendService extends EventEmitter {
                 PYTHONUNBUFFERED: '1', // 关闭py的流缓冲
                 PYTHONIOENCODING: 'utf-8',
                 // 设置 HF 镜像
-                HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com'
+                HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://huggingface.co'
             }
         })
 
