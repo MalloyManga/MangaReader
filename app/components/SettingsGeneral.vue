@@ -3,6 +3,7 @@
 const { settings, saveSettings } = useSettings()
 const { showToast } = useToast()
 const { model, checkModelStatus } = useModelStatus()
+const { dictionary, checkDictionaryStatus } = useDictionaryStatus()
 
 const themeOptions: Record<ThemeOption, {
     icon: string,
@@ -14,6 +15,9 @@ const themeOptions: Record<ThemeOption, {
 }
 
 const isRecording = ref(false)
+const showDeleteDictionaryModal = ref(false)
+const isDeletingDictionary = ref(false)
+let cleanupDictionaryProgress: (() => void) | null = null
 // 记录当前正在录制哪个快捷键
 const recordingTarget = ref<'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut' | null>(null)
 
@@ -131,8 +135,64 @@ const stopRecording = () => {
     // 移除 ref 操作，依赖原生 focus/blur 行为即可
 }
 
+const handleDownloadDictionary = async () => {
+    if (dictionary.status === 'downloading') return
+    dictionary.status = 'downloading'
+    dictionary.progress = 0
+
+    try {
+        const res = await window.electronAPI.downloadDictionary()
+
+        if (res.success) {
+            dictionary.progress = 100
+            dictionary.status = 'downloaded'
+        } else {
+            showToast(`下载失败: ${res.error}`)
+            dictionary.status = 'not_downloaded'
+        }
+    } catch (e) {
+        dictionary.status = 'not_downloaded'
+        showToast('下载出错')
+    }
+}
+
+const confirmDeleteDictionary = async () => {
+    isDeletingDictionary.value = true
+    try {
+        const res = await window.electronAPI.deleteDictionary()
+        if (res.success) {
+            dictionary.status = 'not_downloaded'
+            dictionary.progress = 0
+            showDeleteDictionaryModal.value = false
+        } else {
+            showToast('删除失败')
+        }
+    } catch (e) {
+        showToast('删除出错')
+    } finally {
+        isDeletingDictionary.value = false
+    }
+}
+
 onMounted(() => {
     checkModelStatus()
+    checkDictionaryStatus()
+
+    if (window.electronAPI?.onDictionaryDownloadProgress) {
+        cleanupDictionaryProgress = window.electronAPI.onDictionaryDownloadProgress((percent: number) => {
+            if (dictionary.status === 'downloading') {
+                dictionary.progress = percent
+
+                if (percent >= 100) {
+                    dictionary.status = 'downloaded'
+                }
+            }
+        })
+    }
+})
+
+onUnmounted(() => {
+    cleanupDictionaryProgress?.()
 })
 </script>
 
@@ -239,6 +299,53 @@ onMounted(() => {
                         class="w-11 h-6 bg-manga-200 peer-focus:outline-none rounded-full peer dark:bg-manga-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600">
                     </div>
                 </label>
+            </div>
+
+            <div
+                class="flex items-center justify-between p-3 rounded-lg border border-manga-100 dark:border-manga-700 bg-white dark:bg-manga-900">
+                <div class="flex items-center gap-2 min-w-0">
+                    <div class="font-medium text-sm text-manga-900 dark:text-manga-200 truncate">
+                        {{ dictionary.name }}
+                    </div>
+                    <span
+                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-manga-100 dark:bg-manga-800 text-manga-600 dark:text-manga-400 shrink-0">
+                        {{ dictionary.size }}
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-3 shrink-0">
+                    <div v-if="dictionary.status === 'checking'" class="text-xs text-manga-400">
+                        检查中...
+                    </div>
+
+                    <div v-else-if="dictionary.status === 'downloaded'" class="flex items-center gap-1">
+                        <span class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                            <IconSuccess class="size-4" />
+                            已就绪
+                        </span>
+                        <button @click="showDeleteDictionaryModal = true" title="删除词典"
+                            class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer">
+                            <IconTresh class="size-5" />
+                        </button>
+                    </div>
+
+                    <div v-else-if="dictionary.status === 'downloading'" class="w-28">
+                        <div class="flex justify-between text-xs text-manga-500 mb-1">
+                            <span>下载中</span>
+                            <span>{{ Math.round(dictionary.progress) }}%</span>
+                        </div>
+                        <div class="w-full bg-manga-100 dark:bg-manga-700 rounded-full h-1.5 overflow-hidden">
+                            <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                                :style="{ width: dictionary.progress + '%' }"></div>
+                        </div>
+                    </div>
+
+                    <button v-else @click="handleDownloadDictionary"
+                        class="flex items-center gap-1.5 px-3 py-1.5 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all cursor-pointer whitespace-nowrap">
+                        <IconDownload class="size-4" />
+                        下载
+                    </button>
+                </div>
             </div>
 
             <div
@@ -364,5 +471,10 @@ onMounted(() => {
                 </button>
             </div>
         </div>
+
+        <ConfirmModal :show="showDeleteDictionaryModal" title="删除分词词典？"
+            :content="`确定要删除 ${dictionary.name} 吗？这将释放约 ${dictionary.size} 的磁盘空间。`" confirm-text="确认删除"
+            :is-danger="true" :loading="isDeletingDictionary" @cancel="showDeleteDictionaryModal = false"
+            @confirm="confirmDeleteDictionary" />
     </div>
 </template>
