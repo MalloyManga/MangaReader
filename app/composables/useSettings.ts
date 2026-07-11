@@ -6,6 +6,7 @@ export const useSettings = () => {
     const settings = useState('app-settings', () => ({
         readingMode: 'study' as 'study' | 'list' | 'immersive',
         enableTranslation: false, // 启用翻译
+        translationModelId: 'sakura-1.5b',
         enableTokenization: true, // 启用分词
         translationApiKey: '', // 翻译APIkey
         // 目前还没有开发该部分功能 后续需要添加防抖

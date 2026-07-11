@@ -12,6 +12,7 @@ export type ReadingMode = 'study' | 'list' | 'immersive'
 export interface AppSettings {
     readingMode: ReadingMode
     enableTranslation: boolean
+    translationModelId: string
     enableTokenization: boolean
     translationApiKey: string // 翻译APIkey
     // 目前还没有开发该部分功能 后续需要添加防抖

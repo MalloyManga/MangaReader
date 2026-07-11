@@ -85,6 +85,7 @@ async function initStore() {
         name: 'config', // 文件名为 config.json
         defaults: {     // 默认配置，防止首次运行为空
             enableTranslation: false,
+            translationModelId: 'sakura-1.5b',
             enableTokenization: true,
             translationApiKey: '',
             theme: 'system',

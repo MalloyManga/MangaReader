@@ -2,7 +2,7 @@
 <script setup lang="ts">
 const { settings, saveSettings } = useSettings()
 const { showToast } = useToast()
-const { model, checkModelStatus } = useModelStatus()
+const { selectedModel, checkAllModelStatus } = useModelStatus()
 const { dictionary, checkDictionaryStatus } = useDictionaryStatus()
 
 const themeOptions: Record<ThemeOption, {
@@ -45,7 +45,7 @@ const modeOptions = [
 // 判断模型是否不可用 study模式默认可用 (翻译)模型未下载时为不可用 true
 const isModeDisabled = (modeValue: string) => {
     if (modeValue === 'study') return false
-    return model.status !== 'downloaded'
+    return selectedModel.value?.status !== 'downloaded'
 }
 
 const handleModeClick = (modeValue: any) => {
@@ -175,7 +175,7 @@ const confirmDeleteDictionary = async () => {
 }
 
 onMounted(() => {
-    checkModelStatus()
+    checkAllModelStatus()
     checkDictionaryStatus()
 
     if (window.electronAPI?.onDictionaryDownloadProgress) {

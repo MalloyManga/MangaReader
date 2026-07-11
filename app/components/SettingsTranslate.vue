@@ -2,25 +2,30 @@
 <script setup lang="ts">
 const { openModelFolder } = useSettings()
 const { showToast } = useToast()
-const { model, checkModelStatus } = useModelStatus()
+const {
+    models,
+    selectedModel,
+    setSelectedModel,
+    checkAllModelStatus,
+    updateDownloadingProgress
+} = useModelStatus()
 
-const showDeleteModal = ref(false)
+const deleteTarget = ref<any | null>(null)
 const isDeleting = ref(false)
-const models = computed(() => [model])
 let cleanupModelProgress: (() => void) | null = null
 
-const handleDownload = async () => {
+const handleDownload = async (model: any) => {
     if (model.status === 'downloading') return
     model.status = 'downloading'
     model.progress = 0
 
     try {
-        const res = await window.electronAPI.downloadModel()
+        const res = await window.electronAPI.downloadModel(model.id)
 
-        // 下载完成后 (Python 那边函数返回了)
         if (res.success) {
             model.progress = 100
             model.status = 'downloaded'
+            setSelectedModel(model.id)
         } else {
             showToast(`下载失败: ${res.error}`)
             model.status = 'not_downloaded'
@@ -31,18 +36,31 @@ const handleDownload = async () => {
     }
 }
 
-const handleClickDelete = () => {
-    showDeleteModal.value = true
+const handleUseModel = (model: any) => {
+    if (model.status !== 'downloaded') {
+        showToast('请先下载该翻译模型')
+        return
+    }
+    setSelectedModel(model.id)
 }
 
 const confirmDelete = async () => {
+    if (!deleteTarget.value) return
     isDeleting.value = true
+
     try {
-        const res = await window.electronAPI.deleteModel()
+        const target = deleteTarget.value
+        const res = await window.electronAPI.deleteModel(target.id)
         if (res.success) {
-            model.status = 'not_downloaded'
-            model.progress = 0
-            showDeleteModal.value = false // 成功后关闭弹窗
+            target.status = 'not_downloaded'
+            target.progress = 0
+            if (selectedModel.value?.id === target.id) {
+                const fallback = models.find(item => item.id !== target.id && item.status === 'downloaded')
+                if (fallback) {
+                    setSelectedModel(fallback.id)
+                }
+            }
+            deleteTarget.value = null
         } else {
             showToast('删除失败')
         }
@@ -57,27 +75,17 @@ const openLink = (url: string) => {
     window.electronAPI.openLink(url)
 }
 
-// 组件挂载时检查状态
 onMounted(() => {
-    // 触发即忘不必等待
-    checkModelStatus()
+    checkAllModelStatus()
 
     if (!window.electronAPI) {
         console.warn('SettingsTranslate: Electron API not available')
         return
     }
-    // 保存清理函数，组件销毁时取消监听
+
     cleanupModelProgress = window.electronAPI.onDownloadProgress((percent: number) => {
-        // 只有当前状态是 downloading 时才更新
-        if (model.status === 'downloading') {
-            model.progress = percent
-
-            if (percent >= 100) {
-                model.status = 'downloaded'
-            }
-        }
+        updateDownloadingProgress(percent)
     })
-
 })
 
 onUnmounted(() => {
@@ -92,80 +100,79 @@ onUnmounted(() => {
                 翻译模型管理
             </h3>
             <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">
-                管理本地离线翻译模型
+                选择并管理本地离线翻译模型
             </p>
         </div>
 
-        <!-- 模型列表 -->
         <div class="flex-1 space-y-4 overflow-y-auto pr-1">
-            <div v-for="model in models" :key="model.id"
-                class="bg-white dark:bg-manga-900 border border-manga-200 dark:border-manga-700 rounded-lg p-5 shadow-sm transition-all hover:shadow-md hover:border-manga-300">
+            <div v-for="item in models" :key="item.id"
+                class="bg-white dark:bg-manga-900 border rounded-lg p-5 shadow-sm transition-all hover:shadow-md"
+                :class="selectedModel?.id === item.id
+                    ? 'border-blue-300 dark:border-blue-700'
+                    : 'border-manga-200 dark:border-manga-700 hover:border-manga-300'">
 
-                <div class="flex justify-between items-center">
-                    <!-- 左侧信息 -->
-                    <div>
-                        <div class="flex items-center gap-2">
+                <div class="flex justify-between items-center gap-4">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <h4 class="font-bold text-manga-900 dark:text-white text-base">
-                                {{ model.name }}
+                                {{ item.name }}
                             </h4>
                             <span
                                 class="px-2 py-0.5 rounded text-[10px] font-bold bg-manga-100 dark:bg-manga-800 text-manga-600 dark:text-manga-400">
-                                {{ model.size }}
+                                {{ item.size }}
+                            </span>
+                            <span v-if="selectedModel?.id === item.id"
+                                class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                                当前使用
                             </span>
                         </div>
                         <p class="text-sm text-manga-500 mt-1">
-                            {{ model.description }}
+                            {{ item.description }}
                         </p>
                     </div>
 
-                    <!-- 右侧操作区 -->
-                    <div class="flex items-center gap-3">
-
-                        <!-- 正在检查 -->
-                        <div v-if="model.status === 'checking'" class="text-xs text-manga-400">
+                    <div class="flex items-center gap-3 shrink-0">
+                        <div v-if="item.status === 'checking'" class="text-xs text-manga-400">
                             检查中...
                         </div>
 
-                        <!-- 已下载 -->
-                        <div v-else-if="model.status === 'downloaded'" class="flex items-center gap-1">
-                            <span
+                        <div v-else-if="item.status === 'downloaded'" class="flex items-center gap-2">
+                            <button v-if="selectedModel?.id !== item.id" @click="handleUseModel(item)"
+                                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer">
+                                使用
+                            </button>
+                            <span v-else
                                 class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                                 <IconSuccess class="size-4" />
                                 已就绪
                             </span>
-                            <button @click="handleClickDelete" title="删除模型"
+                            <button @click="deleteTarget = item" title="删除模型"
                                 class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer">
                                 <IconTresh class="size-5" />
                             </button>
                         </div>
 
-                        <!-- 下载中 -->
-                        <div v-else-if="model.status === 'downloading'" class="w-32">
+                        <div v-else-if="item.status === 'downloading'" class="w-32">
                             <div class="flex justify-between text-xs text-manga-500 mb-1">
                                 <span>下载中...</span>
-                                <span>{{ Math.round(model.progress) }}%</span>
+                                <span>{{ Math.round(item.progress) }}%</span>
                             </div>
                             <div class="w-full bg-manga-100 dark:bg-manga-700 rounded-full h-1.5 overflow-hidden">
                                 <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-                                    :style="{ width: model.progress + '%' }"></div>
+                                    :style="{ width: item.progress + '%' }"></div>
                             </div>
                         </div>
 
-                        <!-- 未下载 -->
-                        <div v-else>
-                            <button @click="handleDownload"
-                                class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer white-space-nowrap">
-                                <IconDownload class="size-4" />
-                                <span class="whitespace-nowrap">下载</span>
-                            </button>
-                        </div>
-
+                        <button v-else @click="handleDownload(item)"
+                            class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap">
+                            <IconDownload class="size-4" />
+                            下载
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 底部提示区 -->
         <div class="pt-5 border-t border-manga-100 dark:border-manga-700">
             <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-100 dark:border-blue-800/50">
                 <div class="flex items-start gap-3">
@@ -177,11 +184,7 @@ onUnmounted(() => {
                             下载遇到问题？
                         </h4>
                         <p class="text-xs text-manga-500 dark:text-blue-200/70 mt-1 leading-relaxed">
-                            如果自动下载失败，您可以手动下载模型文件，并将其放入对应目录。
-                            <br>
-                            <span class="opacity-75 text-[10px]">
-                                (注意文件名必须完全一致)
-                            </span>
+                            自动下载失败时，可以打开模型文件夹检查本地文件。
                         </p>
 
                         <div class="flex gap-3 mt-3">
@@ -203,9 +206,9 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <ConfirmModal :show="showDeleteModal" title="删除模型文件？"
-            :content="`确定要删除 ${model.name} 吗？这将释放约 ${model.size} 的磁盘空间。`" confirm-text="确认删除" :is-danger="true"
-            :loading="isDeleting" @cancel="showDeleteModal = false" @confirm="confirmDelete" />
-
+        <ConfirmModal :show="!!deleteTarget" title="删除模型文件？"
+            :content="`确定要删除 ${deleteTarget?.name || ''} 吗？这将释放约 ${deleteTarget?.size || ''} 的磁盘空间。`"
+            confirm-text="确认删除" :is-danger="true" :loading="isDeleting" @cancel="deleteTarget = null"
+            @confirm="confirmDelete" />
     </div>
 </template>

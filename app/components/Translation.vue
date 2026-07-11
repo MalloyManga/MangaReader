@@ -1,6 +1,7 @@
 <!-- app/components/Translation.vue -->
 <script setup lang="ts">
 const { showToast } = useToast()
+const { settings } = useSettings()
 
 interface Prop {
     originalText: string
@@ -28,7 +29,7 @@ const fetchTranslation = async (text: string) => {
         }
         console.log('[Frontend] [Translation.vue] Initiating translation request for:', text, 'Calling window.electronAPI.translate...')
 
-        const response = await window.electronAPI.translate(text)
+        const response = await window.electronAPI.translate(text, settings.value.translationModelId)
 
         if (response.success && response.translation) {
             translatedText.value = response.translation // 核心: 替换接收到的翻译文本
@@ -65,7 +66,7 @@ const fetchTranslation = async (text: string) => {
 }
 
 // 监听原文变化 (自动翻译 + 防抖)
-watch(() => originalText, (newText) => {
+watch([() => originalText, () => settings.value.translationModelId], ([newText]) => {
     // 1. 如果文本被清空，清空翻译
     if (!newText.trim()) {
         translatedText.value = null
