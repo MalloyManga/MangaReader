@@ -12,6 +12,7 @@ const {
 
 const deleteTarget = ref<any | null>(null)
 const isDeleting = ref(false)
+const isAnyModelDownloading = computed(() => models.some(item => item.status === 'downloading'))
 let cleanupModelProgress: (() => void) | null = null
 
 const handleDownload = async (model: any) => {
@@ -46,6 +47,11 @@ const handleUseModel = (model: any) => {
 
 const confirmDelete = async () => {
     if (!deleteTarget.value) return
+    if (isAnyModelDownloading.value) {
+        showToast('请等待当前模型下载完成后再删除')
+        deleteTarget.value = null
+        return
+    }
     isDeleting.value = true
 
     try {
@@ -147,7 +153,8 @@ onUnmounted(() => {
                                 已就绪
                             </span>
                             <button @click="deleteTarget = item" title="删除模型"
-                                class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer">
+                                :disabled="isAnyModelDownloading"
+                                class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-manga-400 disabled:hover:bg-transparent">
                                 <IconTresh class="size-5" />
                             </button>
                         </div>

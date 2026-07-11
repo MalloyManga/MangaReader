@@ -73,11 +73,15 @@ export function useModelStatus() {
         }
 
         const res = await window.electronAPI.listTranslationModels()
-        if (res.success && res.models?.length) {
-            res.models.forEach(ensureModel)
+        const models = res.models ?? []
+        if (res.success && models.length > 0) {
+            models.forEach(ensureModel)
 
             if (!settings.value.translationModelId) {
-                settings.value.translationModelId = res.defaultModelId || res.models[0].id
+                const defaultModelId = res.defaultModelId || models[0]?.id
+                if (defaultModelId) {
+                    settings.value.translationModelId = defaultModelId
+                }
             }
         }
 

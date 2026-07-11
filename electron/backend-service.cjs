@@ -178,20 +178,21 @@ class BackendService extends EventEmitter {
             if (success) {
                 if (models) {
                     resolve({
+                        success: true,
                         models,
                         defaultModelId: default_model_id,
                         currentModelId: current_model_id,
                     })
                 } else if (tokens) { // 分词
-                    resolve({ tokens: tokens })
+                    resolve({ success: true, tokens: tokens })
                 } else if (translation) { // 翻译
-                    resolve({ translation: translation, modelId: model_id })
+                    resolve({ success: true, translation: translation, modelId: model_id })
                 } else if (response.cover) { // 书籍封面缩略图
-                    resolve({ cover: response.cover })
+                    resolve({ success: true, cover: response.cover })
                 } else if (exists !== undefined) { // 模型存在
-                    resolve({ exists, modelId: model_id })
+                    resolve({ success: true, exists, modelId: model_id })
                 } else { // ocr文本
-                    resolve({ text: text, modelId: model_id })
+                    resolve({ success: true, text: text, modelId: model_id })
                 }
             } else {
                 reject(new Error(error))
