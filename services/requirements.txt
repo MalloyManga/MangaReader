@@ -1,7 +1,8 @@
 pillow>=10.0.0
+numpy==1.26.4
 manga-ocr
 sudachipy
 sudachidict_core
 huggingface_hub>=0.10.0
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-llama-cpp-python>=0.2.20
+llama-cpp-python==0.3.16

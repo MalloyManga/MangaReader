@@ -163,7 +163,7 @@ class Qwen3GgufEngine(BaseTranslator):
                 model_path=self.model_file_path,
                 n_ctx=2048,
                 n_threads=4,
-                verbose=True,
+                verbose=False,
                 n_gpu_layers=0,
             )
             self.is_ready = True
