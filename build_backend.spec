@@ -132,54 +132,6 @@ hiddenimports += ['torch']
 tmp_ret = collect_all('llama_cpp')
 datas += filter_collected_artifacts(tmp_ret[0]); binaries += filter_collected_artifacts(tmp_ret[1]); hiddenimports += tmp_ret[2]
 
-# [CRITICAL FIX] 遍历 site-packages/llama_cpp/lib 下的所有 DLL
-# 将它们强制复制到打包后的根目录 '.'，确保 backend_service.py 能在最外层找到它们
-import site
-site_packages = site.getsitepackages()[0]
-llama_lib_src = os.path.join(site_packages, 'llama_cpp', 'lib')
-
-if os.path.exists(llama_lib_src):
-    for file in os.listdir(llama_lib_src):
-        if file.endswith('.dll'):
-            print(f"Force collecting DLL to root: {file}")
-            binaries.append((os.path.join(llama_lib_src, file), '.')) # 复制到根目录
-            binaries.append((os.path.join(llama_lib_src, file), 'llama_cpp/lib')) # 同时也保持原始结构
-
-# [NEW] Copy all llama_cpp DLLs to root to ensure they are found
-import site
-site_packages = site.getsitepackages()[0]
-llama_lib = os.path.join(site_packages, 'llama_cpp', 'lib')
-if os.path.exists(llama_lib):
-    for file in os.listdir(llama_lib):
-        if file.endswith('.dll'):
-            binaries.append((os.path.join(llama_lib, file), '.'))
-            print(f"Copying {file} from llama_cpp/lib to root")
-
-
-# [CRITICAL FIX] Manually copy llama.dll to root and _internal to ensure visibility
-import glob
-llama_dll_path = None
-# Search in venv
-possible_paths = [
-    'services/venv/Lib/site-packages/llama_cpp/lib/llama.dll',
-    '../services/venv/Lib/site-packages/llama_cpp/lib/llama.dll',
-]
-for p in possible_paths:
-    if os.path.exists(p):
-        llama_dll_path = os.path.abspath(p)
-        break
-
-if llama_dll_path:
-    print(f"Found llama.dll at: {llama_dll_path}")
-    # Copy to root (for direct loading)
-    binaries.append((llama_dll_path, '.'))
-    # Copy to _internal (standard place)
-    # binaries.append((llama_dll_path, '_internal'))
-    # Copy to llama_cpp/lib (where python module expects it)
-    # binaries.append((llama_dll_path, 'llama_cpp/lib'))
-else:
-    print("WARNING: llama.dll not found in expected paths!")
-
 # 修复 numpy 缺失问题
 tmp_ret = collect_all('numpy')
 datas += filter_collected_artifacts(tmp_ret[0]); binaries += filter_collected_artifacts(tmp_ret[1]); hiddenimports += filter_hiddenimports(tmp_ret[2])
