@@ -39,6 +39,18 @@ const fallbackModels: TranslationModelState[] = [
         status: 'unknown',
         progress: 0,
         downloadStage: ''
+    },
+    {
+        id: 'qwen3-4b-instruct-2507-q4-k-m',
+        name: 'Qwen3-4B-Instruct-2507 Q4_K_M',
+        size: '约 2.5 GB',
+        size_bytes: 2497280736,
+        description: '通用指令日译中 GGUF 模型，质量更高但下载和运行占用更大',
+        engine: 'qwen3-gguf',
+        adapted_types: ['manga', 'general', 'dialogue'],
+        status: 'unknown',
+        progress: 0,
+        downloadStage: ''
     }
 ]
 

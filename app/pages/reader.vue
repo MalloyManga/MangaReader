@@ -132,12 +132,18 @@ watch(ocrBlocks, (newBlocks) => {
 
 const isOcrMode = ref(false)
 const isOcrRecognizing = ref(false)
+const isSettingsReady = ref(false)
 
 const handleOcrCapture = async (selectionData: { left: number, top: number, width: number, height: number }) => {
     isOcrMode.value = false
     isOcrRecognizing.value = true
 
     try {
+        if (!isSettingsReady.value) {
+            await initSettings()
+            isSettingsReady.value = true
+        }
+
         console.log('OCR 框选区域:', selectionData)
 
         // 查找 ImageUpload 组件内的图片元素
@@ -247,8 +253,11 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
             activeBlockId.value = newBlock.id
 
             // 直接调用翻译
+            console.log('[Reader] enableTranslation:', settings.value.enableTranslation, 'model:', settings.value.translationModelId)
             if (settings.value.enableTranslation) {
-                translateBlock(newBlock.id, result.text)
+                await translateBlock(newBlock.id, result.text)
+            } else {
+                console.log('[Reader] Translation skipped because enableTranslation is false.')
             }
         } else {
             console.error('❌ OCR 识别失败:', result.error)
@@ -413,7 +422,8 @@ const handlePaste = (event: ClipboardEvent) => {
 let cleanup: (() => void) | undefined = undefined
 
 onMounted(async () => {
-    initSettings()
+    await initSettings()
+    isSettingsReady.value = true
 
     const path = route.query.path as string
     const id = route.query.id as string

@@ -34,6 +34,7 @@ class BackendService extends EventEmitter {
         this.pendingRequests = new Map()
         this.requestId = 0
         this.responseBuffer = ''
+        this.lastProcessError = ''
     }
 
     start() {
@@ -80,6 +81,15 @@ class BackendService extends EventEmitter {
         this.process.stdout.setEncoding('utf-8')
         this.process.stderr.setEncoding('utf-8')
 
+        this.process.stdin.on('error', (err) => {
+            this.lastProcessError = err.message
+            console.error('[Backend Service] [ERROR] stdin error:', err)
+            this.emit('log', `[stdin error] ${err.message}`)
+            this.isReady = false
+            this.pendingRequests.forEach(r => r.reject(new Error(`Backend stdin error: ${err.message}`)))
+            this.pendingRequests.clear()
+        })
+
         // 监听日志 (stderr)
         this.process.stderr.on('data',/** @param {Buffer} data */(data) => {
             const msg = data.toString().trim() // toString() 将buffer编码之后转换
@@ -113,6 +123,7 @@ class BackendService extends EventEmitter {
         // 监听由nodejs底层引擎emit的事件
         this.process.on('error', (err) => {
             console.error('OCR Process Error:', err)
+            this.lastProcessError = err.message
             this.emit('log', `[Process Error] ${err.message}`)
         })
 
@@ -120,6 +131,7 @@ class BackendService extends EventEmitter {
             console.log(`OCR Process exited: ${code}`)
             this.emit('log', `[Process Exit] Code: ${code}`)
             this.isReady = false
+            this.process = null
             // ocr退出之后 终止所有的请求后清空请求列表
             this.pendingRequests.forEach(r => r.reject(new Error('OCR Service Exited')))
             this.pendingRequests.clear()
@@ -210,7 +222,13 @@ class BackendService extends EventEmitter {
         return new Promise((resolve, reject) => {
             if (!this.isReady) {
                 console.warn('[Backend Service] [WARN] Service not ready, rejecting request.')
-                reject(new Error('OCR Service is initializing... please wait.'))
+                reject(new Error(this.lastProcessError || 'OCR Service is initializing... please wait.'))
+                return
+            }
+
+            if (!this.process || !this.process.stdin || this.process.stdin.destroyed || this.process.killed) {
+                console.warn('[Backend Service] [WARN] Service process is not writable.')
+                reject(new Error(this.lastProcessError || 'OCR Service process is not running.'))
                 return
             }
 
@@ -228,9 +246,20 @@ class BackendService extends EventEmitter {
                 const base64Str = Buffer.from(jsonStr, 'utf-8').toString('base64') // 这里是对request序列化之后得到的json字符串先utf8编码为二进制的字节 之后再base64编码 py端收到之后再进行反向操作
 
                 console.log(`[Backend Service] [DEBUG] Writing Base64 payload to stdin (Length: ${base64Str.length})`)
-                this.process.stdin.write(base64Str + '\n') // 发送给子进程py处理
+                this.process.stdin.write(base64Str + '\n', (err) => {
+                    if (!err) return
+                    console.error('[Backend Service] [ERROR] Failed to write to stdin:', err)
+                    this.lastProcessError = err.message
+                    this.isReady = false
+                    if (this.pendingRequests.has(id)) {
+                        this.pendingRequests.delete(id)
+                        reject(err)
+                    }
+                }) // 发送给子进程py处理
             } catch (e) {
                 console.error('[Backend Service] [ERROR] Failed to write to stdin:', e)
+                this.lastProcessError = e.message
+                this.isReady = false
                 this.pendingRequests.delete(id)
                 reject(e)
                 return
