@@ -70,6 +70,7 @@ export interface DownloadProgress {
     filename?: string
     model_id?: string
     modelId?: string
+    stage?: string
 }
 
 export interface IElectronAPI {

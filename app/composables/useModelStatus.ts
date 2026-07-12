@@ -6,11 +6,13 @@ type DownloadProgress = number | {
     model_id?: string
     modelId?: string
     filename?: string
+    stage?: string
 }
 
 export interface TranslationModelState extends TranslationModel {
     status: ModelStatus
     progress: number
+    downloadStage?: string
 }
 
 const fallbackModels: TranslationModelState[] = [
@@ -23,7 +25,8 @@ const fallbackModels: TranslationModelState[] = [
         engine: 'opus-mt-ja-zh',
         adapted_types: ['manga', 'general'],
         status: 'unknown',
-        progress: 0
+        progress: 0,
+        downloadStage: ''
     },
     {
         id: 'sakura-1.5b',
@@ -34,7 +37,8 @@ const fallbackModels: TranslationModelState[] = [
         engine: 'sakura',
         adapted_types: ['manga', 'light_novel', 'galgame'],
         status: 'unknown',
-        progress: 0
+        progress: 0,
+        downloadStage: ''
     }
 ]
 
@@ -46,7 +50,8 @@ const ensureModel = (model: TranslationModel) => {
         existing = reactive({
             ...model,
             status: 'unknown' as ModelStatus,
-            progress: 0
+            progress: 0,
+            downloadStage: ''
         }) as TranslationModelState
         modelStates.push(existing)
     } else {
@@ -108,9 +113,11 @@ export function useModelStatus() {
             if (res.success && res.exists) {
                 target.status = 'downloaded'
                 target.progress = 100
+                target.downloadStage = ''
             } else {
                 target.status = 'not_downloaded'
                 target.progress = 0
+                target.downloadStage = ''
             }
         } catch (e) {
             console.error("Model check failed:", e)
@@ -136,6 +143,7 @@ export function useModelStatus() {
         if (!target) return
 
         target.progress = Math.max(target.progress, Math.max(0, Math.min(100, percentValue)))
+        target.downloadStage = typeof data === 'number' ? '' : (data.stage || '')
         if (target.status !== 'downloading' && target.progress < 100) {
             target.status = 'downloading'
         }

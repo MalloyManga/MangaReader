@@ -16,6 +16,11 @@ const isDeleting = ref(false)
 const isAnyModelDownloading = computed(() => models.some(item => item.status === 'downloading'))
 let cleanupModelProgress: (() => void) | null = null
 
+const getDownloadLabel = (model: any) => {
+    if (model.downloadStage === 'runtime') return '安装组件...'
+    return '下载中...'
+}
+
 const handleDownload = async (model: any) => {
     if (model.status === 'downloading') return
     if (isAnyModelDownloading.value) {
@@ -166,7 +171,7 @@ onUnmounted(() => {
 
                         <div v-else-if="item.status === 'downloading'" class="w-32">
                             <div class="flex justify-between text-xs text-manga-500 mb-1">
-                                <span>下载中...</span>
+                                <span>{{ getDownloadLabel(item) }}</span>
                                 <span>{{ Math.round(item.progress) }}%</span>
                             </div>
                             <div class="w-full bg-manga-100 dark:bg-manga-700 rounded-full h-1.5 overflow-hidden">

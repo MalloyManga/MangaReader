@@ -107,6 +107,9 @@ class Qwen3GgufEngine(BaseTranslator):
     def _runtime_exe_path(self):
         return os.path.join(self.runtime_dir, "llama-cli.exe")
 
+    def _needs_external_runtime(self):
+        return getattr(sys, "frozen", False) and sys.platform.startswith("win")
+
     def _runtime_exists(self):
         exe_path = self._runtime_exe_path()
         if not os.path.exists(exe_path):
@@ -134,7 +137,17 @@ class Qwen3GgufEngine(BaseTranslator):
         os.makedirs(self.model_dir, exist_ok=True)
 
         if self.check_model_exists():
-            self._ensure_runtime()
+            if self._needs_external_runtime():
+                send_response(
+                    {
+                        "type": "download_progress",
+                        "percent": 99.0,
+                        "filename": "qwen3-runtime",
+                        "model_id": "qwen3-4b-instruct-2507-q4-k-m",
+                        "stage": "runtime",
+                    }
+                )
+                self._ensure_runtime()
             send_response(
                 {
                     "type": "download_progress",
@@ -151,7 +164,17 @@ class Qwen3GgufEngine(BaseTranslator):
                     self._download_file(base_url)
                     if not self.check_model_exists():
                         raise Exception("MODEL_INSTALL_FAILED")
-                    self._ensure_runtime()
+                    if self._needs_external_runtime():
+                        send_response(
+                            {
+                                "type": "download_progress",
+                                "percent": 99.0,
+                                "filename": "qwen3-runtime",
+                                "model_id": "qwen3-4b-instruct-2507-q4-k-m",
+                                "stage": "runtime",
+                            }
+                        )
+                        self._ensure_runtime()
                     send_response(
                         {
                             "type": "download_progress",
@@ -171,7 +194,7 @@ class Qwen3GgufEngine(BaseTranslator):
         raise Exception("MODEL_DOWNLOAD_FAILED: qwen3-4b-instruct-2507-q4-k-m")
 
     def _ensure_runtime(self):
-        if not sys.platform.startswith("win"):
+        if not self._needs_external_runtime():
             return True
         if self._runtime_exists():
             return True
@@ -249,6 +272,7 @@ class Qwen3GgufEngine(BaseTranslator):
                                 "percent": min(percent, 99.0),
                                 "filename": "qwen3-runtime",
                                 "model_id": "qwen3-4b-instruct-2507-q4-k-m",
+                                "stage": "runtime",
                             }
                         )
 
