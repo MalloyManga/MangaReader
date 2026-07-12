@@ -116,13 +116,20 @@ class Qwen3GgufEngine(BaseTranslator):
             return False
         required_dlls = [
             "ggml-base.dll",
-            "ggml-cpu.dll",
             "ggml.dll",
             "llama.dll",
             "llama-common.dll",
             "llama-cli-impl.dll",
         ]
-        return all(os.path.exists(os.path.join(self.runtime_dir, name)) for name in required_dlls)
+        has_required_files = all(
+            os.path.exists(os.path.join(self.runtime_dir, name))
+            for name in required_dlls
+        )
+        has_cpu_backend = any(
+            name.startswith("ggml-cpu") and name.endswith(".dll")
+            for name in os.listdir(self.runtime_dir)
+        )
+        return has_required_files and has_cpu_backend
 
     def delete_model(self):
         self.unload()
