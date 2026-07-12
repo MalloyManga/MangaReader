@@ -7,6 +7,7 @@ const {
     selectedModel,
     setSelectedModel,
     checkAllModelStatus,
+    checkModelStatus,
     updateDownloadingProgress
 } = useModelStatus()
 
@@ -38,6 +39,11 @@ const handleDownload = async (model: any) => {
     } catch (e) {
         model.status = 'not_downloaded'
         showToast('下载出错')
+    }
+
+    await checkModelStatus(model.id, true)
+    if (model.status === 'downloaded') {
+        setSelectedModel(model.id)
     }
 }
 
@@ -93,8 +99,8 @@ onMounted(() => {
         return
     }
 
-    cleanupModelProgress = window.electronAPI.onDownloadProgress((percent: number) => {
-        updateDownloadingProgress(percent)
+    cleanupModelProgress = window.electronAPI.onDownloadProgress((progress) => {
+        updateDownloadingProgress(progress)
     })
 })
 

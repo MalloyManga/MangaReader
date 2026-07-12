@@ -65,6 +65,13 @@ export interface TranslationModel {
     adapted_types?: string[]
 }
 
+export interface DownloadProgress {
+    percent: number
+    filename?: string
+    model_id?: string
+    modelId?: string
+}
+
 export interface IElectronAPI {
     backendStatus: (callback) => () => void
 
@@ -130,7 +137,7 @@ export interface IElectronAPI {
     // 后端状态检查
     checkBackendReady: () => Promise<boolean>
     onBackendLog: (callback: (msg) => void) => () => void
-    onDownloadProgress: (callback: (percent: number) => void) => () => void
+    onDownloadProgress: (callback: (progress: number | DownloadProgress) => void) => () => void
     onDictionaryDownloadProgress: (callback: (percent: number) => void) => () => void
     onInitStatus: (callback: (msg: string) => void) => () => void
     onInitProgress: (callback: (data: { percent: number, message: string }) => void) => () => void

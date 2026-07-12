@@ -140,12 +140,13 @@ class Qwen3GgufEngine(BaseTranslator):
                     "type": "download_progress",
                     "percent": 100,
                     "filename": "qwen3-4b-instruct-2507-q4-k-m",
+                    "model_id": "qwen3-4b-instruct-2507-q4-k-m",
                 }
             )
             return True
 
         for base_url in self.download_bases:
-            for attempt in range(1, 4):
+            for attempt in range(1, 6):
                 try:
                     self._download_file(base_url)
                     if not self.check_model_exists():
@@ -156,6 +157,7 @@ class Qwen3GgufEngine(BaseTranslator):
                             "type": "download_progress",
                             "percent": 100,
                             "filename": "qwen3-4b-instruct-2507-q4-k-m",
+                            "model_id": "qwen3-4b-instruct-2507-q4-k-m",
                         }
                     )
                     log_message("[INFO] Qwen3 GGUF download complete.")
@@ -163,7 +165,7 @@ class Qwen3GgufEngine(BaseTranslator):
                 except Exception as exc:
                     log_message(
                         f"[WARN] Qwen3 file download failed from {base_url} "
-                        f"(attempt {attempt}/3): {exc}"
+                        f"(attempt {attempt}/5): {exc}"
                     )
 
         raise Exception("MODEL_DOWNLOAD_FAILED: qwen3-4b-instruct-2507-q4-k-m")
@@ -189,6 +191,7 @@ class Qwen3GgufEngine(BaseTranslator):
                         "type": "download_progress",
                         "percent": 100,
                         "filename": "qwen3-runtime",
+                        "model_id": "qwen3-4b-instruct-2507-q4-k-m",
                     }
                 )
                 try:
@@ -198,31 +201,38 @@ class Qwen3GgufEngine(BaseTranslator):
                 return True
             except Exception as exc:
                 log_message(f"[WARN] llama.cpp runtime download failed: {exc}")
-                if os.path.exists(zip_path):
-                    try:
-                        os.remove(zip_path)
-                    except Exception:
-                        pass
 
         raise Exception("LLAMA_RUNTIME_DOWNLOAD_FAILED")
 
     def _download_runtime_zip(self, url, zip_path):
         tmp_path = zip_path + ".tmp"
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        resume_from = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+        if resume_from >= self.runtime_expected_size:
+            os.replace(tmp_path, zip_path)
+            return
 
+        headers = {
+            "User-Agent": "MangaReader/1.4 LlamaCppRuntimeDownloader",
+            "Connection": "close",
+        }
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
         request = urllib.request.Request(
             url,
-            headers={
-                "User-Agent": "MangaReader/1.4 LlamaCppRuntimeDownloader",
-                "Connection": "close",
-            },
+            headers=headers,
         )
 
-        downloaded = 0
         last_percent_step = -1
         with urllib.request.urlopen(request, timeout=120) as response:
-            with open(tmp_path, "wb") as output:
+            status = getattr(response, "status", None)
+            if resume_from > 0 and status != 206:
+                resume_from = 0
+                mode = "wb"
+            else:
+                mode = "ab" if resume_from > 0 else "wb"
+
+            downloaded = resume_from
+            with open(tmp_path, mode) as output:
                 while True:
                     chunk = response.read(1024 * 512)
                     if not chunk:
@@ -238,12 +248,12 @@ class Qwen3GgufEngine(BaseTranslator):
                                 "type": "download_progress",
                                 "percent": min(percent, 99.0),
                                 "filename": "qwen3-runtime",
+                                "model_id": "qwen3-4b-instruct-2507-q4-k-m",
                             }
                         )
 
+        downloaded = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
         if downloaded < self.runtime_expected_size * 0.9:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
             raise Exception(f"incomplete runtime download: {downloaded} bytes")
 
         os.replace(tmp_path, zip_path)
@@ -270,48 +280,55 @@ class Qwen3GgufEngine(BaseTranslator):
         quoted_filename = urllib.parse.quote(self.filename)
         url = f"{base_url}/{quoted_repo}/resolve/main/{quoted_filename}"
         tmp_path = self.model_file_path + ".tmp"
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        resume_from = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+        if resume_from >= self.expected_size:
+            os.replace(tmp_path, self.model_file_path)
+            return
 
+        headers = {
+            "User-Agent": "MangaReader/1.4 Qwen3ModelDownloader",
+            "Connection": "close",
+        }
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
         request = urllib.request.Request(
             url,
-            headers={
-                "User-Agent": "MangaReader/1.3 Qwen3ModelDownloader",
-                "Connection": "close",
-            },
+            headers=headers,
         )
-        downloaded = 0
         last_percent_step = -1
 
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                with open(tmp_path, "wb") as output:
-                    while True:
-                        chunk = response.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        output.write(chunk)
-                        downloaded += len(chunk)
+        with urllib.request.urlopen(request, timeout=120) as response:
+            status = getattr(response, "status", None)
+            if resume_from > 0 and status != 206:
+                resume_from = 0
+                mode = "wb"
+            else:
+                mode = "ab" if resume_from > 0 else "wb"
 
-                        percent = round(downloaded / self.expected_size * 100, 1)
-                        step = int(percent * 2)
-                        if step > last_percent_step:
-                            last_percent_step = step
-                            send_response(
-                                {
-                                    "type": "download_progress",
-                                    "percent": min(percent, 99.0),
-                                    "filename": self.filename,
-                                }
-                            )
-        except Exception:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            raise
+            downloaded = resume_from
+            with open(tmp_path, mode) as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    downloaded += len(chunk)
 
+                    percent = round(downloaded / self.expected_size * 100, 1)
+                    step = int(percent * 2)
+                    if step > last_percent_step:
+                        last_percent_step = step
+                        send_response(
+                            {
+                                "type": "download_progress",
+                                "percent": min(percent, 99.0),
+                                "filename": self.filename,
+                                "model_id": "qwen3-4b-instruct-2507-q4-k-m",
+                            }
+                        )
+
+        downloaded = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
         if downloaded < self.expected_size:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
             raise Exception(f"incomplete download: {downloaded}/{self.expected_size} bytes")
 
         os.replace(tmp_path, self.model_file_path)

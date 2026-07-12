@@ -578,9 +578,9 @@ app.whenReady().then(async () => {
             }
         })
 
-        backendService.on('download-progress', (percent) => {
+        backendService.on('download-progress', (data) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('model:download-progress', percent)
+                mainWindow.webContents.send('model:download-progress', data)
             }
         })
 

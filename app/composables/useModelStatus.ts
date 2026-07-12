@@ -1,6 +1,12 @@
 import type { TranslationModel } from '~/types/interface'
 
 type ModelStatus = 'unknown' | 'checking' | 'downloaded' | 'not_downloaded' | 'downloading'
+type DownloadProgress = number | {
+    percent?: number
+    model_id?: string
+    modelId?: string
+    filename?: string
+}
 
 export interface TranslationModelState extends TranslationModel {
     status: ModelStatus
@@ -119,13 +125,19 @@ export function useModelStatus() {
         }
     }
 
-    const updateDownloadingProgress = (percent: number) => {
-        const target = modelStates.find(item => item.status === 'downloading')
+    const updateDownloadingProgress = (data: DownloadProgress) => {
+        const percentValue = typeof data === 'number' ? data : data.percent
+        if (typeof percentValue !== 'number') return
+
+        const modelId = typeof data === 'number' ? undefined : (data.model_id || data.modelId)
+        const target = modelId
+            ? modelStates.find(item => item.id === modelId)
+            : modelStates.find(item => item.status === 'downloading')
         if (!target) return
 
-        target.progress = percent
-        if (percent >= 100) {
-            target.status = 'downloaded'
+        target.progress = Math.max(target.progress, Math.max(0, Math.min(100, percentValue)))
+        if (target.status !== 'downloading' && target.progress < 100) {
+            target.status = 'downloading'
         }
     }
 

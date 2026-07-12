@@ -37,6 +37,7 @@ _tqdm_config = {
     "type": "progress",
     "msg_key": "message",
     "msg_value": "Loading...",
+    "extra_fields": {},
 }
 
 
@@ -67,13 +68,19 @@ def _patched_update(self, n=1):
                 "percent": round(percent, 1),
                 _tqdm_config["msg_key"]: self.desc or _tqdm_config["msg_value"],
             }
+            msg.update(_tqdm_config.get("extra_fields", {}))
             # 显式写入 stdout 并 flush，确保 Electron 能立即收到
             sys.stdout.write(json.dumps(msg) + "\n")
             sys.stdout.flush()
 
 
 @contextlib.contextmanager
-def patch_tqdm(msg_type="progress", msg_key="message", default_msg="Loading..."):
+def patch_tqdm(
+    msg_type="progress",
+    msg_key="message",
+    default_msg="Loading...",
+    extra_fields=None,
+):
     """
     上下文管理器：在代码块执行期间，替换 tqdm 的行为以输出 JSON 格式进度
     """
@@ -81,6 +88,7 @@ def patch_tqdm(msg_type="progress", msg_key="message", default_msg="Loading...")
     _tqdm_config["type"] = msg_type
     _tqdm_config["msg_key"] = msg_key
     _tqdm_config["msg_value"] = default_msg
+    _tqdm_config["extra_fields"] = extra_fields or {}
 
     tqdm.tqdm.__init__ = _patched_init
     tqdm.tqdm.update = _patched_update
@@ -90,3 +98,4 @@ def patch_tqdm(msg_type="progress", msg_key="message", default_msg="Loading...")
         # 还原方法，避免影响其他模块
         tqdm.tqdm.__init__ = _original_init
         tqdm.tqdm.update = _original_update
+        _tqdm_config["extra_fields"] = {}

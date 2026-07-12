@@ -79,7 +79,7 @@ class OpusMtJaZhEngine(BaseTranslator):
 
             file_downloaded = False
             for base_url in self.download_bases:
-                for attempt in range(1, 4):
+                for attempt in range(1, 6):
                     try:
                         downloaded = self._download_file(
                             base_url,
@@ -97,7 +97,7 @@ class OpusMtJaZhEngine(BaseTranslator):
                     except Exception as exc:
                         log_message(
                             f"[WARN] OPUS file download failed from {base_url} "
-                            f"(attempt {attempt}/3): {exc}"
+                            f"(attempt {attempt}/5): {exc}"
                         )
                 if file_downloaded:
                     break
@@ -113,6 +113,7 @@ class OpusMtJaZhEngine(BaseTranslator):
                 "type": "download_progress",
                 "percent": 100,
                 "filename": "opus-mt-ja-zh",
+                "model_id": "opus-mt-ja-zh",
             }
         )
         log_message("[INFO] OPUS-MT ja-zh download complete.")
@@ -132,53 +133,59 @@ class OpusMtJaZhEngine(BaseTranslator):
         quoted_filename = urllib.parse.quote(filename)
         url = f"{base_url}/{quoted_repo}/resolve/main/{quoted_filename}"
         tmp_path = target_path + ".tmp"
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        resume_from = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+        if resume_from >= expected_size:
+            os.replace(tmp_path, target_path)
+            return expected_size
 
+        headers = {
+            "User-Agent": "MangaReader/1.4 OPUSModelDownloader",
+            "Connection": "close",
+        }
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
         request = urllib.request.Request(
             url,
-            headers={
-                "User-Agent": "MangaReader/1.3 OPUSModelDownloader",
-                "Connection": "close",
-            },
+            headers=headers,
         )
-        downloaded = 0
 
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                with open(tmp_path, "wb") as output:
-                    while True:
-                        chunk = response.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        output.write(chunk)
-                        downloaded += len(chunk)
+        with urllib.request.urlopen(request, timeout=120) as response:
+            status = getattr(response, "status", None)
+            if resume_from > 0 and status != 206:
+                resume_from = 0
+                mode = "wb"
+            else:
+                mode = "ab" if resume_from > 0 else "wb"
 
-                        percent = round(
-                            (previous_bytes + downloaded) / total_bytes * 100, 1
+            downloaded = resume_from
+            with open(tmp_path, mode) as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    downloaded += len(chunk)
+
+                    percent = round((previous_bytes + downloaded) / total_bytes * 100, 1)
+                    step = int(percent * 2)
+                    if step > last_percent_step:
+                        last_percent_step = step
+                        send_response(
+                            {
+                                "type": "download_progress",
+                                "percent": min(percent, 99.0),
+                                "filename": filename,
+                                "model_id": "opus-mt-ja-zh",
+                            }
                         )
-                        step = int(percent * 2)
-                        if step > last_percent_step:
-                            last_percent_step = step
-                            send_response(
-                                {
-                                    "type": "download_progress",
-                                    "percent": min(percent, 99.0),
-                                    "filename": filename,
-                                }
-                            )
-        except Exception:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            raise
+
+        downloaded = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
 
         if downloaded < expected_size:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
             raise Exception(f"incomplete download: {downloaded}/{expected_size} bytes")
 
         os.replace(tmp_path, target_path)
-        return downloaded
+        return expected_size
 
     def initialize(self):
         if not self.check_model_exists():

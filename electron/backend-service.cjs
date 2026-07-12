@@ -156,7 +156,7 @@ class BackendService extends EventEmitter {
 
         // 触发 download-progress 事件 不断汇报下载进度
         if (response.type === 'download_progress') {
-            this.emit('download-progress', response.percent)
+            this.emit('download-progress', response)
             return
         }
 
@@ -287,7 +287,7 @@ class BackendService extends EventEmitter {
 
     async downloadModel(modelId) {
         // 下载 1.2GB 可能很慢，给 30 分钟超时
-        return this._sendRequest({ command: 'download_model', model_id: modelId }, 1800000)
+        return this._sendRequest({ command: 'download_model', model_id: modelId }, 21600000)
     }
 
     async deleteModel(modelId) {

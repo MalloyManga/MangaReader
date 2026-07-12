@@ -86,7 +86,10 @@ class SakuraEngine(BaseTranslator):
         try:
             #  使用上下文管理器，只在下载期间开启“间谍模式”
             with patch_tqdm(
-                msg_type="download_progress", msg_key="filename", default_msg="model"
+                msg_type="download_progress",
+                msg_key="filename",
+                default_msg="model",
+                extra_fields={"model_id": "sakura-1.5b"},
             ):
                 file_path = hf_hub_download(
                     repo_id=self.repo_id,
