@@ -84,5 +84,6 @@ def get_translator_engine(model_id, model_root_dir):
 
 def requires_translate_worker(model_id):
     return normalize_translator_id(model_id) in {
+        "sakura-1.5b",
         "qwen3-4b-instruct-2507-q4-k-m",
     }

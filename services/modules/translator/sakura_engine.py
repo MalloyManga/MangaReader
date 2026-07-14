@@ -5,9 +5,15 @@ import shutil
 import sys
 import json
 import contextlib
+import ctypes
+import re
+import subprocess
+import tempfile
+import urllib.request
+import zipfile
 from .base import BaseTranslator
 from huggingface_hub import hf_hub_download
-from ..utils import log_message, patch_tqdm
+from ..utils import log_message, patch_tqdm, send_response
 
 Llama = None
 
@@ -56,8 +62,16 @@ class SakuraEngine(BaseTranslator):
 
         # 为了更准确的判断，我们这里还是用 .gguf 结尾的文件路径
         self.model_file_path = os.path.join(self.model_dir, self.filename)
+        self.runtime_dir = os.path.join(self.model_dir, "runtime", "llama-cpp-win-cpu-x64")
+        self.runtime_zip_name = "llama-b9966-bin-win-cpu-x64.zip"
+        self.runtime_expected_size = 18211851
+        self.runtime_download_urls = [
+            "https://gh.llkk.cc/https://github.com/ggml-org/llama.cpp/releases/download/b9966/llama-b9966-bin-win-cpu-x64.zip",
+            "https://github.com/ggml-org/llama.cpp/releases/download/b9966/llama-b9966-bin-win-cpu-x64.zip",
+        ]
 
         self.llm = None
+        self.use_external_runtime = False
         self.lock = threading.Lock()
 
     def unload(self):
@@ -67,6 +81,7 @@ class SakuraEngine(BaseTranslator):
             except Exception:
                 pass
         self.llm = None
+        self.use_external_runtime = False
         self.is_ready = False
 
     def check_model_exists(self):
@@ -108,7 +123,146 @@ class SakuraEngine(BaseTranslator):
             except Exception as e:
                 log_message(f"[WARN] Failed to clean cache: {e}")
 
+        runtime_root = os.path.join(self.model_dir, "runtime")
+        if os.path.exists(runtime_root):
+            try:
+                shutil.rmtree(runtime_root)
+                log_message("[INFO] Cleaned up Sakura llama.cpp runtime.")
+                deleted = True
+            except Exception as e:
+                log_message(f"[WARN] Failed to clean Sakura runtime: {e}")
+
         return deleted
+
+    def _runtime_exe_path(self):
+        return os.path.join(self.runtime_dir, "llama-cli.exe")
+
+    def _needs_external_runtime(self):
+        return getattr(sys, "frozen", False) and sys.platform.startswith("win")
+
+    def _runtime_exists(self):
+        exe_path = self._runtime_exe_path()
+        if not os.path.exists(exe_path):
+            return False
+        required_dlls = [
+            "ggml-base.dll",
+            "ggml.dll",
+            "llama.dll",
+            "llama-common.dll",
+            "llama-cli-impl.dll",
+        ]
+        has_required_files = all(
+            os.path.exists(os.path.join(self.runtime_dir, name))
+            for name in required_dlls
+        )
+        has_cpu_backend = any(
+            name.startswith("ggml-cpu") and name.endswith(".dll")
+            for name in os.listdir(self.runtime_dir)
+        )
+        return has_required_files and has_cpu_backend
+
+    def _ensure_runtime(self):
+        if not self._needs_external_runtime():
+            return True
+        if self._runtime_exists():
+            return True
+
+        os.makedirs(self.runtime_dir, exist_ok=True)
+        zip_path = os.path.join(self.model_dir, self.runtime_zip_name)
+
+        for url in self.runtime_download_urls:
+            try:
+                log_message(f"[INFO] Downloading llama.cpp runtime for Sakura: {url}")
+                self._download_runtime_zip(url, zip_path)
+                self._extract_runtime_zip(zip_path)
+                if not self._runtime_exists():
+                    raise Exception("LLAMA_RUNTIME_INSTALL_FAILED")
+                send_response(
+                    {
+                        "type": "download_progress",
+                        "percent": 100,
+                        "filename": "sakura-runtime",
+                        "model_id": "sakura-1.5b",
+                    }
+                )
+                try:
+                    os.remove(zip_path)
+                except Exception:
+                    pass
+                return True
+            except Exception as exc:
+                log_message(f"[WARN] Sakura llama.cpp runtime download failed: {exc}")
+
+        raise Exception("LLAMA_RUNTIME_DOWNLOAD_FAILED")
+
+    def _download_runtime_zip(self, url, zip_path):
+        tmp_path = zip_path + ".tmp"
+        resume_from = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+        if resume_from >= self.runtime_expected_size:
+            os.replace(tmp_path, zip_path)
+            return
+
+        headers = {
+            "User-Agent": "MangaReader/1.4 SakuraRuntimeDownloader",
+            "Connection": "close",
+        }
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
+        request = urllib.request.Request(url, headers=headers)
+
+        last_percent_step = -1
+        with urllib.request.urlopen(request, timeout=120) as response:
+            status = getattr(response, "status", None)
+            if resume_from > 0 and status != 206:
+                resume_from = 0
+                mode = "wb"
+            else:
+                mode = "ab" if resume_from > 0 else "wb"
+
+            downloaded = resume_from
+            with open(tmp_path, mode) as output:
+                while True:
+                    chunk = response.read(1024 * 512)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    downloaded += len(chunk)
+                    percent = round(downloaded / self.runtime_expected_size * 100, 1)
+                    step = int(percent * 2)
+                    if step > last_percent_step:
+                        last_percent_step = step
+                        send_response(
+                            {
+                                "type": "download_progress",
+                                "percent": min(percent, 99.0),
+                                "filename": "sakura-runtime",
+                                "model_id": "sakura-1.5b",
+                                "stage": "runtime",
+                            }
+                        )
+
+        downloaded = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+        if downloaded < self.runtime_expected_size * 0.9:
+            raise Exception(f"incomplete runtime download: {downloaded} bytes")
+
+        os.replace(tmp_path, zip_path)
+
+    def _extract_runtime_zip(self, zip_path):
+        if os.path.exists(self.runtime_dir):
+            shutil.rmtree(self.runtime_dir)
+        os.makedirs(self.runtime_dir, exist_ok=True)
+
+        with zipfile.ZipFile(zip_path, "r") as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                filename = os.path.basename(member.filename)
+                if not filename:
+                    continue
+                with archive.open(member) as source, open(
+                    os.path.join(self.runtime_dir, filename), "wb"
+                ) as target:
+                    shutil.copyfileobj(source, target)
 
     def download_model(self, progress_callback=None):
         log_message(f"[INFO] Downloading SakuraLLM via HuggingFace Hub...")
@@ -138,13 +292,37 @@ class SakuraEngine(BaseTranslator):
             raise e
 
     def initialize(self):
+        model_path = self.model_file_path
+
+        if self._needs_external_runtime():
+            if not os.path.exists(model_path):
+                log_message(f"[WARN] Initialize failed. Model not found at: {model_path}")
+                self.is_ready = False
+                return
+
+            try:
+                file_size = os.path.getsize(model_path)
+                log_message(f"[DEBUG] Model file size: {file_size} bytes")
+                if file_size == 0:
+                    log_message(f"[ERROR] Model file is empty: {model_path}")
+                    self.is_ready = False
+                    return
+            except Exception as e:
+                log_message(f"[ERROR] Failed to check model file size: {e}")
+                self.is_ready = False
+                return
+
+            self._ensure_runtime()
+            self.use_external_runtime = True
+            self.is_ready = True
+            log_message("[INFO] SakuraLLM Engine ready via external llama.cpp runtime.")
+            return
+
         llama_class = _get_llama_class()
         if llama_class is None:
             log_message("[ERROR] Error: llama-cpp-python not installed.")
             self.is_ready = False
             return
-
-        model_path = self.model_file_path
 
         if not os.path.exists(model_path):
             log_message(f"[WARN] Initialize failed. Model not found at: {model_path}")
@@ -174,6 +352,7 @@ class SakuraEngine(BaseTranslator):
                 n_gpu_layers=0,
             )
 
+            self.use_external_runtime = False
             self.is_ready = True
             log_message("[INFO] SakuraLLM Engine loaded.")
         except Exception as e:
@@ -184,10 +363,16 @@ class SakuraEngine(BaseTranslator):
             self.is_ready = False
 
     def translate(self, text):
-        if not self.is_ready or not self.llm:
+        if not self.is_ready:
             raise Exception("Sakura Engine not ready")
 
         with self.lock:
+            if self.use_external_runtime:
+                return self._translate_with_llama_cli(self._build_chat_prompt(text))
+
+            if not self.llm:
+                raise Exception("Sakura Engine not ready")
+
             system_prompt = "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。"
 
             prompt = (
@@ -227,3 +412,156 @@ class SakuraEngine(BaseTranslator):
             except Exception as e:
                 log_message(f"Sakura output error: {e}")
                 return text
+
+    def _build_chat_prompt(self, text):
+        system_prompt = (
+            "You are a Japanese-to-Simplified-Chinese light novel and manga translator. "
+            "Translate naturally and concisely. Output only the Simplified Chinese translation."
+        )
+        return (
+            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+            f"<|im_start|>user\nTranslate this Japanese text into Simplified Chinese:\n{text}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+    def _translate_with_llama_cli(self, prompt):
+        exe_path = self._runtime_exe_path()
+        if not self._runtime_exists():
+            raise Exception("LLAMA_RUNTIME_NOT_FOUND")
+
+        prompt_file = None
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        clean_env = {
+            "PATH": os.pathsep.join(
+                [
+                    self.runtime_dir,
+                    os.path.join(system_root, "System32"),
+                    system_root,
+                    os.path.join(system_root, "System32", "Wbem"),
+                ]
+            ),
+            "SystemRoot": system_root,
+            "TEMP": os.environ.get("TEMP", ""),
+            "TMP": os.environ.get("TMP", ""),
+            "OMP_NUM_THREADS": "1",
+            "KMP_DUPLICATE_LIB_OK": "TRUE",
+        }
+        command = [
+            exe_path,
+            "-m",
+            self.model_file_path,
+            "-f",
+            "",
+            "-n",
+            "512",
+            "-c",
+            "1024",
+            "-t",
+            "4",
+            "-ngl",
+            "0",
+            "--no-mmap",
+            "--temp",
+            "0.1",
+            "--top-p",
+            "0.9",
+            "--no-display-prompt",
+            "--color",
+            "off",
+            "--no-conversation",
+            "--simple-io",
+            "--no-warmup",
+        ]
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                suffix=".txt",
+                delete=False,
+            ) as temp:
+                temp.write(prompt)
+                prompt_file = temp.name
+            command[command.index("-f") + 1] = prompt_file
+
+            kernel32 = None
+            restore_dll_dir = None
+            if sys.platform.startswith("win"):
+                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                restore_dll_dir = getattr(sys, "_MEIPASS", None)
+                kernel32.SetDllDirectoryW(self.runtime_dir)
+
+            completed = subprocess.run(
+                command,
+                cwd=self.runtime_dir,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=clean_env,
+                timeout=180,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+            )
+        except subprocess.TimeoutExpired:
+            raise Exception("SAKURA_TRANSLATION_TIMEOUT")
+        finally:
+            if "kernel32" in locals() and kernel32 is not None and sys.platform.startswith("win"):
+                kernel32.SetDllDirectoryW(restore_dll_dir)
+            if prompt_file:
+                try:
+                    os.remove(prompt_file)
+                except Exception:
+                    pass
+
+        translation = self._extract_llama_cli_translation(completed.stdout)
+        if completed.returncode != 0:
+            if translation:
+                stderr_tail = "\n".join(completed.stderr.splitlines()[-10:])
+                log_message(
+                    "[WARN] Sakura llama-cli exited after producing output "
+                    f"(exit={completed.returncode}). stderr: {stderr_tail}"
+                )
+                return translation
+            stdout_tail = "\n".join(completed.stdout.splitlines()[-10:])
+            stderr_tail = "\n".join(completed.stderr.splitlines()[-10:])
+            log_message(
+                "[ERROR] Sakura llama-cli failed "
+                f"(exit={completed.returncode}). stdout: {stdout_tail} stderr: {stderr_tail}"
+            )
+            raise Exception("SAKURA_TRANSLATION_FAILED")
+
+        if not translation:
+            stdout_tail = repr(completed.stdout[-2000:])
+            stderr_tail = repr(completed.stderr[-2000:])
+            log_message(
+                "[ERROR] Sakura llama-cli returned empty translation. "
+                f"stdout_tail={stdout_tail} stderr_tail={stderr_tail}"
+            )
+            raise Exception("SAKURA_TRANSLATION_EMPTY")
+        return translation
+
+    def _extract_llama_cli_translation(self, stdout):
+        stdout = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", stdout)
+        translation = stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
+        assistant_marker = "<|im_start|>assistant"
+        if assistant_marker in translation:
+            translation = translation.rsplit(assistant_marker, 1)[1].strip()
+        if "<|im_end|>" in translation:
+            translation = translation.split("<|im_end|>", 1)[0].strip()
+
+        cleaned_lines = []
+        for line in translation.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped == ">":
+                continue
+            if stripped.startswith("[ Prompt:"):
+                continue
+            if stripped.startswith("Exiting..."):
+                continue
+            if stripped.startswith(">"):
+                stripped = stripped[1:].strip()
+            cleaned_lines.append(stripped)
+
+        return "\n".join(cleaned_lines).strip()
