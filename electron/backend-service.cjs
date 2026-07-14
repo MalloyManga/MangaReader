@@ -65,16 +65,21 @@ class BackendService extends EventEmitter {
         console.log('[INFO] Starting OCR service...')
         console.log('[INFO] Model Path:', this.modelPath)
 
+        const backendEnv = {
+            ...process.env,
+            PYTHONUNBUFFERED: '1', // 关闭py的流缓冲
+            PYTHONIOENCODING: 'utf-8',
+            // 设置 HF 镜像
+            HF_ENDPOINT: 'https://hf-mirror.com'
+        }
+        if (!isDev) {
+            backendEnv.MANGAREADER_TRANSLATE_WORKER = '1'
+        }
+
         this.process = spawn(pythonPath, args, {
             // spawn 调用之后 py子进程就开始运行了
             stdio: ['pipe', 'pipe', 'pipe'],
-            env: {
-                ...process.env,
-                PYTHONUNBUFFERED: '1', // 关闭py的流缓冲
-                PYTHONIOENCODING: 'utf-8',
-                // 设置 HF 镜像
-                HF_ENDPOINT: 'https://hf-mirror.com'
-            }
+            env: backendEnv
         })
 
         this.process.stdin.setDefaultEncoding('utf-8')
@@ -197,7 +202,7 @@ class BackendService extends EventEmitter {
                     })
                 } else if (tokens) { // 分词
                     resolve({ success: true, tokens: tokens })
-                } else if (translation) { // 翻译
+                } else if (translation !== undefined) { // 翻译
                     resolve({ success: true, translation: translation, modelId: model_id })
                 } else if (response.cover) { // 书籍封面缩略图
                     resolve({ success: true, cover: response.cover })

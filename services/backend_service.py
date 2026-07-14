@@ -8,24 +8,14 @@ import argparse
 import base64
 import re
 import zipfile
+import subprocess
 from PIL import Image
-
-# --- 1. 锁定运行目录 & 强制手动加载 DLL (Fix Error 126 & 1114) ---
-if getattr(sys, "frozen", False):
-    base_dir = os.path.dirname(sys.executable)
-
-    # Pre-load OpenMP (libiomp5md.dll) if present in root
-    # This is still needed to prevent torch from loading its own incompatible version
-    omp_path = os.path.join(base_dir, "libiomp5md.dll")
-    if os.path.exists(omp_path):
-        try:
-            ctypes.CDLL(omp_path, winmode=0)
-            print(f"DEBUG: Pre-loaded OpenMP: {omp_path}")
-        except Exception as e:
-            print(f"DEBUG: Failed to pre-load OpenMP: {e}")
 
 # 解决 OpenMP 冲突
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 # 解决 Windows 编码
 try:
@@ -46,7 +36,121 @@ from modules.translator import (
     get_translator_engine,
     list_translator_models,
     normalize_translator_id,
+    requires_translate_worker,
 )
+
+
+def preload_openmp_for_ocr():
+    if not getattr(sys, "frozen", False):
+        return
+
+    base_dir = os.path.dirname(sys.executable)
+    omp_candidates = [
+        os.path.join(base_dir, "_internal", "torch", "lib", "libiomp5md.dll"),
+        os.path.join(base_dir, "_internal", "libiomp5md.dll"),
+        os.path.join(base_dir, "libiomp5md.dll"),
+    ]
+    omp_path = next((path for path in omp_candidates if os.path.exists(path)), None)
+    if not omp_path:
+        return
+
+    try:
+        torch_lib_dir = os.path.dirname(omp_path)
+        os.environ["PATH"] = torch_lib_dir + os.pathsep + os.environ.get("PATH", "")
+        try:
+            os.add_dll_directory(torch_lib_dir)
+        except Exception:
+            pass
+        ctypes.CDLL(omp_path, winmode=0)
+        log_message(f"[DEBUG] Pre-loaded OpenMP for OCR: {omp_path}")
+    except Exception as e:
+        log_message(f"[DEBUG] Failed to pre-load OpenMP for OCR: {e}")
+
+
+def run_translate_worker_mode(models_root):
+    try:
+        encoded = sys.stdin.readline().strip()
+        payload = json.loads(base64.b64decode(encoded).decode("utf-8"))
+        text = payload.get("text", "")
+        model_id = payload.get("model_id") or payload.get("modelId")
+        selected_model_id = normalize_translator_id(model_id)
+        if selected_model_id == "opus-mt-ja-zh":
+            preload_openmp_for_ocr()
+        translation_root = os.path.join(models_root, "translation")
+        translator = get_translator_engine(selected_model_id, translation_root)
+
+        if not translator.check_model_exists():
+            raise Exception("MODEL_NOT_FOUND")
+
+        translator.initialize()
+        if not translator.is_ready:
+            raise Exception("TRANSLATOR_NOT_READY")
+
+        result = translator.translate(text)
+        send_response(
+            {
+                "success": True,
+                "translation": result,
+                "model_id": selected_model_id,
+            }
+        )
+        return 0
+    except Exception as e:
+        import traceback
+
+        log_message(f"[ERROR] Translate worker failed: {e}")
+        log_message(f"[ERROR] Traceback: {traceback.format_exc()}")
+        send_response({"success": False, "error": str(e)})
+        return 1
+
+
+def translate_in_worker(models_root, model_id, text, timeout=600):
+    payload = {"model_id": model_id, "text": text}
+    encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+    command = [
+        sys.executable,
+        "--translate-worker",
+        "--models-root",
+        models_root,
+    ]
+
+    completed = subprocess.run(
+        command,
+        input=encoded + "\n",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+    )
+
+    if completed.stderr:
+        for line in completed.stderr.splitlines():
+            log_message(f"[Translate Worker] {line}")
+
+    response = None
+    for line in completed.stdout.splitlines():
+        try:
+            parsed = json.loads(line)
+        except Exception:
+            continue
+        if "success" in parsed:
+            response = parsed
+
+    if response is None:
+        raise Exception(
+            f"TRANSLATE_WORKER_NO_RESPONSE: exit={completed.returncode}"
+        )
+    if not response.get("success"):
+        raise Exception(response.get("error") or "TRANSLATE_WORKER_FAILED")
+    return response.get("translation", ""), response.get("model_id") or model_id
+
+
+def should_translate_in_worker(model_id):
+    if os.environ.get("MANGAREADER_TRANSLATE_WORKER") != "1":
+        return False
+    return getattr(sys, "frozen", False) and requires_translate_worker(model_id)
 
 # --- Helper Functions for Cover Extraction ---
 
@@ -146,25 +250,33 @@ def extract_cover_image(path):
 def main():
     log_message("Starting Backend Service (v2025.12.04-FixEncoding)...")
 
-    # 发送状态 启动中
     send_response({"type": "init_status", "message": "正在启动后台服务..."})
 
     # 1. 解析参数
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=str, help="Path to OCR model")
+    parser.add_argument("--models-root", type=str, help="Path to models root")
+    parser.add_argument("--translate-worker", action="store_true")
     args, _ = parser.parse_known_args()
 
     # 修复：如果未提供 --model-dir，则使用默认路径 (防止 NoneType 错误)
-    if args.model_dir:
+    if args.models_root:
+        models_root = args.models_root
+    elif args.model_dir:
         models_root = os.path.dirname(args.model_dir)
     else:
         # 默认情况下，假设 models 在当前目录或上级目录
-        # 在打包环境中，通常是 resources/models
+        # In packaged mode models usually live under resources/models.
         if getattr(sys, "frozen", False):
-            # 如果是打包环境，默认 models 路径可能在 exe 同级目录
+            # Fallback for backends launched from a models sibling directory.
             models_root = os.path.join(os.path.dirname(sys.executable), "models")
         else:
             models_root = os.path.join(os.getcwd(), "models")
+
+    if args.translate_worker:
+        sys.exit(run_translate_worker_mode(models_root))
+
+    preload_openmp_for_ocr()
 
     translation_root = os.path.join(models_root, "translation")
     dictionary_root = os.path.join(models_root, "dictionary", "sudachi")
@@ -213,7 +325,7 @@ def main():
     try:
         from modules.ocr_engine import OCREngine
 
-        # 确保传入有效的 OCR 模型路径
+        # Ensure the OCR model path is valid.
         if args.model_dir:
             ocr_model_path = args.model_dir
         else:
@@ -266,7 +378,7 @@ def main():
                 request = json.loads(json_str)
             except Exception as e:
                 log_message(f"[CRITICAL] Failed to decode Base64 payload: {e}")
-                # 尝试直接解析（兼容旧模式，虽然现在应该都是 Base64）
+                # Try raw JSON for compatibility with old callers.
                 try:
                     request = json.loads(line)
                 except:
@@ -305,9 +417,30 @@ def main():
                 try:
                     text = request.get("text", "")
                     model_id = request.get("model_id") or request.get("modelId")
-                    selected_model_id, selected_translator = select_translator(model_id)
+                    selected_model_id = normalize_translator_id(model_id)
                     log_message(
                         f"[DEBUG] Processing translate request with {selected_model_id}: {repr(text)[:50]}..."
+                    )
+
+                    if should_translate_in_worker(selected_model_id):
+                        log_message("[DEBUG] Using isolated translate worker in packaged mode...")
+                        current_translator_id = selected_model_id
+                        result, worker_model_id = translate_in_worker(
+                            models_root, selected_model_id, text
+                        )
+                        log_message(f"[DEBUG] Translation result: {repr(result)[:50]}...")
+                        send_response(
+                            {
+                                "id": req_id,
+                                "success": True,
+                                "translation": result,
+                                "model_id": worker_model_id,
+                            }
+                        )
+                        continue
+
+                    selected_model_id, selected_translator = select_translator(
+                        selected_model_id
                     )
 
                     # 1. 检查是否已加载
@@ -315,9 +448,9 @@ def main():
                         log_message(
                             "[DEBUG] Translator not ready. Checking model existence..."
                         )
-                        # 2. 检查物理文件是否存在
+                        # Check physical model files before lazy loading.
                         if selected_translator.check_model_exists():
-                            # 存在则加载
+                            # Load the model only when it is first used.
                             log_message(
                                 "[DEBUG] Model exists. Initializing translator..."
                             )
@@ -340,7 +473,7 @@ def main():
                     )
 
                 except Exception as e:
-                    # 捕获错误 (包括上面的 MODEL_NOT_FOUND)
+                    # Capture errors, including MODEL_NOT_FOUND above.
                     log_message(f"[ERROR] Translation Error: {e}")
                     import traceback
 
@@ -360,7 +493,7 @@ def main():
                     }
                 )
 
-            # 1. 检查模型状态
+            # 1. Check model status.
             elif command == "check_model":
                 model_id = request.get("model_id") or request.get("modelId")
                 selected_model_id, selected_translator = select_translator(model_id)
@@ -380,7 +513,7 @@ def main():
                     model_id = request.get("model_id") or request.get("modelId")
                     selected_model_id, selected_translator = select_translator(model_id)
                     selected_translator.download_model()
-                    # 下载只校验文件完整性，翻译时再懒加载模型
+                    # Download only verifies file integrity; translation lazy-loads weights.
                     if not selected_translator.check_model_exists():
                         raise Exception("MODEL_INSTALL_FAILED")
                     send_response(

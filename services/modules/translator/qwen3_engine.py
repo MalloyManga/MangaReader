@@ -1,8 +1,10 @@
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
+import tempfile
 import urllib.parse
 import urllib.request
 import ctypes
@@ -12,9 +14,6 @@ from .base import BaseTranslator
 from ..utils import log_message, send_response
 
 Llama = None
-_LLAMA_DLL_HANDLES = []
-
-
 def _prepare_llama_cpp_runtime():
     if not getattr(sys, "frozen", False) or not sys.platform.startswith("win"):
         return
@@ -34,17 +33,6 @@ def _prepare_llama_cpp_runtime():
             os.add_dll_directory(lib_dir)
         except Exception:
             pass
-
-        for dll_name in ("ggml-base.dll", "ggml.dll", "ggml-cpu.dll", "llama.dll"):
-            dll_path = os.path.join(lib_dir, dll_name)
-            if not os.path.exists(dll_path):
-                continue
-            try:
-                _LLAMA_DLL_HANDLES.append(
-                    ctypes.CDLL(dll_path, winmode=getattr(ctypes, "RTLD_GLOBAL", 0))
-                )
-            except Exception as exc:
-                log_message(f"[WARN] Failed to pre-load {dll_name}: {exc}")
         return
 
 
@@ -82,6 +70,7 @@ class Qwen3GgufEngine(BaseTranslator):
         ]
 
         self.llm = None
+        self.use_external_runtime = False
         self.lock = threading.Lock()
 
     def unload(self):
@@ -91,6 +80,7 @@ class Qwen3GgufEngine(BaseTranslator):
             except Exception:
                 pass
         self.llm = None
+        self.use_external_runtime = False
         self.is_ready = False
 
     def check_model_exists(self):
@@ -144,17 +134,6 @@ class Qwen3GgufEngine(BaseTranslator):
         os.makedirs(self.model_dir, exist_ok=True)
 
         if self.check_model_exists():
-            if self._needs_external_runtime():
-                send_response(
-                    {
-                        "type": "download_progress",
-                        "percent": 99.0,
-                        "filename": "qwen3-runtime",
-                        "model_id": "qwen3-4b-instruct-2507-q4-k-m",
-                        "stage": "runtime",
-                    }
-                )
-                self._ensure_runtime()
             send_response(
                 {
                     "type": "download_progress",
@@ -171,17 +150,6 @@ class Qwen3GgufEngine(BaseTranslator):
                     self._download_file(base_url)
                     if not self.check_model_exists():
                         raise Exception("MODEL_INSTALL_FAILED")
-                    if self._needs_external_runtime():
-                        send_response(
-                            {
-                                "type": "download_progress",
-                                "percent": 99.0,
-                                "filename": "qwen3-runtime",
-                                "model_id": "qwen3-4b-instruct-2507-q4-k-m",
-                                "stage": "runtime",
-                            }
-                        )
-                        self._ensure_runtime()
                     send_response(
                         {
                             "type": "download_progress",
@@ -365,18 +333,19 @@ class Qwen3GgufEngine(BaseTranslator):
         os.replace(tmp_path, self.model_file_path)
 
     def initialize(self):
-        if getattr(sys, "frozen", False) and sys.platform.startswith("win"):
+        if self._needs_external_runtime():
             if not self.check_model_exists():
                 log_message(f"[WARN] Initialize failed. Model not found at: {self.model_file_path}")
                 self.is_ready = False
                 return
             self._ensure_runtime()
+            self.use_external_runtime = True
             self.is_ready = True
-            log_message("[INFO] Qwen3 GGUF Engine ready via llama.cpp runtime.")
+            log_message("[INFO] Qwen3 GGUF Engine ready via external llama.cpp runtime.")
             return
 
         llama_class = _get_llama_class()
-        if llama_class is None:
+        if llama_class is None and not self._needs_external_runtime():
             log_message("[ERROR] Error: llama-cpp-python not installed.")
             self.is_ready = False
             return
@@ -386,24 +355,29 @@ class Qwen3GgufEngine(BaseTranslator):
             self.is_ready = False
             return
 
-        try:
-            log_message(f"[INFO] Loading Qwen3 GGUF (CPU Mode) from: {self.model_file_path}")
-            self.llm = llama_class(
-                model_path=self.model_file_path,
-                n_ctx=2048,
-                n_threads=4,
-                verbose=False,
-                n_gpu_layers=0,
-            )
-            self.is_ready = True
-            log_message("[INFO] Qwen3 GGUF Engine loaded.")
-        except Exception as e:
-            import traceback
+        if llama_class is not None:
+            try:
+                log_message(f"[INFO] Loading Qwen3 GGUF (CPU Mode) from: {self.model_file_path}")
+                self.llm = llama_class(
+                    model_path=self.model_file_path,
+                    n_ctx=2048,
+                    n_threads=4,
+                    verbose=False,
+                    n_gpu_layers=0,
+                )
+                self.use_external_runtime = False
+                self.is_ready = True
+                log_message("[INFO] Qwen3 GGUF Engine loaded.")
+                return
+            except Exception as e:
+                import traceback
 
-            tb = traceback.format_exc()
-            log_message(f"[ERROR] Failed to load Qwen3 GGUF: {e}\nTraceback: {tb}")
-            self.is_ready = False
-            raise e
+                tb = traceback.format_exc()
+                log_message(f"[ERROR] Failed to load Qwen3 GGUF via llama-cpp-python: {e}\nTraceback: {tb}")
+                self.llm = None
+                self.is_ready = False
+                if not self._needs_external_runtime():
+                    raise e
 
     def translate(self, text):
         if not self.is_ready:
@@ -419,14 +393,15 @@ class Qwen3GgufEngine(BaseTranslator):
                 f"<|im_start|>user\n{text}<|im_end|>\n"
                 f"<|im_start|>assistant\n"
             )
+            prompt = self._build_chat_prompt(text)
 
-            if getattr(sys, "frozen", False) and sys.platform.startswith("win"):
+            if self.use_external_runtime:
                 return self._translate_with_llama_cli(prompt)
 
             output = self.llm(
                 prompt,
                 max_tokens=512,
-                stop=["<|im_end|>", "\n\n"],
+                stop=["<|im_end|>"],
                 echo=False,
                 temperature=0.1,
                 top_p=0.9,
@@ -443,32 +418,85 @@ class Qwen3GgufEngine(BaseTranslator):
                 log_message(f"Qwen3 output error: {e}")
                 return text
 
+    def _build_chat_prompt(self, text):
+        system_prompt = (
+            "You are a professional Japanese-to-Simplified-Chinese manga translator. "
+            "Translate the user's Japanese manga text into natural, concise Simplified Chinese. "
+            "Output only the translation. Do not explain or add information."
+        )
+        return (
+            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{text}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
     def _translate_with_llama_cli(self, prompt):
         exe_path = self._runtime_exe_path()
         if not self._runtime_exists():
             raise Exception("LLAMA_RUNTIME_NOT_FOUND")
 
+        prompt_file = None
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        clean_env = {
+            "PATH": os.pathsep.join(
+                [
+                    self.runtime_dir,
+                    os.path.join(system_root, "System32"),
+                    system_root,
+                    os.path.join(system_root, "System32", "Wbem"),
+                ]
+            ),
+            "SystemRoot": system_root,
+            "TEMP": os.environ.get("TEMP", ""),
+            "TMP": os.environ.get("TMP", ""),
+            "OMP_NUM_THREADS": "1",
+            "KMP_DUPLICATE_LIB_OK": "TRUE",
+        }
         command = [
             exe_path,
             "-m",
             self.model_file_path,
-            "-p",
-            prompt,
+            "-f",
+            "",
             "-n",
             "512",
             "-c",
             "2048",
             "-t",
             "4",
+            "-ngl",
+            "0",
+            "--no-mmap",
             "--temp",
             "0.1",
             "--top-p",
             "0.9",
             "--no-display-prompt",
+            "--color",
+            "off",
+            "--no-conversation",
             "--simple-io",
+            "--no-warmup",
         ]
 
         try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                suffix=".txt",
+                delete=False,
+            ) as temp:
+                temp.write(prompt)
+                prompt_file = temp.name
+            command[command.index("-f") + 1] = prompt_file
+
+            kernel32 = None
+            restore_dll_dir = None
+            if sys.platform.startswith("win"):
+                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                restore_dll_dir = getattr(sys, "_MEIPASS", None)
+                kernel32.SetDllDirectoryW(self.runtime_dir)
+
             completed = subprocess.run(
                 command,
                 cwd=self.runtime_dir,
@@ -476,20 +504,70 @@ class Qwen3GgufEngine(BaseTranslator):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=clean_env,
                 timeout=180,
                 creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
             )
         except subprocess.TimeoutExpired:
             raise Exception("QWEN_TRANSLATION_TIMEOUT")
+        finally:
+            if "kernel32" in locals() and kernel32 is not None and sys.platform.startswith("win"):
+                kernel32.SetDllDirectoryW(restore_dll_dir)
+            if prompt_file:
+                try:
+                    os.remove(prompt_file)
+                except Exception:
+                    pass
 
+        translation = self._extract_llama_cli_translation(completed.stdout)
         if completed.returncode != 0:
+            if translation:
+                stderr_tail = "\n".join(completed.stderr.splitlines()[-10:])
+                log_message(
+                    "[WARN] llama-cli exited after producing output "
+                    f"(exit={completed.returncode}). stderr: {stderr_tail}"
+                )
+                return translation
+            stdout_tail = "\n".join(completed.stdout.splitlines()[-10:])
             stderr_tail = "\n".join(completed.stderr.splitlines()[-10:])
-            log_message(f"[ERROR] llama-cli failed: {stderr_tail}")
+            log_message(
+                "[ERROR] llama-cli failed "
+                f"(exit={completed.returncode}). stdout: {stdout_tail} stderr: {stderr_tail}"
+            )
             raise Exception("QWEN_TRANSLATION_FAILED")
 
-        translation = completed.stdout.strip()
+        if not translation:
+            stdout_tail = repr(completed.stdout[-2000:])
+            stderr_tail = repr(completed.stderr[-2000:])
+            log_message(
+                "[ERROR] llama-cli returned empty translation. "
+                f"stdout_tail={stdout_tail} stderr_tail={stderr_tail}"
+            )
+            raise Exception("QWEN_TRANSLATION_EMPTY")
+        return translation
+
+    def _extract_llama_cli_translation(self, stdout):
+        stdout = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", stdout)
+        translation = stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
+        assistant_marker = "<|im_start|>assistant"
+        if assistant_marker in translation:
+            translation = translation.rsplit(assistant_marker, 1)[1].strip()
         if "<|im_end|>" in translation:
             translation = translation.split("<|im_end|>", 1)[0].strip()
-        if "\n\n" in translation:
-            translation = translation.split("\n\n", 1)[0].strip()
-        return translation
+
+        cleaned_lines = []
+        for line in translation.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped == ">":
+                continue
+            if stripped.startswith("[ Prompt:"):
+                continue
+            if stripped.startswith("Exiting..."):
+                continue
+            if stripped.startswith(">"):
+                stripped = stripped[1:].strip()
+            cleaned_lines.append(stripped)
+
+        return "\n".join(cleaned_lines).strip()

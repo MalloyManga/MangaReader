@@ -2,6 +2,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_all
+from importlib.metadata import version
 import torch
 import os
 
@@ -97,7 +98,6 @@ if not os.path.exists(libiomp_path):
 
 if libiomp_path and os.path.exists(libiomp_path):
     print(f"Found libiomp5md.dll at: {libiomp_path}")
-    binaries.append((libiomp_path, '.'))
 else:
     print("WARNING: libiomp5md.dll not found in site-packages!")
 
@@ -119,6 +119,13 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 hiddenimports += ['google.protobuf']
 
 # 修复 sentencepiece 缺失问题 (防止下一个报错)
+sentencepiece_version = version('sentencepiece')
+if sentencepiece_version == '0.2.1':
+    raise RuntimeError(
+        'sentencepiece 0.2.1 crashes in the PyInstaller backend when loading '
+        'OPUS source.spm on Windows. Install sentencepiece==0.2.0 before '
+        'building the packaged backend.'
+    )
 tmp_ret = collect_all('sentencepiece')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 hiddenimports += ['sentencepiece']

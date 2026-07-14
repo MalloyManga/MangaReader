@@ -9,10 +9,41 @@ from .base import BaseTranslator
 from huggingface_hub import hf_hub_download
 from ..utils import log_message, patch_tqdm
 
-try:
-    from llama_cpp import Llama
-except ImportError:
-    Llama = None
+Llama = None
+
+
+def _prepare_llama_cpp_runtime():
+    if not getattr(sys, "frozen", False) or not sys.platform.startswith("win"):
+        return
+
+    candidates = [
+        os.path.join(getattr(sys, "_MEIPASS", ""), "llama_cpp", "lib"),
+        os.path.join(os.path.dirname(sys.executable), "_internal", "llama_cpp", "lib"),
+    ]
+
+    for lib_dir in candidates:
+        if not lib_dir or not os.path.isdir(lib_dir):
+            continue
+
+        os.environ["LLAMA_CPP_LIB_PATH"] = lib_dir
+        os.environ["PATH"] = lib_dir + os.pathsep + os.environ.get("PATH", "")
+        try:
+            os.add_dll_directory(lib_dir)
+        except Exception:
+            pass
+        return
+
+
+def _get_llama_class():
+    global Llama
+    if Llama is None:
+        _prepare_llama_cpp_runtime()
+        try:
+            from llama_cpp import Llama as LlamaClass
+        except ImportError:
+            return None
+        Llama = LlamaClass
+    return Llama
 
 
 class SakuraEngine(BaseTranslator):
@@ -107,7 +138,8 @@ class SakuraEngine(BaseTranslator):
             raise e
 
     def initialize(self):
-        if Llama is None:
+        llama_class = _get_llama_class()
+        if llama_class is None:
             log_message("[ERROR] Error: llama-cpp-python not installed.")
             self.is_ready = False
             return
@@ -134,7 +166,7 @@ class SakuraEngine(BaseTranslator):
             log_message(f"[INFO] Loading SakuraLLM (CPU Mode) from: {model_path}")
 
             # Force CPU mode to avoid GPU/driver issues causing access violations
-            self.llm = Llama(
+            self.llm = llama_class(
                 model_path=model_path,
                 n_ctx=1024,
                 n_threads=4,

@@ -1,7 +1,3 @@
-from .opus_engine import OpusMtJaZhEngine
-from .qwen3_engine import Qwen3GgufEngine
-from .sakura_engine import SakuraEngine
-
 TRANSLATOR_MODELS = [
     {
         "id": "sakura-1.5b",
@@ -72,9 +68,21 @@ def list_translator_models():
 def get_translator_engine(model_id, model_root_dir):
     normalized = normalize_translator_id(model_id)
     if normalized == "sakura-1.5b":
+        from .sakura_engine import SakuraEngine
+
         return SakuraEngine(model_root_dir)
     if normalized == "opus-mt-ja-zh":
+        from .opus_engine import OpusMtJaZhEngine
+
         return OpusMtJaZhEngine(model_root_dir)
     if normalized == "qwen3-4b-instruct-2507-q4-k-m":
+        from .qwen3_engine import Qwen3GgufEngine
+
         return Qwen3GgufEngine(model_root_dir)
     raise ValueError(f"Unknown translator model: {model_id}")
+
+
+def requires_translate_worker(model_id):
+    return normalize_translator_id(model_id) in {
+        "qwen3-4b-instruct-2507-q4-k-m",
+    }

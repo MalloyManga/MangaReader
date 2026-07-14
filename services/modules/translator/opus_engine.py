@@ -38,11 +38,13 @@ class OpusMtJaZhEngine(BaseTranslator):
         ]
         self.model = None
         self.tokenizer = None
+        self.torch = None
         self.lock = threading.Lock()
 
     def unload(self):
         self.model = None
         self.tokenizer = None
+        self.torch = None
         self.is_ready = False
 
     def check_model_exists(self):
@@ -193,16 +195,28 @@ class OpusMtJaZhEngine(BaseTranslator):
             return
 
         try:
+            import torch
+
+            torch.set_num_threads(1)
+            try:
+                torch.set_num_interop_threads(1)
+            except RuntimeError:
+                pass
+
             from transformers import MarianMTModel, MarianTokenizer
 
             log_message(f"[INFO] Loading OPUS-MT ja-zh from: {self.model_dir}")
+            log_message("[DEBUG] Loading OPUS-MT tokenizer...")
             self.tokenizer = MarianTokenizer.from_pretrained(
                 self.model_dir, local_files_only=True
             )
+            log_message("[DEBUG] Loading OPUS-MT model weights...")
             self.model = MarianMTModel.from_pretrained(
                 self.model_dir, local_files_only=True
             )
+            log_message("[DEBUG] Setting OPUS-MT model eval mode...")
             self.model.eval()
+            self.torch = torch
             self.is_ready = True
             log_message("[INFO] OPUS-MT ja-zh engine loaded.")
         except Exception as e:
@@ -216,15 +230,13 @@ class OpusMtJaZhEngine(BaseTranslator):
 
         with self.lock:
             try:
-                import torch
-
                 inputs = self.tokenizer(
                     text,
                     return_tensors="pt",
                     truncation=True,
                     max_length=512,
                 )
-                with torch.no_grad():
+                with self.torch.no_grad():
                     generated = self.model.generate(
                         **inputs,
                         max_new_tokens=256,
