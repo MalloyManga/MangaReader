@@ -137,6 +137,7 @@ const isSettingsReady = ref(false)
 const handleOcrCapture = async (selectionData: { left: number, top: number, width: number, height: number }) => {
     isOcrMode.value = false
     isOcrRecognizing.value = true
+    let pendingBlockId: string | null = null
 
     try {
         if (!isSettingsReady.value) {
@@ -213,6 +214,20 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
             throw new Error('选区未包含有效图片内容')
         }
 
+        const newBlock: OcrBlock = {
+            id: Date.now().toString(),
+            rect: { x: sourceX, y: sourceY, width: sourceW, height: sourceH },
+            original: '',
+            translation: '',
+            tokens: [],
+            status: 'loading',
+            showOriginal: false
+        }
+        pendingBlockId = newBlock.id
+        ocrBlocks.value.push(newBlock)
+        activeBlockId.value = newBlock.id
+        await nextTick()
+
         // 5. 创建 Canvas 进行裁剪
         const canvas = document.createElement('canvas')
         // Canvas 大小设置为原图分辨率下的选区大小 (保证清晰度)
@@ -239,18 +254,11 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         console.log(' OCR 识别成功:', result.text)
 
         if (result.success && result.text) {
-            const newBlock: OcrBlock = {
-                id: Date.now().toString(),
-                rect: { x: sourceX, y: sourceY, width: sourceW, height: sourceH },
-                original: result.text,
-                translation: '',
-                tokens: [],
-                status: 'done',
-                showOriginal: false
+            const blockIndex = ocrBlocks.value.findIndex(block => block.id === newBlock.id)
+            if (blockIndex !== -1 && ocrBlocks.value[blockIndex]) {
+                ocrBlocks.value[blockIndex].original = result.text
+                ocrBlocks.value[blockIndex].status = 'done'
             }
-            // 得到结果之后先添加
-            ocrBlocks.value.push(newBlock)
-            activeBlockId.value = newBlock.id
 
             // 直接调用翻译
             console.log('[Reader] enableTranslation:', settings.value.enableTranslation, 'model:', settings.value.translationModelId)
@@ -260,11 +268,21 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
                 console.log('[Reader] Translation skipped because enableTranslation is false.')
             }
         } else {
+            const blockIndex = ocrBlocks.value.findIndex(block => block.id === newBlock.id)
+            if (blockIndex !== -1 && ocrBlocks.value[blockIndex]) {
+                ocrBlocks.value[blockIndex].status = 'error'
+            }
             console.error('❌ OCR 识别失败:', result.error)
             showToast(`OCR 识别失败: ${result.error}`)
         }
 
     } catch (error) {
+        if (pendingBlockId) {
+            const blockIndex = ocrBlocks.value.findIndex(block => block.id === pendingBlockId)
+            if (blockIndex !== -1 && ocrBlocks.value[blockIndex]) {
+                ocrBlocks.value[blockIndex].status = 'error'
+            }
+        }
         console.error('OCR 处理错误:', error)
         showToast(`OCR 处理错误: ${error}`, 5000)
     } finally {
