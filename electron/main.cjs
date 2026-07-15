@@ -21,6 +21,10 @@ const url = require('url')
 const { BackendService } = require('./backend-service.cjs')
 
 const isDev = !app.isPackaged
+const enablePackagedDevTools = app.isPackaged && (
+    process.env.MANGAREADER_ENABLE_DEVTOOLS === '1' ||
+    process.argv.includes('--devtools')
+)
 
 /** @type {import('electron').BrowserWindow} */
 let mainWindow // 将 mainWindow 提升到全局，以便我们可以从 ipcMain 访问它
@@ -84,7 +88,7 @@ async function initStore() {
     store = new Store({
         name: 'config', // 文件名为 config.json
         defaults: {     // 默认配置，防止首次运行为空
-            enableTranslation: false,
+            enableTranslation: true,
             translationModelId: '',
             enableTokenization: true,
             translationApiKey: '',
@@ -121,12 +125,36 @@ function createMainWindow() {
         // 前端渲染加载文件挂起之后 立刻去添加监听器on
         mainWindow.loadFile(path.join(__dirname, '../.output/public/index.html'))
 
-        Menu.setApplicationMenu(null)
+        if (enablePackagedDevTools) {
+            Menu.setApplicationMenu(Menu.buildFromTemplate([
+                {
+                    label: 'Debug',
+                    submenu: [
+                        {
+                            label: 'Toggle DevTools',
+                            accelerator: 'F12',
+                            click: () => mainWindow?.webContents.toggleDevTools()
+                        },
+                        {
+                            label: 'Reload',
+                            accelerator: 'Ctrl+R',
+                            click: () => mainWindow?.reload()
+                        }
+                    ]
+                }
+            ]))
+        } else {
+            Menu.setApplicationMenu(null)
+        }
 
         // 拦截唤起开发者工具的快捷键
         mainWindow.webContents.on('before-input-event', (event, input) => {
-            if ((input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
-                event.preventDefault()
+            const wantsDevTools = (input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12'
+            if (!wantsDevTools) return
+
+            event.preventDefault()
+            if (enablePackagedDevTools) {
+                mainWindow.webContents.toggleDevTools()
             }
         })
     }

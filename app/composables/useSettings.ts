@@ -5,7 +5,7 @@ export const useSettings = () => {
     // 这里存放具体的设置数据
     const settings = useState('app-settings', () => ({
         readingMode: 'study' as 'study' | 'list' | 'immersive',
-        enableTranslation: false, // 启用翻译
+        enableTranslation: true, // 启用翻译
         translationModelId: '',
         enableTokenization: true, // 启用分词
         translationApiKey: '', // 翻译APIkey
