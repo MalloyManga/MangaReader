@@ -216,9 +216,8 @@ onUnmounted(clearImages)
         <ToastContainer />
         <TitleBar @open-settings="showSettingsModal = true">
             <template #extra-buttons>
-                <Button class="text-sm font-bold flex items-center gap-2" variant="secondary" @btn-click="goBack">
-                    <IconBook class="size-4" />
-                    返回书架
+                <Button class="text-sm font-bold" variant="secondary" @btn-click="goBack">
+                    📚 返回书架
                 </Button>
             </template>
         </TitleBar>
