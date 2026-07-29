@@ -22,6 +22,9 @@ OFFICIAL_ASSETS = (
         "name": "CTD 检测代码",
         "filename": "comic-text-detector-440b978563c71b758e31aaa315d100faba1efa2f.zip",
         "url": "https://codeload.github.com/dmMaze/comic-text-detector/zip/440b978563c71b758e31aaa315d100faba1efa2f",
+        "mirrors": (
+            "https://gh-proxy.com/https://github.com/dmMaze/comic-text-detector/archive/440b978563c71b758e31aaa315d100faba1efa2f.zip",
+        ),
         "sha256": "3c0f355c2bbafe74ceee61a108d83b2bc197c2e786a90341707b1a01e62e2ebf",
         "size": 6547271,
         "kind": "source",
@@ -31,6 +34,9 @@ OFFICIAL_ASSETS = (
         "name": "CTD PyTorch 模型",
         "filename": "comictextdetector.pt",
         "url": "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.2.1/comictextdetector.pt",
+        "mirrors": (
+            "https://gh-proxy.com/https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.2.1/comictextdetector.pt",
+        ),
         "sha256": "1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb",
         "size": 79948869,
         "kind": "model",
@@ -40,6 +46,9 @@ OFFICIAL_ASSETS = (
         "name": "OpenCV 运行时",
         "filename": "opencv_python_headless-4.10.0.84-cp37-abi3-win_amd64.whl",
         "url": "https://files.pythonhosted.org/packages/26/d0/22f68eb23eea053a31655960f133c0be9726c6a881547e6e9e7e2a946c4f/opencv_python_headless-4.10.0.84-cp37-abi3-win_amd64.whl",
+        "mirrors": (
+            "https://mirrors.aliyun.com/pypi/packages/26/d0/22f68eb23eea053a31655960f133c0be9726c6a881547e6e9e7e2a946c4f/opencv_python_headless-4.10.0.84-cp37-abi3-win_amd64.whl",
+        ),
         "sha256": "afcf28bd1209dd58810d33defb622b325d3cbe49dcd7a43a902982c33e5fad05",
         "size": 38754031,
         "kind": "wheel",
@@ -49,6 +58,9 @@ OFFICIAL_ASSETS = (
         "name": "Torchvision 运行时",
         "filename": "torchvision-0.17.2-cp312-cp312-win_amd64.whl",
         "url": "https://files.pythonhosted.org/packages/fd/d1/8da7f30169f56764f0ef9ed961a32f300a2d782b6c1bc8b391c3014092f8/torchvision-0.17.2-cp312-cp312-win_amd64.whl",
+        "mirrors": (
+            "https://mirrors.aliyun.com/pypi/packages/fd/d1/8da7f30169f56764f0ef9ed961a32f300a2d782b6c1bc8b391c3014092f8/torchvision-0.17.2-cp312-cp312-win_amd64.whl",
+        ),
         "sha256": "3f784381419f3ed3f2ec2aa42fb4aeec5bf4135e298d1631e41c926e6f1a0dff",
         "size": 1165531,
         "kind": "torchvision-wheel",
@@ -218,12 +230,65 @@ class DetectionModuleManager:
             elif asset["size"] and existing_size > asset["size"]:
                 destination.unlink(missing_ok=True)
 
+        sources = [*(asset.get("mirrors") or ()), asset["url"]]
+        last_error = None
+        for source_index, source_url in enumerate(sources):
+            source_name = "镜像源" if source_index < len(sources) - 1 else "官方源"
+            self._emit_progress(
+                progress_callback,
+                completed_size / max(total_size, 1) * 88,
+                "connecting",
+                f"正在连接{source_name}：{asset['name']}",
+            )
+            try:
+                self._download_from_source(
+                    asset,
+                    source_url,
+                    source_name,
+                    destination,
+                    completed_size,
+                    total_size,
+                    progress_callback,
+                )
+                if asset["size"] and destination.stat().st_size != asset["size"]:
+                    raise DetectionModuleError(
+                        f"下载文件大小异常: {asset['filename']}"
+                    )
+                self._verify_sha256(destination, asset["sha256"])
+                last_error = None
+                break
+            except Exception as error:
+                last_error = error
+                destination.unlink(missing_ok=True)
+                if source_index < len(sources) - 1:
+                    self._emit_progress(
+                        progress_callback,
+                        completed_size / max(total_size, 1) * 88,
+                        "fallback",
+                        f"{source_name}不可用，正在切换下载源",
+                    )
+        if last_error:
+            raise DetectionModuleError(f"所有下载源均不可用: {asset['filename']}") from last_error
+        if asset["size"] and destination.stat().st_size != asset["size"]:
+            destination.unlink(missing_ok=True)
+            raise DetectionModuleError(f"下载文件大小异常: {asset['filename']}")
+
+    def _download_from_source(
+        self,
+        asset,
+        source_url,
+        source_name,
+        destination,
+        completed_size,
+        total_size,
+        progress_callback,
+    ):
         existing_size = destination.stat().st_size if destination.exists() else 0
         headers = {"User-Agent": "MangaReader-DetectionModule/1"}
         if existing_size:
             headers["Range"] = f"bytes={existing_size}-"
 
-        request = urllib.request.Request(asset["url"], headers=headers)
+        request = urllib.request.Request(source_url, headers=headers)
         with urllib.request.urlopen(request, timeout=60) as response:
             if not response.geturl().startswith("https://"):
                 raise DetectionModuleError("检测模块下载地址必须使用 HTTPS")
@@ -243,11 +308,8 @@ class DetectionModuleManager:
                         progress_callback,
                         completed_size + downloaded,
                         total_size,
-                        asset["name"],
+                        f"{asset['name']}（{source_name}）",
                     )
-        if asset["size"] and destination.stat().st_size != asset["size"]:
-            destination.unlink(missing_ok=True)
-            raise DetectionModuleError(f"下载文件大小异常: {asset['filename']}")
 
     def _assemble_module(self, staging_path, assets):
         source_extract = staging_path / ".source"

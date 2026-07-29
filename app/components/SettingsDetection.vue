@@ -39,7 +39,7 @@ const handleDownload = async () => {
 
     detectionModule.status = 'downloading'
     detectionModule.progress = 0
-    detectionModule.message = '正在连接官方下载源'
+    detectionModule.message = '正在连接镜像下载源'
     detectionModule.error = ''
     try {
         const result = await window.electronAPI.downloadDetectionModule()
@@ -138,9 +138,9 @@ onUnmounted(() => cleanupProgress?.())
                 </div>
 
                 <div v-if="detectionModule.status === 'downloading'" class="mt-4">
-                    <div class="flex justify-between text-xs text-manga-500 mb-2">
-                        <span>{{ detectionModule.message }}</span>
-                        <span class="tabular-nums">{{ Math.round(detectionModule.progress) }}%</span>
+                    <div class="flex items-center justify-between gap-3 text-xs text-manga-500 mb-2 min-w-0">
+                        <span class="min-w-0 truncate" :title="detectionModule.message">{{ detectionModule.message }}</span>
+                        <span class="tabular-nums shrink-0">{{ Math.round(detectionModule.progress) }}%</span>
                     </div>
                     <div class="h-2 bg-manga-100 dark:bg-manga-700 rounded-full overflow-hidden">
                         <div class="h-full bg-primary transition-all duration-300"
@@ -168,7 +168,7 @@ onUnmounted(() => cleanupProgress?.())
                 </template>
                 <button v-else type="button"
                     :disabled="detectionModule.status === 'checking' || detectionModule.status === 'downloading' || detectionModule.status === 'unavailable'"
-                    class="w-full min-h-11 flex items-center justify-center gap-2 px-4 rounded-lg bg-primary text-white text-sm font-bold transition-colors enabled:hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                    class="w-full h-11 min-h-11 overflow-hidden whitespace-nowrap flex items-center justify-center gap-2 px-4 rounded-lg bg-primary text-white text-sm font-bold leading-none transition-colors enabled:hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
                     @click="handleDownload">
                     <IconDownload class="size-4" />
                     {{ detectionModule.status === 'downloading' ? '正在安装' : actionLabel }}
@@ -177,7 +177,7 @@ onUnmounted(() => cleanupProgress?.())
         </section>
 
         <p class="text-xs text-manga-400 dark:text-manga-500 leading-relaxed px-1">
-            安装时直接连接各项目的官方分发渠道，并在加载前校验所有模块文件。卸载不会影响手动画框、OCR 或翻译。
+            默认优先使用镜像下载，镜像不可用时自动切换官方渠道；所有文件加载前都会完成完整性校验。
         </p>
 
         <ConfirmModal :show="showDeleteConfirm" title="卸载自动检测模块？"
