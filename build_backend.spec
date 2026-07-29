@@ -16,6 +16,9 @@ excludes = [
     'numpy._pyinstaller',
     'torch.utils.tensorboard',
     'torchaudio',
+    # Optional text detection installs these into its own verified vendor path.
+    'cv2',
+    'torchvision',
     'sudachidict_core',
     'sudachidict_core.resources',
     'transformers.commands',

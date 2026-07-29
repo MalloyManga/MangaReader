@@ -5,6 +5,7 @@ import ctypes
 import io
 import json
 import argparse
+import atexit
 import base64
 import re
 import zipfile
@@ -103,6 +104,120 @@ def run_translate_worker_mode(models_root):
         log_message(f"[ERROR] Traceback: {traceback.format_exc()}")
         send_response({"success": False, "error": str(e)})
         return 1
+
+
+def run_detection_worker_mode(modules_root):
+    manager = DetectionModuleManager(modules_root)
+    registry = TextDetectorRegistry(manager)
+    try:
+        for line in sys.stdin:
+            request = {}
+            try:
+                request = json.loads(line)
+                worker_id = request.get("worker_id")
+                action = request.get("action")
+                if action == "load":
+                    result = {"version": registry.load()}
+                elif action == "detect":
+                    result = {"regions": registry.detect_base64(request.get("image", ""))}
+                elif action == "shutdown":
+                    send_response({"worker_id": worker_id, "success": True})
+                    return 0
+                else:
+                    raise ValueError(f"UNKNOWN_DETECTION_WORKER_ACTION: {action}")
+                send_response({"worker_id": worker_id, "success": True, **result})
+            except Exception as error:
+                send_response(
+                    {
+                        "worker_id": request.get("worker_id") if isinstance(request, dict) else None,
+                        "success": False,
+                        "error": str(error),
+                    }
+                )
+    finally:
+        registry.unload()
+    return 0
+
+
+class DetectionWorkerClient:
+    def __init__(self, modules_root):
+        self.modules_root = modules_root
+        self.process = None
+        self.next_request_id = 1
+
+    def load(self):
+        return self._request("load").get("version", "")
+
+    def detect_base64(self, image_base64):
+        return self._request("detect", image=image_base64).get("regions", [])
+
+    def unload(self):
+        process = self.process
+        self.process = None
+        if process is None:
+            return
+        try:
+            if process.poll() is None:
+                request = {"worker_id": self.next_request_id, "action": "shutdown"}
+                process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+                process.stdin.flush()
+                process.wait(timeout=10)
+        except Exception:
+            process.kill()
+            process.wait(timeout=10)
+        finally:
+            for stream in (process.stdin, process.stdout):
+                if stream:
+                    stream.close()
+
+    def _start(self):
+        if self.process is not None and self.process.poll() is None:
+            return
+        command = [sys.executable]
+        if not getattr(sys, "frozen", False):
+            command.append(os.path.abspath(__file__))
+        command.extend(
+            ["--detection-worker", "--modules-root", str(self.modules_root)]
+        )
+        self.process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=(
+                subprocess.CREATE_NO_WINDOW
+                if hasattr(subprocess, "CREATE_NO_WINDOW")
+                else 0
+            ),
+        )
+
+    def _request(self, action, **payload):
+        self._start()
+        worker_id = self.next_request_id
+        self.next_request_id += 1
+        request = {"worker_id": worker_id, "action": action, **payload}
+        try:
+            self.process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+            self.process.stdin.flush()
+            while True:
+                line = self.process.stdout.readline()
+                if not line:
+                    raise RuntimeError("DETECTION_WORKER_STOPPED")
+                try:
+                    response = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if response.get("worker_id") != worker_id:
+                    continue
+                if not response.get("success"):
+                    raise RuntimeError(response.get("error") or "DETECTION_WORKER_FAILED")
+                return response
+        except Exception:
+            self.unload()
+            raise
 
 
 def translate_in_worker(models_root, model_id, text, timeout=600):
@@ -259,6 +374,7 @@ def main():
     parser.add_argument("--models-root", type=str, help="Path to models root")
     parser.add_argument("--modules-root", type=str, help="Path to writable service modules")
     parser.add_argument("--translate-worker", action="store_true")
+    parser.add_argument("--detection-worker", action="store_true")
     args, _ = parser.parse_known_args()
 
     # 修复：如果未提供 --model-dir，则使用默认路径 (防止 NoneType 错误)
@@ -278,14 +394,16 @@ def main():
     if args.translate_worker:
         sys.exit(run_translate_worker_mode(models_root))
 
+    modules_root = args.modules_root or os.path.join(
+        os.path.dirname(models_root), "services", "modules"
+    )
+    if args.detection_worker:
+        sys.exit(run_detection_worker_mode(modules_root))
+
     preload_openmp_for_ocr()
 
     translation_root = os.path.join(models_root, "translation")
     dictionary_root = os.path.join(models_root, "dictionary", "sudachi")
-    modules_root = args.modules_root or os.path.join(
-        os.path.dirname(models_root), "services", "modules"
-    )
-
     if not os.path.exists(translation_root):
         os.makedirs(translation_root, exist_ok=True)
 
@@ -354,7 +472,8 @@ def main():
     dictionary_manager = SudachiDictionaryManager(dictionary_root)
     tokenizer = None
     detection_manager = DetectionModuleManager(modules_root)
-    detection_registry = TextDetectorRegistry(detection_manager)
+    detection_registry = DetectionWorkerClient(modules_root)
+    atexit.register(detection_registry.unload)
 
     # [MODIFIED] Translator is already instantiated above for pre-loading.
     # We just need to ensure it's assigned to the variable we use later.
@@ -548,7 +667,11 @@ def main():
 
             elif command == "check_detection_module":
                 send_response(
-                    {"id": req_id, "success": True, **detection_manager.get_status()}
+                    {
+                        "id": req_id,
+                        "success": True,
+                        **detection_manager.get_status(verify_integrity=True),
+                    }
                 )
 
             elif command == "download_detection_module":
@@ -564,7 +687,7 @@ def main():
                         detection_registry.load()
                     except Exception:
                         detection_registry.unload()
-                        detection_manager.delete_version(status.get("version", ""))
+                        detection_manager.delete()
                         raise
                     send_response({"id": req_id, "success": True, **status})
                 except Exception as e:
@@ -629,6 +752,7 @@ def main():
                 send_response({"success": True, "message": "pong"})
 
             elif command == "exit":
+                detection_registry.unload()
                 sys.exit(0)
 
         except json.JSONDecodeError:

@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import stat
+import time
 import urllib.request
 import uuid
 import zipfile
@@ -11,9 +12,48 @@ from pathlib import Path
 
 
 MODULE_ID = "ctd-detector"
+MODULE_VERSION = "1.0.0"
 SUPPORTED_API_VERSION = 1
-RELEASE_URL = os.environ.get("MANGAREADER_CTD_MODULE_URL", "").strip()
-RELEASE_SHA256 = os.environ.get("MANGAREADER_CTD_MODULE_SHA256", "").strip().lower()
+
+# Third-party files are downloaded from their upstream distribution channels.
+OFFICIAL_ASSETS = (
+    {
+        "id": "ctd-source",
+        "name": "CTD 检测代码",
+        "filename": "comic-text-detector-440b978563c71b758e31aaa315d100faba1efa2f.zip",
+        "url": "https://codeload.github.com/dmMaze/comic-text-detector/zip/440b978563c71b758e31aaa315d100faba1efa2f",
+        "sha256": "3c0f355c2bbafe74ceee61a108d83b2bc197c2e786a90341707b1a01e62e2ebf",
+        "size": 6547271,
+        "kind": "source",
+    },
+    {
+        "id": "ctd-model",
+        "name": "CTD PyTorch 模型",
+        "filename": "comictextdetector.pt",
+        "url": "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.2.1/comictextdetector.pt",
+        "sha256": "1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb",
+        "size": 79948869,
+        "kind": "model",
+    },
+    {
+        "id": "opencv",
+        "name": "OpenCV 运行时",
+        "filename": "opencv_python_headless-4.10.0.84-cp37-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/26/d0/22f68eb23eea053a31655960f133c0be9726c6a881547e6e9e7e2a946c4f/opencv_python_headless-4.10.0.84-cp37-abi3-win_amd64.whl",
+        "sha256": "afcf28bd1209dd58810d33defb622b325d3cbe49dcd7a43a902982c33e5fad05",
+        "size": 38754031,
+        "kind": "wheel",
+    },
+    {
+        "id": "torchvision",
+        "name": "Torchvision 运行时",
+        "filename": "torchvision-0.17.2-cp312-cp312-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/fd/d1/8da7f30169f56764f0ef9ed961a32f300a2d782b6c1bc8b391c3014092f8/torchvision-0.17.2-cp312-cp312-win_amd64.whl",
+        "sha256": "3f784381419f3ed3f2ec2aa42fb4aeec5bf4135e298d1631e41c926e6f1a0dff",
+        "size": 1165531,
+        "kind": "torchvision-wheel",
+    },
+)
 
 
 class DetectionModuleError(RuntimeError):
@@ -26,231 +66,366 @@ class DetectionModuleManager:
         self.installed_root = self.module_root / "installed" / MODULE_ID
         self.download_root = self.module_root / ".downloads"
 
-    @property
-    def release_configured(self):
-        return bool(
-            RELEASE_URL.startswith("https://")
-            and re.fullmatch(r"[0-9a-f]{64}", RELEASE_SHA256)
-        )
-
-    def get_status(self):
+    def get_status(self, verify_integrity=False):
+        corrupted = False
+        message = ""
         installed = self.get_installed_module()
-        status = {
+        version_path = self.installed_root / MODULE_VERSION
+        if installed is None and version_path.exists():
+            corrupted = True
+            message = "检测模块文件不完整，需要重新下载"
+        if installed and verify_integrity:
+            try:
+                self.verify_integrity(installed["path"])
+            except DetectionModuleError as error:
+                installed = None
+                corrupted = True
+                message = str(error)
+
+        return {
             "installed": installed is not None,
-            "available": self.release_configured,
+            "available": True,
+            "corrupted": corrupted,
             "version": installed["manifest"]["version"] if installed else "",
             "module_path": str(installed["path"]) if installed else "",
+            "message": message,
         }
-        if not self.release_configured:
-            status["message"] = "检测模块发布地址与 SHA-256 尚未配置"
-        return status
 
     def get_installed_module(self):
-        if not self.installed_root.exists():
+        version_path = self.installed_root / MODULE_VERSION
+        if not version_path.is_dir():
             return None
-
-        candidates = []
-        for child in self.installed_root.iterdir():
-            if not child.is_dir() or child.name.startswith("."):
-                continue
-            try:
-                manifest = self._validate_module(child)
-                candidates.append((self._version_key(manifest["version"]), child, manifest))
-            except DetectionModuleError:
-                continue
-
-        if not candidates:
+        try:
+            return {
+                "path": version_path,
+                "manifest": self._validate_structure(version_path),
+            }
+        except DetectionModuleError:
             return None
-        _, path, manifest = max(candidates, key=lambda item: item[0])
-        return {"path": path, "manifest": manifest}
 
     def install(self, progress_callback=None):
-        if not self.release_configured:
-            raise DetectionModuleError("DETECTION_MODULE_RELEASE_NOT_CONFIGURED")
-
         self.download_root.mkdir(parents=True, exist_ok=True)
-        archive_path = self.download_root / f"{MODULE_ID}.zip.part"
         staging_path = self.installed_root / f".install-{uuid.uuid4().hex}"
+        downloaded_assets = {}
 
         try:
-            self._download(archive_path, progress_callback)
-            self._emit_progress(progress_callback, 92, "verifying")
-            self._verify_sha256(archive_path, RELEASE_SHA256)
+            total_size = sum(asset["size"] for asset in OFFICIAL_ASSETS if asset["size"])
+            completed_size = 0
+            for asset in OFFICIAL_ASSETS:
+                asset_path = self.download_root / f"{asset['filename']}.part"
+                self._download_asset(
+                    asset,
+                    asset_path,
+                    completed_size,
+                    total_size,
+                    progress_callback,
+                )
+                try:
+                    self._verify_sha256(asset_path, asset["sha256"])
+                except DetectionModuleError:
+                    asset_path.unlink(missing_ok=True)
+                    raise
+                downloaded_assets[asset["kind"]] = asset_path
+                completed_size += asset["size"] or asset_path.stat().st_size
 
+            self._emit_progress(progress_callback, 90, "verifying", "正在校验下载文件")
             staging_path.mkdir(parents=True, exist_ok=False)
-            self._emit_progress(progress_callback, 96, "installing")
-            self._safe_extract(archive_path, staging_path)
-            package_root = self._find_package_root(staging_path)
-            manifest = self._validate_module(package_root, verify_hashes=True)
+            self._assemble_module(staging_path, downloaded_assets)
+            self._emit_progress(progress_callback, 96, "installing", "正在生成完整性清单")
+            self._write_integrity_manifest(staging_path)
+            self.verify_integrity(staging_path)
 
-            destination = self.installed_root / manifest["version"]
-            if destination.exists():
-                shutil.rmtree(destination)
+            destination = self.installed_root / MODULE_VERSION
+            backup = self.installed_root / f".backup-{uuid.uuid4().hex}"
             destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                self._replace_path(destination, backup)
+            try:
+                self._replace_path(staging_path, destination)
+                self.verify_integrity(destination)
+            except Exception:
+                if destination.exists():
+                    shutil.rmtree(destination, ignore_errors=True)
+                if backup.exists():
+                    self._replace_path(backup, destination)
+                raise
+            finally:
+                shutil.rmtree(backup, ignore_errors=True)
 
-            if package_root == staging_path:
-                os.replace(staging_path, destination)
-            else:
-                os.replace(package_root, destination)
-                shutil.rmtree(staging_path, ignore_errors=True)
-
-            self._validate_module(destination, verify_hashes=True)
-            self._emit_progress(progress_callback, 100, "complete")
-            return self.get_status()
+            for asset_path in downloaded_assets.values():
+                asset_path.unlink(missing_ok=True)
+            self._emit_progress(progress_callback, 100, "complete", "检测模块安装完成")
+            return self.get_status(verify_integrity=True)
         finally:
-            archive_path.unlink(missing_ok=True)
             shutil.rmtree(staging_path, ignore_errors=True)
 
     def delete(self):
         if self.installed_root.exists():
             shutil.rmtree(self.installed_root)
+        if self.download_root.exists():
+            shutil.rmtree(self.download_root)
         return True
 
-    def delete_version(self, version):
-        if not self._valid_version(version):
-            return
-        version_path = self.installed_root / str(version)
-        if version_path.exists():
-            shutil.rmtree(version_path)
+    def verify_integrity(self, module_path):
+        module_path = Path(module_path).resolve()
+        self._validate_structure(module_path)
+        integrity_path = module_path / "integrity.json"
+        try:
+            integrity = json.loads(integrity_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise DetectionModuleError("检测模块完整性清单缺失或无效") from error
 
-    def _download(self, destination, progress_callback):
+        files = integrity.get("files")
+        if not isinstance(files, dict) or not files:
+            raise DetectionModuleError("检测模块完整性清单为空")
+
+        expected_paths = set(files)
+        actual_paths = {
+            path.relative_to(module_path).as_posix()
+            for path in module_path.rglob("*")
+            if path.is_file()
+            and path.name != "integrity.json"
+            and "__pycache__" not in path.parts
+            and path.suffix != ".pyc"
+        }
+        if actual_paths != expected_paths:
+            raise DetectionModuleError("检测模块文件不完整，需要重新下载")
+
+        for relative_path, metadata in files.items():
+            file_path = self._resolve_member(module_path, relative_path)
+            if file_path.stat().st_size != metadata.get("size"):
+                raise DetectionModuleError(f"检测模块文件大小异常: {relative_path}")
+            self._verify_sha256(file_path, metadata.get("sha256", ""))
+        return True
+
+    def _download_asset(
+        self, asset, destination, completed_size, total_size, progress_callback
+    ):
+        if destination.exists():
+            existing_size = destination.stat().st_size
+            if asset["size"] and existing_size == asset["size"]:
+                try:
+                    self._verify_sha256(destination, asset["sha256"])
+                    self._emit_download_progress(
+                        progress_callback,
+                        completed_size + existing_size,
+                        total_size,
+                        asset["name"],
+                    )
+                    return
+                except DetectionModuleError:
+                    destination.unlink(missing_ok=True)
+            elif asset["size"] and existing_size > asset["size"]:
+                destination.unlink(missing_ok=True)
+
         existing_size = destination.stat().st_size if destination.exists() else 0
         headers = {"User-Agent": "MangaReader-DetectionModule/1"}
         if existing_size:
             headers["Range"] = f"bytes={existing_size}-"
 
-        request = urllib.request.Request(RELEASE_URL, headers=headers)
+        request = urllib.request.Request(asset["url"], headers=headers)
         with urllib.request.urlopen(request, timeout=60) as response:
             if not response.geturl().startswith("https://"):
                 raise DetectionModuleError("检测模块下载地址必须使用 HTTPS")
             is_partial = getattr(response, "status", None) == 206
             if existing_size and not is_partial:
                 existing_size = 0
-            content_length = int(response.headers.get("Content-Length", "0"))
-            total_size = existing_size + content_length if content_length else 0
             mode = "ab" if is_partial else "wb"
             downloaded = existing_size
-
-            with open(destination, mode) as archive_file:
+            with open(destination, mode) as output:
                 while True:
                     chunk = response.read(1024 * 1024)
                     if not chunk:
                         break
-                    archive_file.write(chunk)
+                    output.write(chunk)
                     downloaded += len(chunk)
-                    if total_size:
-                        percent = min(90, downloaded / total_size * 90)
-                        self._emit_progress(progress_callback, percent, "downloading")
+                    self._emit_download_progress(
+                        progress_callback,
+                        completed_size + downloaded,
+                        total_size,
+                        asset["name"],
+                    )
+        if asset["size"] and destination.stat().st_size != asset["size"]:
+            destination.unlink(missing_ok=True)
+            raise DetectionModuleError(f"下载文件大小异常: {asset['filename']}")
 
-    def _safe_extract(self, archive_path, destination):
-        destination = destination.resolve()
-        with zipfile.ZipFile(archive_path) as archive:
-            for member in archive.infolist():
-                member_path = Path(member.filename)
-                if member_path.is_absolute() or ".." in member_path.parts:
-                    raise DetectionModuleError("检测模块压缩包包含不安全路径")
-                mode = member.external_attr >> 16
-                if stat.S_ISLNK(mode):
-                    raise DetectionModuleError("检测模块压缩包不允许包含符号链接")
-                target = (destination / member_path).resolve()
-                if destination != target and destination not in target.parents:
-                    raise DetectionModuleError("检测模块压缩包路径越界")
-            archive.extractall(destination)
+    def _assemble_module(self, staging_path, assets):
+        source_extract = staging_path / ".source"
+        self._safe_extract(assets["source"], source_extract)
+        source_roots = [path for path in source_extract.iterdir() if path.is_dir()]
+        if len(source_roots) != 1:
+            raise DetectionModuleError("CTD 官方源码包结构无效")
+        source_root = source_roots[0]
 
-    def _find_package_root(self, staging_path):
-        if (staging_path / "plugin.json").is_file():
-            return staging_path
-        candidates = [
-            path.parent for path in staging_path.glob("*/plugin.json") if path.is_file()
-        ]
-        if len(candidates) != 1:
-            raise DetectionModuleError("检测模块压缩包必须包含唯一的 plugin.json")
-        return candidates[0]
+        upstream_root = staging_path / "upstream"
+        upstream_root.mkdir()
+        for name in ("basemodel.py", "models", "utils"):
+            source = source_root / name
+            destination = upstream_root / name
+            if source.is_dir():
+                shutil.copytree(source, destination)
+            elif source.is_file():
+                shutil.copy2(source, destination)
+            else:
+                raise DetectionModuleError(f"CTD 官方源码缺少 {name}")
 
-    def _validate_module(self, module_path, verify_hashes=False):
+        base_model_path = upstream_root / "basemodel.py"
+        base_model_text = base_model_path.read_text(encoding="utf-8")
+        base_model_text = base_model_text.replace(
+            "from utils.general import CUDA, DEVICE\n", ""
+        )
+        base_model_text = base_model_text.replace("from torchsummary import summary\n", "")
+        base_model_path.write_text(base_model_text, encoding="utf-8")
+
+        shutil.copy2(source_root / "LICENSE", staging_path / "LICENSE")
+        shutil.copy2(assets["model"], staging_path / "comictextdetector.pt")
+        vendor_root = staging_path / "vendor"
+        self._safe_extract(assets["wheel"], vendor_root)
+        self._safe_extract(assets["torchvision-wheel"], vendor_root)
+        shutil.rmtree(source_extract)
+
+        manifest = {
+            "id": MODULE_ID,
+            "name": "漫画文字检测模块",
+            "version": MODULE_VERSION,
+            "apiVersion": SUPPORTED_API_VERSION,
+            "adapter": "builtin-ctd-bbox-v1",
+            "model": "comictextdetector.pt",
+            "pythonPaths": ["upstream", "vendor"],
+            "dllPaths": ["vendor", "vendor/cv2", "vendor/torchvision"],
+            "device": "cpu",
+            "sources": [
+                {
+                    "id": asset["id"],
+                    "url": asset["url"],
+                    "sha256": asset["sha256"],
+                }
+                for asset in OFFICIAL_ASSETS
+            ],
+        }
+        (staging_path / "plugin.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    def _validate_structure(self, module_path):
         manifest_path = module_path / "plugin.json"
         if not manifest_path.is_file():
             raise DetectionModuleError("检测模块缺少 plugin.json")
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise DetectionModuleError(f"检测模块清单无效: {error}") from error
+            raise DetectionModuleError("检测模块清单无效") from error
 
         if manifest.get("id") != MODULE_ID:
             raise DetectionModuleError("检测模块 ID 不匹配")
+        if manifest.get("version") != MODULE_VERSION:
+            raise DetectionModuleError("检测模块版本不兼容")
         if manifest.get("apiVersion") != SUPPORTED_API_VERSION:
             raise DetectionModuleError("检测模块 API 版本不兼容")
-        version = manifest.get("version")
-        if not self._valid_version(version):
-            raise DetectionModuleError("检测模块版本无效")
+        if manifest.get("adapter") != "builtin-ctd-bbox-v1":
+            raise DetectionModuleError("检测模块适配器不兼容")
 
-        for field in ("entry", "model"):
-            relative_path = manifest.get(field)
-            if not isinstance(relative_path, str):
-                raise DetectionModuleError(f"检测模块缺少 {field}")
-            self._resolve_member(module_path, relative_path)
-
-        python_paths = manifest.get("pythonPaths", [])
-        if not isinstance(python_paths, list):
-            raise DetectionModuleError("检测模块 pythonPaths 必须是数组")
-        for relative_path in python_paths:
-            self._resolve_directory(module_path, relative_path)
-
+        self._resolve_member(module_path, manifest.get("model", ""))
+        for field in ("pythonPaths", "dllPaths"):
+            paths = manifest.get(field, [])
+            if not isinstance(paths, list):
+                raise DetectionModuleError(f"检测模块 {field} 无效")
+            for relative_path in paths:
+                self._resolve_directory(module_path, relative_path)
         if not (module_path / "LICENSE").is_file():
             raise DetectionModuleError("检测模块缺少 LICENSE")
-
-        file_hashes = manifest.get("sha256")
-        if not isinstance(file_hashes, dict) or manifest["model"] not in file_hashes:
-            raise DetectionModuleError("检测模块必须提供模型文件 SHA-256")
-        if verify_hashes:
-            for relative_path, expected_hash in file_hashes.items():
-                member_path = self._resolve_member(module_path, relative_path)
-                self._verify_sha256(member_path, expected_hash)
-
         return manifest
 
+    def _write_integrity_manifest(self, module_path):
+        files = {}
+        for file_path in sorted(path for path in module_path.rglob("*") if path.is_file()):
+            relative_path = file_path.relative_to(module_path).as_posix()
+            files[relative_path] = {
+                "size": file_path.stat().st_size,
+                "sha256": self._calculate_sha256(file_path),
+            }
+        (module_path / "integrity.json").write_text(
+            json.dumps({"version": 1, "files": files}, indent=2), encoding="utf-8"
+        )
+
+    def _safe_extract(self, archive_path, destination):
+        destination.mkdir(parents=True, exist_ok=True)
+        destination = destination.resolve()
+        with zipfile.ZipFile(archive_path) as archive:
+            for member in archive.infolist():
+                member_path = Path(member.filename)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise DetectionModuleError("下载文件包含不安全路径")
+                mode = member.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise DetectionModuleError("下载文件不允许包含符号链接")
+                target = (destination / member_path).resolve()
+                if destination != target and destination not in target.parents:
+                    raise DetectionModuleError("下载文件解压路径越界")
+            archive.extractall(destination)
+
     def _resolve_member(self, module_path, relative_path):
-        module_path = module_path.resolve()
+        if not isinstance(relative_path, str) or not relative_path:
+            raise DetectionModuleError("检测模块文件路径无效")
+        module_path = Path(module_path).resolve()
         member_path = (module_path / relative_path).resolve()
         if module_path not in member_path.parents or not member_path.is_file():
             raise DetectionModuleError(f"检测模块文件无效: {relative_path}")
         return member_path
 
     def _resolve_directory(self, module_path, relative_path):
-        if not isinstance(relative_path, str):
+        if not isinstance(relative_path, str) or not relative_path:
             raise DetectionModuleError("检测模块依赖目录无效")
-        module_path = module_path.resolve()
+        module_path = Path(module_path).resolve()
         directory_path = (module_path / relative_path).resolve()
         if module_path not in directory_path.parents or not directory_path.is_dir():
             raise DetectionModuleError(f"检测模块依赖目录无效: {relative_path}")
         return directory_path
 
-    @staticmethod
-    def _verify_sha256(file_path, expected_hash):
-        expected_hash = str(expected_hash).lower()
-        if len(expected_hash) != 64:
+    @classmethod
+    def _verify_sha256(cls, file_path, expected_hash):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(expected_hash)):
             raise DetectionModuleError("检测模块 SHA-256 配置无效")
+        if cls._calculate_sha256(file_path) != expected_hash:
+            raise DetectionModuleError(f"下载文件校验失败: {Path(file_path).name}")
+
+    @staticmethod
+    def _calculate_sha256(file_path):
         digest = hashlib.sha256()
         with open(file_path, "rb") as source:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 digest.update(chunk)
-        if digest.hexdigest() != expected_hash:
-            raise DetectionModuleError(f"检测模块文件校验失败: {file_path.name}")
+        return digest.hexdigest()
 
     @staticmethod
-    def _version_key(version):
-        parts = []
-        for part in str(version).split("."):
-            parts.append((0, int(part)) if part.isdigit() else (1, part))
-        return tuple(parts)
+    def _replace_path(source, destination):
+        for attempt in range(8):
+            try:
+                os.replace(source, destination)
+                return
+            except PermissionError:
+                if attempt == 7:
+                    break
+                time.sleep(0.25)
+
+        source = Path(source)
+        destination = Path(destination)
+        if source.is_dir() and not destination.exists():
+            shutil.copytree(source, destination)
+            shutil.rmtree(source, ignore_errors=True)
+            return
+        raise PermissionError(f"无法替换检测模块目录: {source}")
+
+    @classmethod
+    def _emit_download_progress(
+        cls, callback, downloaded_size, total_size, asset_name
+    ):
+        percent = min(88, downloaded_size / max(total_size, 1) * 88)
+        cls._emit_progress(callback, percent, "downloading", f"正在下载 {asset_name}")
 
     @staticmethod
-    def _valid_version(version):
-        return isinstance(version, str) and bool(
-            re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._-]{0,63}", version)
-        )
-
-    @staticmethod
-    def _emit_progress(callback, percent, stage):
+    def _emit_progress(callback, percent, stage, message):
         if callback:
-            callback({"percent": round(percent, 1), "stage": stage})
+            callback(
+                {"percent": round(percent, 1), "stage": stage, "message": message}
+            )

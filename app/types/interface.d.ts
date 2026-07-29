@@ -116,6 +116,7 @@ export interface IElectronAPI {
         success: boolean
         installed?: boolean
         available?: boolean
+        corrupted?: boolean
         version?: string
         module_path?: string
         message?: string
@@ -124,7 +125,7 @@ export interface IElectronAPI {
     downloadDetectionModule: () => Promise<{ success: boolean, version?: string, error?: string }>
     deleteDetectionModule: () => Promise<{ success: boolean, error?: string }>
     openDetectionModuleFolder: () => void
-    onDetectionModuleDownloadProgress: (callback: (progress: number | { percent?: number, stage?: string }) => void) => () => void
+    onDetectionModuleDownloadProgress: (callback: (progress: number | { percent?: number, stage?: string, message?: string }) => void) => () => void
     tokenize: (text: string) => Promise<{
         success: boolean
         tokens?: Token[]

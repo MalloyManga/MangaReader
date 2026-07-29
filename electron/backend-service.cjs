@@ -338,7 +338,7 @@ class BackendService extends EventEmitter {
     }
 
     async checkDetectionModule() {
-        return this._sendRequest({ command: 'check_detection_module' }, 10000)
+        return this._sendRequest({ command: 'check_detection_module' }, 30000)
     }
 
     async downloadDetectionModule() {
@@ -346,11 +346,11 @@ class BackendService extends EventEmitter {
     }
 
     async deleteDetectionModule() {
-        return this._sendRequest({ command: 'delete_detection_module' }, 20000)
+        return this._sendRequest({ command: 'delete_detection_module' }, 30000)
     }
 
     async detectTextRegions(imageBase64) {
-        return this._sendRequest({ command: 'detect_text_regions', image: imageBase64 }, 120000)
+        return this._sendRequest({ command: 'detect_text_regions', image: imageBase64 }, 600000)
     }
 
     async extractCover(path) {

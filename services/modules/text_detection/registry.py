@@ -1,5 +1,4 @@
 import base64
-import importlib.util
 import os
 import sys
 from io import BytesIO
@@ -7,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from .ctd_adapter import CtdDetectorAdapter
 from .manager import DetectionModuleError
 
 
@@ -23,6 +23,8 @@ class TextDetectorRegistry:
         installed = self.manager.get_installed_module()
         if not installed:
             raise DetectionModuleError("DETECTION_MODULE_NOT_INSTALLED")
+        if self.detector is None:
+            self.manager.verify_integrity(installed["path"])
         self._ensure_loaded(installed)
 
         encoded = image_base64.split(",", 1)[-1]
@@ -34,12 +36,13 @@ class TextDetectorRegistry:
         installed = self.manager.get_installed_module()
         if not installed:
             raise DetectionModuleError("DETECTION_MODULE_NOT_INSTALLED")
+        self.manager.verify_integrity(installed["path"])
         self._ensure_loaded(installed)
         return installed["manifest"]["version"]
 
     def unload(self):
         try:
-            if self.detector and hasattr(self.detector, "unload"):
+            if self.detector:
                 self.detector.unload()
         finally:
             self.detector = None
@@ -62,43 +65,26 @@ class TextDetectorRegistry:
         self.unload()
 
         module_path = installed["path"]
-        entry_path = module_path / installed["manifest"]["entry"]
-        import_paths = [module_path]
-        import_paths.extend(
-            module_path / relative_path
-            for relative_path in installed["manifest"].get("pythonPaths", [])
-        )
-        self.import_paths = [str(path) for path in import_paths]
+        manifest = installed["manifest"]
+        if manifest.get("adapter") != "builtin-ctd-bbox-v1":
+            raise DetectionModuleError("检测模块适配器不兼容")
+
+        self.import_paths = [
+            str(module_path / relative_path)
+            for relative_path in manifest.get("pythonPaths", [])
+        ]
         for import_path in reversed(self.import_paths):
             sys.path.insert(0, import_path)
+
         if os.name == "nt" and hasattr(os, "add_dll_directory"):
             self.dll_directories = [
-                os.add_dll_directory(import_path) for import_path in self.import_paths
+                os.add_dll_directory(str(module_path / relative_path))
+                for relative_path in manifest.get("dllPaths", [])
             ]
 
-        spec = importlib.util.spec_from_file_location(
-            f"mangareader_text_detector_{version.replace('.', '_')}", entry_path
-        )
-        if not spec or not spec.loader:
-            self.unload()
-            raise DetectionModuleError("检测模块入口无法加载")
-        module = importlib.util.module_from_spec(spec)
+        detector = CtdDetectorAdapter()
         try:
-            spec.loader.exec_module(module)
-        except Exception:
-            self._capture_loaded_modules()
-            self.unload()
-            raise
-
-        try:
-            factory = getattr(module, "create_detector", None)
-            if not callable(factory):
-                raise DetectionModuleError("检测模块必须提供 create_detector()")
-            detector = factory()
-            if not hasattr(detector, "detect"):
-                raise DetectionModuleError("检测模块未实现 detect(image)")
-            if hasattr(detector, "load"):
-                detector.load(str(module_path), device="cpu")
+            detector.load(module_path, device="cpu")
         except Exception:
             self._capture_loaded_modules()
             self.unload()
