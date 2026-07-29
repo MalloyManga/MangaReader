@@ -38,6 +38,15 @@ export interface OcrBlock {
     showOriginal: boolean // 当前显示原文还是译文
 }
 
+export interface DetectedTextRegion {
+    x: number
+    y: number
+    width: number
+    height: number
+    confidence?: number
+    direction?: 'horizontal' | 'vertical' | 'unknown'
+}
+
 export interface ImageItem {
     id: string
     url: string
@@ -96,6 +105,11 @@ export interface IElectronAPI {
     recognizeText: (imageBase64: string) => Promise<{
         success: boolean
         text?: string
+        error?: string
+    }>
+    detectTextRegions?: (imageBase64: string) => Promise<{
+        success: boolean
+        regions?: DetectedTextRegion[]
         error?: string
     }>
     tokenize: (text: string) => Promise<{

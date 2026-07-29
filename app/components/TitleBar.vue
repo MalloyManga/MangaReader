@@ -44,18 +44,24 @@ onMounted(() => {
         class="h-12 flex justify-between bg-manga-100 dark:bg-manga-800 border-b border-manga-200 dark:border-manga-600 select-none">
 
         <div class="draggable flex-1 flex items-center gap-4 px-4 h-full">
-            <h1 class="text-lg font-bold text-manga-900 dark:text-manga-100">
-                📚 MangaReader
+            <h1 class="text-lg font-bold text-manga-900 dark:text-manga-100 flex items-center gap-2">
+                <IconBook class="size-5 text-primary" />
+                MangaReader
             </h1>
         </div>
 
         <div class="non-draggable flex items-center gap-2 px-2 h-full">
             <slot name="extra-buttons"></slot>
             <Button variant="secondary" size="sm" @btn-click="emit('openSettings')">
-                ⚙️ 设置
+                <span class="flex items-center gap-1.5">
+                    <IconCog class="size-4" />
+                    设置
+                </span>
             </Button>
             <Button size="sm" @btn-click="toggleDark">
-                {{ isDark ? '☀️' : '🌙' }}
+                <IconSun v-if="isDark" class="size-5" />
+                <IconMoon v-else class="size-5" />
+                <span class="sr-only">切换主题</span>
             </Button>
         </div>
 

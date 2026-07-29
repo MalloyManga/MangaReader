@@ -14,7 +14,7 @@ onMounted(() => {
 	// 调试日志
 	console.log('🚀 App Launched. Initial Route:', route.fullPath)
 
-	if (window.electronAPI.onBackendLog) {
+	if (window.electronAPI?.onBackendLog) {
 		window.electronAPI.onBackendLog((msg: string) => {
 			console.log('%c[Backend]', 'color: #bada55', msg)
 		})

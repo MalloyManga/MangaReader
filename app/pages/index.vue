@@ -34,6 +34,10 @@ const handleAddBook = () => {
     navigateTo('/reader')
 }
 
+const openAutoTranslate = () => {
+    navigateTo('/auto-translate')
+}
+
 const openBook = async (book: Book) => {
     if (window.electronAPI) {
         const exists = await window.electronAPI.checkFileExists(book.path)
@@ -79,7 +83,8 @@ onMounted(() => {
         <ToastContainer />
         <div class="max-w-7xl mx-auto w-full flex-1 p-6">
             <h1 class="text-2xl font-bold mb-6 text-manga-900 dark:text-gray-100 flex items-center gap-2">
-                <span>📚</span> 我的书架
+                <IconBook class="size-7 text-primary" />
+                我的书架
             </h1>
 
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
@@ -92,7 +97,7 @@ onMounted(() => {
                     <div class="aspect-2/3 relative bg-gray-100 dark:bg-gray-800">
                         <img v-if="book.cover" :src="book.cover" class="w-full h-full object-cover" />
                         <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2">
-                            <span class="text-4xl">📄</span>
+                            <IconBook class="size-10" />
                             <span class="text-xs">无封面</span>
                         </div>
 
@@ -132,6 +137,16 @@ onMounted(() => {
                         <IconAdd class="size-6 text-gray-500 group-hover:text-primary transition-colors" />
                     </div>
                     <div class="text-xs font-medium">导入新书</div>
+                </div>
+
+                <div @click="openAutoTranslate"
+                    class="aspect-2/3 flex flex-col items-center justify-center border-2 border-dashed border-manga-300 dark:border-manga-600 rounded-lg hover:border-primary hover:text-primary dark:hover:border-primary cursor-pointer text-manga-500 transition-colors group bg-white/40 dark:bg-manga-800/30">
+                    <div
+                        class="size-12 rounded-full bg-manga-100 dark:bg-manga-800 flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
+                        <IconAutoDetect class="size-7 text-manga-500 group-hover:text-primary transition-colors" />
+                    </div>
+                    <div class="text-xs font-medium">自动识别翻译</div>
+                    <div class="text-[10px] mt-1 text-manga-400">检测整页文字区域</div>
                 </div>
 
             </div>

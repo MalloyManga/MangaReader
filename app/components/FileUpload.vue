@@ -356,9 +356,9 @@ const handleDrop = (event: DragEvent) => {
             <!-- 空状态 -->
             <div v-else class="h-full flex items-center justify-center p-8">
                 <div class="text-center">
-                    <div class="text-6xl mb-4">
-                        <span v-if="isDragging">📥</span>
-                        <span v-else>📤</span>
+                    <div class="mb-4 flex justify-center text-primary">
+                        <IconDownload v-if="isDragging" class="size-14" />
+                        <IconFolder v-else class="size-14" />
                     </div>
                     <p class="text-lg mb-2 text-manga-900 dark:text-manga-100">
                         {{ isDragging ? '松开鼠标上传' : '文件预览区域' }}
@@ -374,7 +374,10 @@ const handleDrop = (event: DragEvent) => {
 
                     <div class="flex gap-3 justify-center">
                         <Button @btn-click="handleOpenFile">
-                            导入 / 打开文件 📁
+                            <span class="flex items-center gap-2">
+                                <IconFolder class="size-5" />
+                                导入 / 打开文件
+                            </span>
                         </Button>
                         <!-- <Button variant="secondary" @btn-click="handleScreenshot">
                             截图 ✂️
