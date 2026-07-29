@@ -112,6 +112,16 @@ export interface IElectronAPI {
         regions?: DetectedTextRegion[]
         error?: string
     }>
+    checkDetectionModule?: () => Promise<{
+        success: boolean
+        installed?: boolean
+        version?: string
+        error?: string
+    }>
+    downloadDetectionModule?: () => Promise<{ success: boolean, error?: string }>
+    deleteDetectionModule?: () => Promise<{ success: boolean, error?: string }>
+    openDetectionModuleFolder?: () => void
+    onDetectionModuleDownloadProgress?: (callback: (progress: number | { percent?: number, stage?: string }) => void) => () => void
     tokenize: (text: string) => Promise<{
         success: boolean
         tokens?: Token[]

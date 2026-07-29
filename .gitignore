@@ -25,6 +25,7 @@ logs
 !.env.example
 
 services/venv
+services/modules/text_detection/installed/
 # PyInstaller output (if run from root)
 build/
 dist/
@@ -33,6 +34,9 @@ services/dist
 services/build
 
 out/
+
+# Local design documents (never commit)
+doc/
 
 models/*
 !models/.gitkeep

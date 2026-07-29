@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import SettingsGeneral from './SettingsGeneral.vue'
 import SettingsTranslate from './SettingsTranslate.vue'
+import SettingsDetection from './SettingsDetection.vue'
 import SettingsAbout from './SettingsAbout.vue'
 
 // 接收一个布尔值控制显示隐藏
@@ -10,7 +11,7 @@ interface Props {
 }
 defineProps<Props>()
 // 当前选中的 Tab
-type TabType = 'general' | 'translate' | 'about'
+type TabType = 'general' | 'translate' | 'detection' | 'about'
 interface MenuItem {
     id: TabType,
     label: string,
@@ -22,6 +23,7 @@ const currentTab = ref<TabType>('general')
 const menuItems: MenuItem[] = [
     { id: 'general', label: '常规设置', icon: 'CogIcon' },
     { id: 'translate', label: '翻译模型', icon: 'LanguageIcon' },
+    { id: 'detection', label: '自动检测', icon: 'AutoDetectIcon' },
     { id: 'about', label: '关于', icon: 'InfoIcon' },
 ]
 
@@ -71,6 +73,7 @@ const handleClose = () => {
                                 ]">
                                 <IconCog v-if="item.id === 'general'" class="size-5" />
                                 <IconTranslate v-else-if="item.id === 'translate'" class="size-5" />
+                                <IconAutoDetect v-else-if="item.id === 'detection'" class="size-5" />
                                 <IconInfo v-else class="size-5" />
                                 {{ item.label }}
                             </button>
@@ -90,7 +93,8 @@ const handleClose = () => {
                                 mode="out-in">
                                 <component :is="currentTab === 'general' ? SettingsGeneral
                                     : currentTab === 'translate' ? SettingsTranslate
-                                        : SettingsAbout" />
+                                        : currentTab === 'detection' ? SettingsDetection
+                                            : SettingsAbout" />
                             </Transition>
                         </div>
                     </div>
