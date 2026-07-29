@@ -107,21 +107,24 @@ export interface IElectronAPI {
         text?: string
         error?: string
     }>
-    detectTextRegions?: (imageBase64: string) => Promise<{
+    detectTextRegions: (imageBase64: string) => Promise<{
         success: boolean
         regions?: DetectedTextRegion[]
         error?: string
     }>
-    checkDetectionModule?: () => Promise<{
+    checkDetectionModule: () => Promise<{
         success: boolean
         installed?: boolean
+        available?: boolean
         version?: string
+        module_path?: string
+        message?: string
         error?: string
     }>
-    downloadDetectionModule?: () => Promise<{ success: boolean, error?: string }>
-    deleteDetectionModule?: () => Promise<{ success: boolean, error?: string }>
-    openDetectionModuleFolder?: () => void
-    onDetectionModuleDownloadProgress?: (callback: (progress: number | { percent?: number, stage?: string }) => void) => () => void
+    downloadDetectionModule: () => Promise<{ success: boolean, version?: string, error?: string }>
+    deleteDetectionModule: () => Promise<{ success: boolean, error?: string }>
+    openDetectionModuleFolder: () => void
+    onDetectionModuleDownloadProgress: (callback: (progress: number | { percent?: number, stage?: string }) => void) => () => void
     tokenize: (text: string) => Promise<{
         success: boolean
         tokens?: Token[]

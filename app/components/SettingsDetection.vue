@@ -11,7 +11,7 @@ const statusLabel = computed(() => ({
     not_installed: '未安装',
     downloading: '下载中',
     installed: '已安装',
-    unavailable: '后端待接入',
+    unavailable: '发布待配置',
     error: '状态异常'
 }[detectionModule.status]))
 
@@ -32,7 +32,7 @@ const downloadLabel = computed(() => {
 
 const handleDownload = async () => {
     if (!window.electronAPI?.downloadDetectionModule) {
-        showToast('检测模块下载后端将在下一阶段接入')
+        showToast('检测模块需要在桌面应用中下载')
         return
     }
     if (detectionModule.status === 'downloading') return
@@ -172,7 +172,7 @@ onUnmounted(() => cleanupProgress?.())
                 <div>
                     <h4 class="text-sm font-bold text-manga-900 dark:text-blue-100">按需安装</h4>
                     <p class="text-xs text-manga-500 dark:text-blue-200/70 mt-1 leading-relaxed">
-                        模块包含检测代码、CTD 模型、配置和许可证，复用应用已有的 PyTorch。未安装时不会影响手动画框、OCR 或翻译。
+                        模块包含检测代码、CTD 模型、OpenCV 运行时、配置和许可证，并复用应用已有的 PyTorch。未安装时不会影响手动画框、OCR 或翻译。
                     </p>
                 </div>
             </div>

@@ -25,9 +25,10 @@ const { EventEmitter } = require('events')
  */
 
 class BackendService extends EventEmitter {
-    constructor(modelPath) {
+    constructor(modelPath, modulesPath) {
         super()
         this.modelPath = modelPath
+        this.modulesPath = modulesPath
         this.process = null
         this.isReady = false
         /** @type {Map<number, {resolve: Function, reject: Function}>} */
@@ -60,6 +61,9 @@ class BackendService extends EventEmitter {
         // 传入模型路径参数
         if (this.modelPath) {
             args.push('--model-dir', this.modelPath)
+        }
+        if (this.modulesPath) {
+            args.push('--modules-root', this.modulesPath)
         }
 
         console.log('[INFO] Starting OCR service...')
@@ -182,7 +186,12 @@ class BackendService extends EventEmitter {
             return
         }
 
-        const { id, success, text, tokens, translation, exists, error, models, model_id, default_model_id, current_model_id } = response
+        if (response.type === 'detection_module_download_progress') {
+            this.emit('detection-module-download-progress', response)
+            return
+        }
+
+        const { id, success, error } = response
 
         if (id !== undefined && this.pendingRequests.has(id)) {
             console.log(`[Backend Service] [DEBUG] Resolving request ID: ${id}, Success: ${success}`)
@@ -193,24 +202,12 @@ class BackendService extends EventEmitter {
             this.pendingRequests.delete(id)
 
             if (success) {
-                if (models) {
-                    resolve({
-                        success: true,
-                        models,
-                        defaultModelId: default_model_id,
-                        currentModelId: current_model_id,
-                    })
-                } else if (tokens) { // 分词
-                    resolve({ success: true, tokens: tokens })
-                } else if (translation !== undefined) { // 翻译
-                    resolve({ success: true, translation: translation, modelId: model_id })
-                } else if (response.cover) { // 书籍封面缩略图
-                    resolve({ success: true, cover: response.cover })
-                } else if (exists !== undefined) { // 模型存在
-                    resolve({ success: true, exists, modelId: model_id })
-                } else { // ocr文本
-                    resolve({ success: true, text: text, modelId: model_id })
-                }
+                const result = { ...response }
+                delete result.id
+                if (response.model_id !== undefined) result.modelId = response.model_id
+                if (response.default_model_id !== undefined) result.defaultModelId = response.default_model_id
+                if (response.current_model_id !== undefined) result.currentModelId = response.current_model_id
+                resolve(result)
             } else {
                 reject(new Error(error))
             }
@@ -338,6 +335,22 @@ class BackendService extends EventEmitter {
 
     async deleteDictionary() {
         return this._sendRequest({ command: 'delete_dictionary' }, 20000)
+    }
+
+    async checkDetectionModule() {
+        return this._sendRequest({ command: 'check_detection_module' }, 10000)
+    }
+
+    async downloadDetectionModule() {
+        return this._sendRequest({ command: 'download_detection_module' }, 21600000)
+    }
+
+    async deleteDetectionModule() {
+        return this._sendRequest({ command: 'delete_detection_module' }, 20000)
+    }
+
+    async detectTextRegions(imageBase64) {
+        return this._sendRequest({ command: 'detect_text_regions', image: imageBase64 }, 120000)
     }
 
     async extractCover(path) {

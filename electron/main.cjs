@@ -77,6 +77,12 @@ function getModelsPath() {
         : path.join(process.resourcesPath, 'backend', 'models')
 }
 
+function getServicesModulesPath() {
+    return isDev
+        ? path.join(__dirname, '../services/modules')
+        : path.join(app.getPath('userData'), 'services', 'modules')
+}
+
 //  初始化 Electron Store (处理 ESM 导入)
 async function initStore() {
     const { default: Store } = await import('electron-store')
@@ -376,6 +382,18 @@ ipcMain.handle('ocr:recognize', async (_event, imageBase64) => {
     }
 })
 
+ipcMain.handle('ocr:detect-text-regions', async (_event, imageBase64) => {
+    try {
+        if (!backendService || !backendService.isReady) {
+            return { success: false, error: 'OCR service not ready. Please wait...' }
+        }
+        const result = await backendService.detectTextRegions(imageBase64)
+        return { success: true, regions: result.regions || [] }
+    } catch (error) {
+        return { success: false, error: error.message }
+    }
+})
+
 // 分词请求
 ipcMain.handle('ocr:tokenize', async (_event, text) => {
     try {
@@ -449,6 +467,34 @@ ipcMain.handle('model:delete', async (_event, modelId) => {
     }
 })
 
+ipcMain.handle('detection-module:check', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        return await backendService.checkDetectionModule()
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('detection-module:download', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        return await backendService.downloadDetectionModule()
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('detection-module:delete', async () => {
+    try {
+        if (!backendService) return { success: false, error: "Service not ready" }
+        await backendService.deleteDetectionModule()
+        return { success: true }
+    } catch (e) {
+        return { success: false, error: e.message }
+    }
+})
+
 ipcMain.handle('dictionary:check', async () => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
@@ -486,6 +532,12 @@ ipcMain.on('open-model-folder', () => {
         fs.mkdirSync(modelsRoot, { recursive: true })
     }
     shell.openPath(modelsRoot)
+})
+
+ipcMain.on('open-detection-module-folder', () => {
+    const detectionModuleRoot = path.join(getServicesModulesPath(), 'text_detection', 'installed')
+    fs.mkdirSync(detectionModuleRoot, { recursive: true })
+    shell.openPath(detectionModuleRoot)
 })
 // -------------------------------------------
 
@@ -541,7 +593,9 @@ app.whenReady().then(async () => {
         await fs.promises.mkdir(ocrModelPath, { recursive: true })
 
         // 启动 OCR 服务
-        backendService = new BackendService(ocrModelPath)
+        const servicesModulesPath = getServicesModulesPath()
+        await fs.promises.mkdir(servicesModulesPath, { recursive: true })
+        backendService = new BackendService(ocrModelPath, servicesModulesPath)
         backendService.on('ready', () => {
             console.log('Signal: Backend ready, notifying frontend...')
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -579,6 +633,12 @@ app.whenReady().then(async () => {
         backendService.on('dictionary-download-progress', (percent) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('dictionary:download-progress', percent)
+            }
+        })
+
+        backendService.on('detection-module-download-progress', (data) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('detection-module:download-progress', data)
             }
         })
 

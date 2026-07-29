@@ -17,8 +17,8 @@ const detectionModuleState = reactive<DetectionModuleState>({
     id: 'ctd-detector',
     name: '漫画文字自动检测',
     description: '自动定位漫画页面中的文字区域，并复用现有 OCR 与翻译模型。',
-    downloadSize: '约 77–80 MB',
-    installedSize: '约 80–90 MB',
+    downloadSize: '约 115–125 MB',
+    installedSize: '约 170–210 MB',
     version: '',
     status: 'checking',
     progress: 0,
@@ -30,7 +30,7 @@ export function useDetectionModuleStatus() {
     const checkStatus = async () => {
         if (!window.electronAPI?.checkDetectionModule) {
             detectionModuleState.status = 'unavailable'
-            detectionModuleState.error = '检测模块后端接口将在下一阶段接入'
+            detectionModuleState.error = '检测模块需要在桌面应用中管理'
             return
         }
 
@@ -38,10 +38,16 @@ export function useDetectionModuleStatus() {
         detectionModuleState.error = ''
         try {
             const result = await window.electronAPI.checkDetectionModule()
-            if (result.success && result.installed) {
+            if (!result.success) throw new Error(result.error || '检测模块状态检查失败')
+            if (result.installed) {
                 detectionModuleState.status = 'installed'
                 detectionModuleState.progress = 100
                 detectionModuleState.version = result.version || ''
+            } else if (result.available === false) {
+                detectionModuleState.status = 'unavailable'
+                detectionModuleState.progress = 0
+                detectionModuleState.version = ''
+                detectionModuleState.error = result.message || '检测模块发布配置待确认'
             } else {
                 detectionModuleState.status = 'not_installed'
                 detectionModuleState.progress = 0

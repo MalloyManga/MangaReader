@@ -26,6 +26,7 @@ logs
 
 services/venv
 services/modules/text_detection/installed/
+services/modules/text_detection/.downloads/
 # PyInstaller output (if run from root)
 build/
 dist/

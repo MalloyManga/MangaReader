@@ -31,6 +31,7 @@ except AttributeError:
 
 # 导入业务模块
 from modules.utils import log_message, send_response
+from modules.text_detection import DetectionModuleManager, TextDetectorRegistry
 from modules.translator import (
     DEFAULT_TRANSLATOR_ID,
     get_translator_engine,
@@ -256,6 +257,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=str, help="Path to OCR model")
     parser.add_argument("--models-root", type=str, help="Path to models root")
+    parser.add_argument("--modules-root", type=str, help="Path to writable service modules")
     parser.add_argument("--translate-worker", action="store_true")
     args, _ = parser.parse_known_args()
 
@@ -280,6 +282,9 @@ def main():
 
     translation_root = os.path.join(models_root, "translation")
     dictionary_root = os.path.join(models_root, "dictionary", "sudachi")
+    modules_root = args.modules_root or os.path.join(
+        os.path.dirname(models_root), "services", "modules"
+    )
 
     if not os.path.exists(translation_root):
         os.makedirs(translation_root, exist_ok=True)
@@ -348,6 +353,8 @@ def main():
 
     dictionary_manager = SudachiDictionaryManager(dictionary_root)
     tokenizer = None
+    detection_manager = DetectionModuleManager(modules_root)
+    detection_registry = TextDetectorRegistry(detection_manager)
 
     # [MODIFIED] Translator is already instantiated above for pre-loading.
     # We just need to ensure it's assigned to the variable we use later.
@@ -538,6 +545,49 @@ def main():
                         "model_id": selected_model_id,
                     }
                 )
+
+            elif command == "check_detection_module":
+                send_response(
+                    {"id": req_id, "success": True, **detection_manager.get_status()}
+                )
+
+            elif command == "download_detection_module":
+                try:
+                    def report_detection_progress(progress):
+                        send_response(
+                            {"type": "detection_module_download_progress", **progress}
+                        )
+
+                    detection_registry.unload()
+                    status = detection_manager.install(report_detection_progress)
+                    try:
+                        detection_registry.load()
+                    except Exception:
+                        detection_registry.unload()
+                        detection_manager.delete_version(status.get("version", ""))
+                        raise
+                    send_response({"id": req_id, "success": True, **status})
+                except Exception as e:
+                    send_response({"id": req_id, "success": False, "error": str(e)})
+
+            elif command == "delete_detection_module":
+                try:
+                    detection_registry.unload()
+                    detection_manager.delete()
+                    send_response({"id": req_id, "success": True})
+                except Exception as e:
+                    send_response({"id": req_id, "success": False, "error": str(e)})
+
+            elif command == "detect_text_regions":
+                try:
+                    regions = detection_registry.detect_base64(
+                        request.get("image", "")
+                    )
+                    send_response(
+                        {"id": req_id, "success": True, "regions": regions}
+                    )
+                except Exception as e:
+                    send_response({"id": req_id, "success": False, "error": str(e)})
 
             # 4. 提取封面 (New)
             elif command == "check_dictionary":

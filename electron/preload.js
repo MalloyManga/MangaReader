@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     recognizeText: (imageBase64) => {
         return ipcRenderer.invoke('ocr:recognize', imageBase64)
     },
+    detectTextRegions: (imageBase64) => ipcRenderer.invoke('ocr:detect-text-regions', imageBase64),
 
     // 分词识别
     tokenize: (text) => ipcRenderer.invoke('ocr:tokenize', text),
@@ -63,6 +64,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkDictionary: () => ipcRenderer.invoke('dictionary:check'),
     downloadDictionary: () => ipcRenderer.invoke('dictionary:download'),
     deleteDictionary: () => ipcRenderer.invoke('dictionary:delete'),
+    checkDetectionModule: () => ipcRenderer.invoke('detection-module:check'),
+    downloadDetectionModule: () => ipcRenderer.invoke('detection-module:download'),
+    deleteDetectionModule: () => ipcRenderer.invoke('detection-module:delete'),
+    openDetectionModuleFolder: () => ipcRenderer.send('open-detection-module-folder'),
     // 后端初始化完毕之后主动发送消息
     backendStatus: (callback) => {
         const handler = (_event, data) => callback(data)
@@ -82,6 +87,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (_event, percent) => callback(percent)
         ipcRenderer.on('dictionary:download-progress', handler)
         return () => ipcRenderer.removeListener('dictionary:download-progress', handler)
+    },
+    onDetectionModuleDownloadProgress: (callback) => {
+        const handler = (_event, data) => callback(data)
+        ipcRenderer.on('detection-module:download-progress', handler)
+        return () => ipcRenderer.removeListener('detection-module:download-progress', handler)
     },
     onInitStatus: (callback) => {
         const handler = (_event, message) => callback(message)
