@@ -530,10 +530,7 @@ onUnmounted(() => {
         <TitleBar @open-settings="showSettingsModal = true">
             <template #extra-buttons>
                 <Button class="text-sm font-bold" variant="secondary" @btn-click="goBackToLibrary">
-                    <span class="flex items-center gap-2">
-                        <IconBook class="size-4" />
-                        返回书架
-                    </span>
+                    📚 返回书架
                 </Button>
             </template>
         </TitleBar>

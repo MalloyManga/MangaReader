@@ -2,6 +2,12 @@
 <script setup lang="ts">
 import Sortable from 'sortablejs'
 import type { ImageItem } from '~/types/interface'
+withDefaults(defineProps<{
+    useSvgIcons?: boolean
+}>(), {
+    useSvgIcons: false
+})
+
 const { showToast } = useToast()
 const { images, currentImageIndex, addImagesToStore, setImage, removeImage: removeImageFromStore, tempBookPath } = useMangaImages()
 const { processImages, processZip, convertPdfToImages } = useFileProcessor()
@@ -356,9 +362,17 @@ const handleDrop = (event: DragEvent) => {
             <!-- 空状态 -->
             <div v-else class="h-full flex items-center justify-center p-8">
                 <div class="text-center">
-                    <div class="mb-4 flex justify-center text-primary">
-                        <IconDownload v-if="isDragging" class="size-14" />
-                        <IconFolder v-else class="size-14" />
+                    <div class="text-6xl mb-4">
+                        <template v-if="useSvgIcons">
+                            <span class="flex justify-center text-primary">
+                                <IconDownload v-if="isDragging" class="size-14" />
+                                <IconFolder v-else class="size-14" />
+                            </span>
+                        </template>
+                        <template v-else>
+                            <span v-if="isDragging">📥</span>
+                            <span v-else>📤</span>
+                        </template>
                     </div>
                     <p class="text-lg mb-2 text-manga-900 dark:text-manga-100">
                         {{ isDragging ? '松开鼠标上传' : '文件预览区域' }}
@@ -374,10 +388,11 @@ const handleDrop = (event: DragEvent) => {
 
                     <div class="flex gap-3 justify-center">
                         <Button @btn-click="handleOpenFile">
-                            <span class="flex items-center gap-2">
+                            <span v-if="useSvgIcons" class="flex items-center gap-2">
                                 <IconFolder class="size-5" />
                                 导入 / 打开文件
                             </span>
+                            <template v-else>导入 / 打开文件 📁</template>
                         </Button>
                         <!-- <Button variant="secondary" @btn-click="handleScreenshot">
                             截图 ✂️

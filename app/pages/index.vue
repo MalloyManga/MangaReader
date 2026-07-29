@@ -83,8 +83,7 @@ onMounted(() => {
         <ToastContainer />
         <div class="max-w-7xl mx-auto w-full flex-1 p-6">
             <h1 class="text-2xl font-bold mb-6 text-manga-900 dark:text-gray-100 flex items-center gap-2">
-                <IconBook class="size-7 text-primary" />
-                我的书架
+                <span>📚</span> 我的书架
             </h1>
 
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
@@ -97,7 +96,7 @@ onMounted(() => {
                     <div class="aspect-2/3 relative bg-gray-100 dark:bg-gray-800">
                         <img v-if="book.cover" :src="book.cover" class="w-full h-full object-cover" />
                         <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2">
-                            <IconBook class="size-10" />
+                            <span class="text-4xl">📄</span>
                             <span class="text-xs">无封面</span>
                         </div>
 

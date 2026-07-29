@@ -8,10 +8,12 @@ withDefaults(defineProps<{
     title?: string
     emptyText?: string
     emptyHint?: string
+    useSvgIcon?: boolean
 }>(), {
     title: '气泡列表',
     emptyText: '暂无识别内容',
-    emptyHint: '框选气泡开始识别'
+    emptyHint: '框选气泡开始识别',
+    useSvgIcon: false
 })
 
 const emit = defineEmits<{
@@ -31,7 +33,8 @@ const updateText = (block: OcrBlock, val: string) => {
             class="p-4 border-b border-manga-200 dark:border-manga-700 flex justify-between items-center bg-gray-50 dark:bg-manga-900">
             <h3 class="font-bold text-gray-700 dark:text-gray-200">
                 <span class="flex items-center gap-2">
-                    <IconChatBubble class="size-5 text-primary" />
+                    <IconChatBubble v-if="useSvgIcon" class="size-5 text-primary" />
+                    <template v-else>💬</template>
                     {{ title }} ({{ blocks.length }})
                 </span>
             </h3>
@@ -63,7 +66,7 @@ const updateText = (block: OcrBlock, val: string) => {
             </div>
 
             <div v-if="blocks.length === 0" class="text-center py-10 text-gray-400">
-                <IconChatBubble class="size-9 mx-auto mb-3 opacity-40" />
+                <IconChatBubble v-if="useSvgIcon" class="size-9 mx-auto mb-3 opacity-40" />
                 <p>{{ emptyText }}</p>
                 <p class="text-sm mt-2">
                     {{ emptyHint }}
