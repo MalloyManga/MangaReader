@@ -214,7 +214,7 @@ onUnmounted(clearImages)
 <template>
     <div class="min-h-screen bg-manga-50 dark:bg-manga-700">
         <ToastContainer />
-        <TitleBar use-svg-icons @open-settings="showSettingsModal = true">
+        <TitleBar @open-settings="showSettingsModal = true">
             <template #extra-buttons>
                 <Button class="text-sm font-bold flex items-center gap-2" variant="secondary" @btn-click="goBack">
                     <IconBook class="size-4" />
@@ -226,7 +226,7 @@ onUnmounted(clearImages)
         <main class="max-w-screen-2xl mx-auto p-4">
             <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 h-[calc(100vh-80px)]">
                 <section class="relative h-full lg:col-span-3 min-h-0">
-                    <FileUpload use-svg-icons>
+                    <FileUpload>
                         <template #overlay="{ naturalSize, containerSize }">
                             <BubbleLayer v-if="ocrBlocks.length" :blocks="ocrBlocks"
                                 :image-natural-size="naturalSize" :container-size="containerSize"
@@ -280,7 +280,6 @@ onUnmounted(clearImages)
 
                     <BubbleList class="flex-1 min-h-0 rounded-primary overflow-hidden border border-manga-200 dark:border-manga-600"
                         :blocks="ocrBlocks" :active-id="activeBlockId" title="识别区域"
-                        use-svg-icon
                         empty-text="尚未生成文字区域" empty-hint="导入图片并处理后，可在这里检查和修改"
                         @select-block="handleSelectBlock" @update-block="handleUpdateBlock"
                         @delete-block="handleDeleteBlock" />
