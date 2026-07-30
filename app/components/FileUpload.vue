@@ -259,7 +259,6 @@ onUnmounted(() => {
         resizeObserver.disconnect()
         resizeObserver = null
     }
-    images.value.forEach(img => URL.revokeObjectURL(img.url))
     if (sortableInstance) {
         sortableInstance.destroy()
         sortableInstance = null

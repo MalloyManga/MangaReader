@@ -88,7 +88,7 @@ export interface IElectronAPI {
     backendStatus: (callback) => () => void
 
     getLibrary: () => Promise<Book[]>
-    addBook: (path: string) => Promise<{ success: boolean, book?: Book, error?: string }>
+    addBook: (path: string) => Promise<{ success: boolean, book?: Book, alreadyExists?: boolean, error?: string }>
     updateBookProgress: (data: { id: string, currentPage?: number, totalPage?: number, lastReadTime?: number }) => Promise<boolean>
     removeBook: (id: string) => Promise<boolean>
     checkFileExists: (path: string) => Promise<boolean>

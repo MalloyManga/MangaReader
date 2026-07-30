@@ -2,14 +2,17 @@
 import type { OcrBlock } from '~/types/interface'
 
 const router = useRouter()
-const { images, currentImageIndex, clearImages } = useMangaImages()
+const { images, currentImageIndex, clearImages, tempBookPath } = useMangaImages()
 const { initSettings, settings } = useSettings()
+const autoTranslateSession = useAutoTranslateSession()
 
 const showSettingsModal = ref(false)
 const activeBlockId = ref<string>()
 const ocrBlocks = ref<OcrBlock[]>([])
-const allPageBlocks = ref<Record<string, OcrBlock[]>>({})
+const allPageBlocks = autoTranslateSession.allPageBlocks
 const currentImageId = computed(() => images.value[currentImageIndex.value]?.id)
+const isAddingToLibrary = ref(false)
+const preserveSessionOnUnmount = ref(false)
 const splitPaneConfig = {
     defaultLeftPercent: 60,
     minLeftPercent: 50,
@@ -48,7 +51,7 @@ watch(currentImageId, (newId, oldId) => {
     ocrBlocks.value = newId && allPageBlocks.value[newId] ? [...allPageBlocks.value[newId]!] : []
     activeBlockId.value = undefined
     isOcrMode.value = false
-})
+}, { immediate: true })
 
 watch(ocrBlocks, (blocks) => {
     if (currentImageId.value) allPageBlocks.value[currentImageId.value] = blocks
@@ -94,10 +97,50 @@ const toggleManualOcr = () => {
 }
 
 const goBack = () => {
-    stopProcessing()
-    clearImages()
+    preserveSessionOnUnmount.value = isProcessing.value
+    if (!preserveSessionOnUnmount.value) {
+        clearImages()
+        autoTranslateSession.resetSession()
+    }
     router.push('/')
 }
+
+const ensureAddedToLibrary = async () => {
+    if (!tempBookPath.value || !images.value.length || autoTranslateSession.bookId.value || isAddingToLibrary.value) return
+    isAddingToLibrary.value = true
+    try {
+        const result = await window.electronAPI.addBook(tempBookPath.value)
+        if (!result.success || !result.book) throw new Error(result.error || '加入书架失败')
+        autoTranslateSession.bookId.value = result.book.id
+        await window.electronAPI.updateBookProgress({
+            id: result.book.id,
+            totalPage: images.value.length,
+            currentPage: currentImageIndex.value,
+            lastReadTime: Date.now()
+        })
+        if (!result.alreadyExists) console.log('[AutoTranslate] imported source added to library', tempBookPath.value)
+    } catch (error) {
+        console.error('[AutoTranslate] failed to add imported source to library', error)
+    } finally {
+        isAddingToLibrary.value = false
+    }
+}
+
+watch(tempBookPath, (path, previousPath) => {
+    if (previousPath && path !== previousPath) autoTranslateSession.bookId.value = null
+})
+
+watch([tempBookPath, () => images.value.length], ensureAddedToLibrary)
+
+watch(currentImageIndex, (index) => {
+    if (!autoTranslateSession.bookId.value) return
+    window.electronAPI.updateBookProgress({
+        id: autoTranslateSession.bookId.value,
+        currentPage: index,
+        totalPage: images.value.length,
+        lastReadTime: Date.now()
+    })
+})
 
 const handleSettingsClose = async () => {
     showSettingsModal.value = false
@@ -109,8 +152,10 @@ onMounted(async () => {
     await checkTranslationReady()
 })
 onUnmounted(() => {
-    stopProcessing()
-    clearImages()
+    if (!preserveSessionOnUnmount.value && !isProcessing.value) {
+        clearImages()
+        autoTranslateSession.resetSession()
+    }
 })
 </script>
 

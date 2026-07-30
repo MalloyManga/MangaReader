@@ -39,6 +39,11 @@ interface ProcessingToken {
     imageId?: string
 }
 
+let activeToken: ProcessingToken | null = null
+let activeStopHandler: (() => void) | null = null
+
+export const stopActiveAutoTranslateTask = () => activeStopHandler?.()
+
 interface SelectionData {
     left: number
     top: number
@@ -57,43 +62,30 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const { settings } = useSettings()
     const { showToast } = useToast()
     const { selectedModel, loadTranslationModels, checkModelStatus } = useModelStatus()
-    const pageStates = ref<Record<string, AutoTranslatePageState>>({})
-    const processedPageIds = ref<Record<string, true>>({})
-    const isPreparing = ref(false)
-    const isCurrentPageProcessing = ref(false)
-    const isBatchProcessing = ref(false)
-    const isStopping = ref(false)
-    const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value || isBatchProcessing.value)
+    const {
+        pageStates,
+        processedPageIds,
+        batchState,
+        isPreparing,
+        isCurrentPageProcessing,
+        isBatchProcessing,
+        isStopping,
+        isProcessing
+    } = useAutoTranslateSession()
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
     const translationReady = ref(false)
     const translationMessage = ref('正在检查翻译模型')
-    const batchState = reactive<AutoTranslateBatchState>({
-        show: false,
-        status: 'idle',
-        stage: 'idle',
-        pageIndex: 0,
-        pageTotal: 0,
-        regionIndex: 0,
-        regionTotal: 0,
-        progress: 0,
-        message: '等待开始处理',
-        pageLabel: '',
-        completedPages: 0,
-        failedPages: 0,
-        skippedPages: 0
-    })
-    let activeToken: ProcessingToken | null = null
 
     const detectorAvailable = computed(() => import.meta.client && Boolean(window.electronAPI?.detectTextRegions))
     const currentState = computed<AutoTranslatePageState>(() => {
         const imageId = currentImageId.value
         return imageId ? (pageStates.value[imageId] || createIdleState()) : createIdleState()
     })
-    const panelState = computed<AutoTranslatePageState>(() => batchState.show ? {
-        stage: batchState.stage,
-        progress: batchState.progress,
-        message: batchState.message
+    const panelState = computed<AutoTranslatePageState>(() => batchState.value.show ? {
+        stage: batchState.value.stage,
+        progress: batchState.value.progress,
+        message: batchState.value.message
     } : currentState.value)
 
     const log = (...args: unknown[]) => console.log('[AutoTranslate]', ...args)
@@ -266,21 +258,21 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         updateState(imageId, stage, progress, message)
         if (token.kind !== 'batch') return
         if (activeToken !== token) return
-        batchState.stage = stage
-        batchState.regionIndex = regionIndex
-        batchState.regionTotal = regionTotal
-        const pageProgress = `第 ${batchState.pageIndex} / ${batchState.pageTotal} 页`
+        batchState.value.stage = stage
+        batchState.value.regionIndex = regionIndex
+        batchState.value.regionTotal = regionTotal
+        const pageProgress = `第 ${batchState.value.pageIndex} / ${batchState.value.pageTotal} 页`
         if (stage === 'detecting') {
-            batchState.message = `正在分析${pageProgress}文字区域`
+            batchState.value.message = `正在分析${pageProgress}文字区域`
         } else if (stage === 'recognizing') {
-            batchState.message = `正在识别${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
+            batchState.value.message = `正在识别${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
         } else if (stage === 'translating') {
-            batchState.message = `正在翻译${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
+            batchState.value.message = `正在翻译${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
         } else {
-            batchState.message = message
+            batchState.value.message = message
         }
-        batchState.progress = Math.min(100, Math.round(
-            ((batchState.pageIndex - 1 + progress / 100) / Math.max(1, batchState.pageTotal)) * 100
+        batchState.value.progress = Math.min(100, Math.round(
+            ((batchState.value.pageIndex - 1 + progress / 100) / Math.max(1, batchState.value.pageTotal)) * 100
         ))
     }
 
@@ -428,13 +420,16 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
         const token: ProcessingToken = { cancelled: false, kind: 'single', imageId }
         activeToken = token
+        activeStopHandler = stopProcessing
         isCurrentPageProcessing.value = true
         isStopping.value = false
         isOcrMode.value = false
         activeBlockId.value = undefined
 
         try {
-            const imageElement = getCurrentImageElement()
+            const image = images.value.find(item => item.id === imageId)
+            if (!image) throw new Error('当前页面图片不存在')
+            const imageElement = await loadImageElement(image.url)
             const result = await processPage(imageId, imageElement, token)
             if (result === 'error') showToast('当前页面自动处理失败，请查看处理状态', 5000)
         } catch (error) {
@@ -445,6 +440,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         } finally {
             if (activeToken === token) {
                 activeToken = null
+                activeStopHandler = null
                 isCurrentPageProcessing.value = false
                 isStopping.value = false
             }
@@ -466,10 +462,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         if (!(await prepareProcessing())) return
         const token: ProcessingToken = { cancelled: false, kind: 'batch' }
         activeToken = token
+        activeStopHandler = stopProcessing
         isBatchProcessing.value = true
         isStopping.value = false
         isOcrMode.value = false
-        Object.assign(batchState, {
+        Object.assign(batchState.value, {
             show: true,
             status: 'running',
             stage: 'idle',
@@ -490,23 +487,23 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             for (let index = 0; index < images.value.length; index++) {
                 throwIfCancelled(token)
                 const image = images.value[index]!
-                batchState.pageIndex = index + 1
-                batchState.pageLabel = getPageLabel(image, index)
-                batchState.regionIndex = 0
-                batchState.regionTotal = 0
+                batchState.value.pageIndex = index + 1
+                batchState.value.pageLabel = getPageLabel(image, index)
+                batchState.value.regionIndex = 0
+                batchState.value.regionTotal = 0
 
                 if (hasManualBlocks(image.id)) {
-                    batchState.skippedPages++
-                    batchState.message = `第 ${index + 1} / ${images.value.length} 页存在手动画框，已跳过`
-                    batchState.progress = Math.round(((index + 1) / images.value.length) * 100)
+                    batchState.value.skippedPages++
+                    batchState.value.message = `第 ${index + 1} / ${images.value.length} 页存在手动画框，已跳过`
+                    batchState.value.progress = Math.round(((index + 1) / images.value.length) * 100)
                     log('skipped page with manual blocks', image.id)
                     continue
                 }
 
                 if (processedPageIds.value[image.id]) {
-                    batchState.skippedPages++
-                    batchState.message = '该页面已经完整处理，已跳过'
-                    batchState.progress = Math.round(((index + 1) / images.value.length) * 100)
+                    batchState.value.skippedPages++
+                    batchState.value.message = '该页面已经完整处理，已跳过'
+                    batchState.value.progress = Math.round(((index + 1) / images.value.length) * 100)
                     log('skipped completed page', image.id)
                     continue
                 }
@@ -516,43 +513,44 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                     throwIfCancelled(token)
                     const result = await processPage(image.id, imageElement, token)
                     if (result === 'stopped') break
-                    if (result === 'complete') batchState.completedPages++
-                    else batchState.failedPages++
+                    if (result === 'complete') batchState.value.completedPages++
+                    else batchState.value.failedPages++
                 } catch (error) {
                     if (isAbortError(error)) throw error
-                    batchState.failedPages++
+                    batchState.value.failedPages++
                     updateState(image.id, 'error', 0, error instanceof Error ? error.message : String(error))
                     console.error('[AutoTranslate] batch page failed', image.id, error)
                 }
             }
             if (activeToken !== token) return
             if (token.cancelled) {
-                batchState.status = 'stopped'
-                batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
+                batchState.value.status = 'stopped'
+                batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
             } else {
-                batchState.status = 'complete'
-                batchState.stage = 'complete'
-                batchState.progress = 100
-                batchState.message = '全部页面处理完成'
+                batchState.value.status = 'complete'
+                batchState.value.stage = 'complete'
+                batchState.value.progress = 100
+                batchState.value.message = '全部页面处理完成'
             }
         } catch (error) {
             if (activeToken !== token) return
             if (isAbortError(error)) {
-                batchState.status = 'stopped'
-                batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
+                batchState.value.status = 'stopped'
+                batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
             } else {
-                batchState.status = 'complete'
-                batchState.stage = 'error'
-                batchState.failedPages++
-                batchState.message = '批量处理提前结束，请检查失败页面'
+                batchState.value.status = 'complete'
+                batchState.value.stage = 'error'
+                batchState.value.failedPages++
+                batchState.value.message = '批量处理提前结束，请检查失败页面'
                 console.error('[AutoTranslate] batch processing failed', error)
             }
         } finally {
             if (activeToken === token) {
                 activeToken = null
+                activeStopHandler = null
                 isBatchProcessing.value = false
                 isStopping.value = false
-                log('batch processing ended', batchState.status)
+                log('batch processing ended', batchState.value.status)
             }
         }
     }
@@ -563,10 +561,10 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         log('stop requested for', activeToken.kind, 'processing')
         if (activeToken.kind === 'batch') {
             isBatchProcessing.value = false
-            batchState.status = 'stopped'
-            batchState.stage = 'stopped'
-            batchState.progress = 0
-            batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
+            batchState.value.status = 'stopped'
+            batchState.value.stage = 'stopped'
+            batchState.value.progress = 0
+            batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
         } else if (activeToken.imageId) {
             isCurrentPageProcessing.value = false
             updateState(
@@ -577,12 +575,13 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             )
         }
         activeToken = null
+        activeStopHandler = null
         isStopping.value = false
     }
 
     const closeBatchModal = () => {
         if (isBatchProcessing.value) return
-        batchState.show = false
+        batchState.value.show = false
     }
 
     const selectionToRegion = (selection: SelectionData, imageElement: HTMLImageElement): DetectedTextRegion => {

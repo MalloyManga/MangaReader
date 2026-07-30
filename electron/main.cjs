@@ -234,9 +234,8 @@ ipcMain.handle('library:add', async (_event, pathStr) => {
         * @type {Book[]}
         */
         const library = store.get('library', [])
-        if (library.find(b => b.path === pathStr)) {
-            return { success: false, error: 'Book already in library' }
-        }
+        const existingBook = library.find(b => b.path === pathStr)
+        if (existingBook) return { success: true, book: existingBook, alreadyExists: true }
 
         let cover = null
         if (backendService && backendService.isReady) {

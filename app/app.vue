@@ -33,6 +33,7 @@ onMounted(() => {
 <template>
 	<div class="min-h-screen transition-colors">
 		<GlobalLoader v-if="!isAppReady" @ready="handleAppReady" />
+		<AutoTranslateTaskFloat />
 		<div>
 			<NuxtPage />
 		</div>
