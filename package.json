@@ -3,10 +3,16 @@
   "author": "Malloy",
   "description": "A tool helps manga lover and Japanese learner read manga easily",
   "type": "module",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "main": "electron/main.cjs",
   "private": true,
   "electronMirror": "https://npmmirror.com/mirrors/electron/",
+  "overrides": {
+    "conf": {
+      "ajv": "8.20.0"
+    },
+    "fast-uri@3.1.0": "3.1.4"
+  },
   "scripts": {
     "build": "nuxt generate && node fix-paths.cjs",
     "build:nuxt": "nuxt build",

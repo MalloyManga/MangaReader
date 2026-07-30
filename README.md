@@ -30,7 +30,7 @@
 ## ✨ 功能特性
 
 - **📸 离线 OCR 识别**：基于 AI 模型，无需联网即可精准识别竖排日文漫画
-- **🧭 自动文字检测（开发中）**：按需下载检测模块，自动定位整页文字区域并复用现有 OCR、翻译与气泡校对流程
+- **🧭 自动识别翻译**：按需安装文字检测模块，支持处理当前页面或串行处理全部页面，自动完成文字区域检测、OCR 与翻译，并可继续编辑、删除或手动补充文字框
 - **✂️ 全局截图**：支持类似 QQ/微信 的截图方式，不仅限于漫画文件，可截取屏幕任意区域
 - **🔍 智能分词**：自动将句子拆解为单词，标注假名读音 (Furigana)
 - **🌐 多源翻译**：
@@ -74,7 +74,7 @@ _首次打开软件时程序会自动检查本地环境并下载_
 
 - **分词**：默认开启，辅助划分日语单词边界。
 - **翻译**：**默认不包含**，可按设备性能选择 OPUS-MT、Sakura 或 Qwen3。
-- **自动检测**：模块默认不包含，功能完成后可在“设置 > 自动检测”中按需下载安装。
+- **自动检测**：模块默认不包含，可在“设置 > 自动检测”中按需下载安装或卸载；使用前需启用并配置翻译模型。
 - **OCR快捷键**：自定义OCR快捷键。
 
 ---
@@ -92,7 +92,7 @@ _首次打开软件时程序会自动检查本地环境并下载_
 | **OCR Service**       | Python + PyTorch  |
 | **OCR Model**         | Manga-OCR         |
 | **Translation Model** | OPUS-MT / SakuraLLM / Qwen3 GGUF |
-| **Text Detection**    | CTD (可选模块，开发中) |
+| **Text Detection**    | CTD（按需安装的可选模块） |
 | **Tokenization**      | SudachiPy         |
 
 ### 📂 项目结构
@@ -136,7 +136,7 @@ The source code of this project is licensed under the **GPL-3.0** license.
 | **SakuraLLM** | GPL-3.0 / CC BY-NC-SA 4.0 | 漫画、轻小说离线翻译      | [GitHub](https://github.com/SakuraLLM/SakuraLLM)         |
 | **OPUS-MT**   | 以模型发布页为准          | 轻量日译中离线翻译        | [Hugging Face](https://huggingface.co/shun89/opus-mt-ja-zh) |
 | **Qwen3**     | Apache-2.0                | 通用 GGUF 离线翻译        | [Hugging Face](https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF) |
-| **CTD**       | GPL-3.0                   | 漫画文字区域检测（开发中）| [GitHub](https://github.com/dmMaze/comic-text-detector)  |
+| **CTD**       | GPL-3.0                   | 漫画文字区域检测          | [GitHub](https://github.com/dmMaze/comic-text-detector)  |
 | **llama.cpp** | MIT                       | GGUF 模型推理运行时        | [GitHub](https://github.com/ggml-org/llama.cpp)          |
 | **SudachiPy** | Apache-2.0                | 日语分词引擎              | [GitHub](https://github.com/WorksApplications/SudachiPy) |
 
