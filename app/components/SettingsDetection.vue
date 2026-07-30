@@ -133,6 +133,11 @@ onUnmounted(() => cleanupProgress?.())
                         : 'text-manga-500 dark:text-manga-400'">
                     <IconWarn v-if="detectionModule.status === 'corrupted' || detectionModule.status === 'error'" class="size-4 shrink-0 mt-0.5" />
                     <IconCheckMark v-else-if="detectionModule.status === 'installed'" class="size-4 shrink-0 mt-0.5 text-green-600" />
+                    <span v-else-if="detectionModule.status === 'downloading'"
+                        class="download-dots mt-0.5 flex size-4 shrink-0 items-center justify-between"
+                        aria-label="正在下载">
+                        <span v-for="index in 3" :key="index" />
+                    </span>
                     <IconInfo v-else class="size-4 shrink-0 mt-0.5" />
                     <span>{{ detectionModule.message }}</span>
                 </div>
@@ -182,3 +187,33 @@ onUnmounted(() => cleanupProgress?.())
             @cancel="showDeleteConfirm = false" @confirm="handleDelete" />
     </div>
 </template>
+
+<style scoped>
+.download-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: download-dot-jump 900ms ease-in-out infinite;
+}
+
+.download-dots span:nth-child(2) {
+    animation-delay: 150ms;
+}
+
+.download-dots span:nth-child(3) {
+    animation-delay: 300ms;
+}
+
+@keyframes download-dot-jump {
+    0%, 60%, 100% {
+        transform: translateY(1px);
+        opacity: 0.45;
+    }
+
+    30% {
+        transform: translateY(-3px);
+        opacity: 1;
+    }
+}
+</style>
