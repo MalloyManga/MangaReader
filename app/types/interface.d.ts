@@ -7,6 +7,7 @@ export interface Token {
 }
 
 export type ReadingMode = 'study' | 'list' | 'immersive'
+export type DownloadSource = 'mirror' | 'official'
 
 // 定义设置对象的接口
 export interface AppSettings {
@@ -20,6 +21,7 @@ export interface AppSettings {
     ocrShortcut: string
     prevImageShortcut?: string
     nextImageShortcut?: string
+    downloadSource: DownloadSource
 }
 
 // OCR 结果块
@@ -166,12 +168,13 @@ export interface IElectronAPI {
 
     // 后端状态检查
     checkBackendReady: () => Promise<boolean>
+    retryBackendInit: (source: DownloadSource) => Promise<{ success: boolean, error?: string }>
     onBackendLog: (callback: (msg) => void) => () => void
     onDownloadProgress: (callback: (progress: number | DownloadProgress) => void) => () => void
     onDictionaryDownloadProgress: (callback: (percent: number) => void) => () => void
     onInitStatus: (callback: (msg: string) => void) => () => void
     onInitProgress: (callback: (data: { percent: number, message: string }) => void) => () => void
-    onInitError: (callback: (data: { message: string, detail: string }) => void) => () => void
+    onInitError: (callback: (data: { message: string, detail: string, can_retry_download?: boolean }) => void) => () => void
 
     getPathForFile: (file: File) => string
     openModelFolder: (channel) => void

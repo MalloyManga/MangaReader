@@ -285,6 +285,28 @@ onUnmounted(() => {
         <div class="space-y-4">
             <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">核心功能</h4>
 
+            <div class="p-4 rounded-lg border border-manga-100 dark:border-manga-700 bg-manga-50 dark:bg-manga-900/50">
+                <div class="mb-3">
+                    <div class="font-medium text-manga-900 dark:text-manga-200">下载源</div>
+                    <div class="text-xs text-manga-500">下载失败时会自动切换到另一个来源</div>
+                </div>
+                <div class="grid grid-cols-2 rounded-lg bg-manga-200/70 dark:bg-manga-700 p-1" role="radiogroup"
+                    aria-label="下载源">
+                    <button v-for="source in ([
+                        { id: 'mirror', label: '镜像源' },
+                        { id: 'official', label: '官方源' }
+                    ] as const)" :key="source.id" type="button" role="radio"
+                        :aria-checked="settings.downloadSource === source.id"
+                        class="h-9 text-sm font-medium rounded-md transition-colors cursor-pointer"
+                        :class="settings.downloadSource === source.id
+                            ? 'bg-white dark:bg-manga-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                            : 'text-manga-500 dark:text-manga-400 hover:text-manga-800 dark:hover:text-manga-200'"
+                        @click="settings.downloadSource = source.id; saveSettings()">
+                        {{ source.label }}
+                    </button>
+                </div>
+            </div>
+
             <div
                 class="flex items-center justify-between p-4 rounded-lg border border-manga-100 dark:border-manga-700 bg-manga-50 dark:bg-manga-900/50">
                 <div>

@@ -11,14 +11,21 @@ from huggingface_hub import snapshot_download
 from .utils import log_message, patch_tqdm
 
 
+class OCRDownloadError(RuntimeError):
+    all_sources_failed = True
+
+
 class OCREngine:
-    def __init__(self, model_dir=None):
+    def __init__(self, model_dir=None, download_source="mirror"):
         self.mocr = None
         # 如果没有传入路径，抛出错误，因为我们现在的策略是必须指定路径
         if not model_dir:
             raise ValueError("Model directory is required for cleaner deployment.")
 
         self.model_dir = model_dir
+        self.download_source = (
+            "official" if download_source == "official" else "mirror"
+        )
 
         # 强制使用 CPU，避免 CUDA 初始化带来的不确定性 (除非用户明确有 CUDA 环境)
         # 对于 MangaOCR 这种轻量级模型，CPU 足够快且更稳定
@@ -90,22 +97,41 @@ class OCREngine:
             )
             log_message("[INFO] This may take a while (approx 400MB)...")
 
-            try:
-                #  使用 patch_tqdm 捕获下载进度
-                with patch_tqdm(
-                    msg_type="init_progress",
-                    msg_key="message",
-                    default_msg="正在下载 OCR 模型...",
-                ):
-                    snapshot_download(
-                        repo_id="kha-white/manga-ocr-base",
-                        local_dir=self.model_dir,
-                        local_dir_use_symlinks=False,  # 关键：不使用软链接，确保是真实文件
-                    )
-                log_message("[INFO] Download complete!")
-            except Exception as e:
-                log_message(f"[ERROR] Download failed: {e}")
-                raise e
+            endpoints = {
+                "mirror": "https://hf-mirror.com",
+                "official": "https://huggingface.co",
+            }
+            source_order = [
+                self.download_source,
+                "official" if self.download_source == "mirror" else "mirror",
+            ]
+            errors = []
+            for source_index, source in enumerate(source_order):
+                endpoint = endpoints[source]
+                source_label = "镜像源" if source == "mirror" else "官方源"
+                os.environ["HF_ENDPOINT"] = endpoint
+                log_message(f"[INFO] Connecting to OCR {source_label}: {endpoint}")
+                try:
+                    with patch_tqdm(
+                        msg_type="init_progress",
+                        msg_key="message",
+                        default_msg=f"正在通过{source_label}下载 OCR 模型...",
+                    ):
+                        snapshot_download(
+                            repo_id="kha-white/manga-ocr-base",
+                            local_dir=self.model_dir,
+                            local_dir_use_symlinks=False,
+                            endpoint=endpoint,
+                        )
+                    log_message(f"[INFO] OCR download completed via {source_label}.")
+                    break
+                except Exception as error:
+                    errors.append(f"{source_label}: {error}")
+                    log_message(f"[WARNING] OCR {source_label} download failed: {error}")
+                    if source_index == 0:
+                        log_message("[INFO] Switching OCR download source...")
+            else:
+                raise OCRDownloadError("；".join(errors))
 
         # 3. 加载模型 (此时文件一定在本地了)
         abs_model_path = os.path.abspath(self.model_dir)

@@ -95,6 +95,7 @@ async function initStore() {
             enableTokenization: true,
             translationApiKey: '',
             theme: 'system',
+            downloadSource: 'mirror',
             ocrShortcut: '',
             library: [] // 书架数据
         }
@@ -479,7 +480,7 @@ ipcMain.handle('detection-module:check', async () => {
 ipcMain.handle('detection-module:download', async () => {
     try {
         if (!backendService) return { success: false, error: "Service not ready" }
-        return await backendService.downloadDetectionModule()
+        return await backendService.downloadDetectionModule(store?.get('downloadSource', 'mirror'))
     } catch (e) {
         return { success: false, error: e.message }
     }
@@ -595,7 +596,11 @@ app.whenReady().then(async () => {
         // 启动 OCR 服务
         const servicesModulesPath = getServicesModulesPath()
         await fs.promises.mkdir(servicesModulesPath, { recursive: true })
-        backendService = new BackendService(ocrModelPath, servicesModulesPath)
+        backendService = new BackendService(
+            ocrModelPath,
+            servicesModulesPath,
+            store.get('downloadSource', 'mirror')
+        )
         backendService.on('ready', () => {
             console.log('Signal: Backend ready, notifying frontend...')
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -661,6 +666,18 @@ app.whenReady().then(async () => {
 
         ipcMain.handle('backend:check-ready', () => {
             return backendService ? backendService.isReady : false
+        })
+
+        ipcMain.handle('backend:retry-init', (_event, source) => {
+            try {
+                const normalizedSource = source === 'official' ? 'official' : 'mirror'
+                store.set('downloadSource', normalizedSource)
+                if (!backendService) return { success: false, error: 'Service not available' }
+                backendService.restart(normalizedSource)
+                return { success: true }
+            } catch (error) {
+                return { success: false, error: error.message }
+            }
         })
 
         // 批量更新快捷键设置

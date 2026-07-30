@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     // 主动检查后端状态
     checkBackendReady: () => ipcRenderer.invoke('backend:check-ready'),
+    retryBackendInit: (source) => ipcRenderer.invoke('backend:retry-init', source),
     // 下载进度
     onDownloadProgress: (callback) => {
         const handler = (_event, data) => callback(data)

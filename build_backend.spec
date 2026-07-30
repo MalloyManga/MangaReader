@@ -9,6 +9,14 @@ import os
 datas = []
 binaries = []
 hiddenimports = []
+hiddenimports += [
+    'modulefinder',
+    'PIL.ImageColor',
+    'PIL.ImageDraw',
+    'PIL.ImageEnhance',
+    'PIL.ImageFont',
+    'PIL.ImageOps',
+]
 excludes = [
     'numpy.testing',
     'numpy.tests',

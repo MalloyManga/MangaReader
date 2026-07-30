@@ -10,6 +10,8 @@ const downloadPercent = ref(0)
 const hasError = ref(false)
 const errorMessage = ref('')
 const errorDetail = ref('')
+const canRetryDownload = ref(false)
+const isRetrying = ref(false)
 let hasFinished = false
 
 const emit = defineEmits<{
@@ -18,6 +20,27 @@ const emit = defineEmits<{
 
 const openGithubHelp = () => {
     window.electronAPI.openLink('https://github.com/MalloyManga/MangaReader/blob/main/README.md')
+}
+
+const retryDownload = async (source: DownloadSource) => {
+    if (isRetrying.value) return
+    isRetrying.value = true
+    hasError.value = false
+    canRetryDownload.value = false
+    downloadPercent.value = 0
+    loadingText.value = source === 'mirror' ? '正在重新连接镜像源...' : '正在重新连接官方源...'
+    console.log(`[Loader] Retrying OCR initialization with ${source} source`)
+    try {
+        const result = await window.electronAPI.retryBackendInit(source)
+        if (!result.success) throw new Error(result.error || '无法重新启动下载')
+    } catch (error) {
+        hasError.value = true
+        canRetryDownload.value = true
+        errorMessage.value = '无法重新开始下载'
+        errorDetail.value = error instanceof Error ? error.message : String(error)
+    } finally {
+        isRetrying.value = false
+    }
 }
 
 // 监听后端状态
@@ -59,10 +82,11 @@ onMounted(async () => {
     })
 
     // 监听初始化错误
-    window.electronAPI.onInitError((data: { message: string, detail: string }) => {
+    window.electronAPI.onInitError((data: { message: string, detail: string, can_retry_download?: boolean }) => {
         hasError.value = true
         errorMessage.value = data.message
         errorDetail.value = data.detail
+        canRetryDownload.value = Boolean(data.can_retry_download)
         loadingText.value = "Initialization Failed"
     })
 
@@ -133,7 +157,18 @@ const finishLoading = () => {
                             </p>
                         </div>
 
-                        <div class="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                        <div v-if="canRetryDownload" class="grid grid-cols-2 gap-3">
+                            <button type="button" :disabled="isRetrying" @click="retryDownload('mirror')"
+                                class="h-10 rounded-md bg-primary px-4 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50">
+                                重试镜像源
+                            </button>
+                            <button type="button" :disabled="isRetrying" @click="retryDownload('official')"
+                                class="h-10 rounded-md border border-manga-300 bg-white px-4 text-sm font-medium text-manga-700 transition-colors hover:border-primary hover:text-primary disabled:opacity-50 dark:border-manga-600 dark:bg-manga-700 dark:text-manga-200">
+                                重试官方源
+                            </button>
+                        </div>
+
+                        <div v-else class="flex flex-col gap-3 sm:flex-row sm:justify-center">
                             <button @click="openModelFolder"
                                 class="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2">
                                 <IconFolder class="h-4 w-4" />

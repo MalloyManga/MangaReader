@@ -1,5 +1,17 @@
 import gc
+import sys
+import types
 from pathlib import Path
+
+from packaging.version import parse as parse_version
+
+
+def _ensure_pkg_resources_compatibility():
+    if "pkg_resources" in sys.modules:
+        return
+    compatibility_module = types.ModuleType("pkg_resources")
+    compatibility_module.parse_version = parse_version
+    sys.modules["pkg_resources"] = compatibility_module
 
 
 class CtdDetectorAdapter:
@@ -11,6 +23,7 @@ class CtdDetectorAdapter:
         self.network = None
 
     def load(self, module_path, device="cpu"):
+        _ensure_pkg_resources_compatibility()
         import torch
         from basemodel import TextDetBase
 

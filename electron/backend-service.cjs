@@ -25,10 +25,11 @@ const { EventEmitter } = require('events')
  */
 
 class BackendService extends EventEmitter {
-    constructor(modelPath, modulesPath) {
+    constructor(modelPath, modulesPath, downloadSource = 'mirror') {
         super()
         this.modelPath = modelPath
         this.modulesPath = modulesPath
+        this.downloadSource = downloadSource === 'official' ? 'official' : 'mirror'
         this.process = null
         this.isReady = false
         /** @type {Map<number, {resolve: Function, reject: Function}>} */
@@ -39,6 +40,7 @@ class BackendService extends EventEmitter {
     }
 
     start() {
+        this.responseBuffer = ''
         const isDev = !require('electron').app.isPackaged
         let pythonPath, scriptPath
 
@@ -65,6 +67,7 @@ class BackendService extends EventEmitter {
         if (this.modulesPath) {
             args.push('--modules-root', this.modulesPath)
         }
+        args.push('--download-source', this.downloadSource)
 
         console.log('[INFO] Starting OCR service...')
         console.log('[INFO] Model Path:', this.modelPath)
@@ -73,8 +76,9 @@ class BackendService extends EventEmitter {
             ...process.env,
             PYTHONUNBUFFERED: '1', // 关闭py的流缓冲
             PYTHONIOENCODING: 'utf-8',
-            // 设置 HF 镜像
-            HF_ENDPOINT: 'https://hf-mirror.com'
+            HF_ENDPOINT: this.downloadSource === 'official'
+                ? 'https://huggingface.co'
+                : 'https://hf-mirror.com'
         }
         if (!isDev) {
             backendEnv.MANGAREADER_TRANSLATE_WORKER = '1'
@@ -136,9 +140,11 @@ class BackendService extends EventEmitter {
             this.emit('log', `[Process Error] ${err.message}`)
         })
 
+        const startedProcess = this.process
         this.process.on('exit', (code) => {
             console.log(`OCR Process exited: ${code}`)
             this.emit('log', `[Process Exit] Code: ${code}`)
+            if (this.process !== startedProcess) return
             this.isReady = false
             this.process = null
             // ocr退出之后 终止所有的请求后清空请求列表
@@ -341,8 +347,11 @@ class BackendService extends EventEmitter {
         return this._sendRequest({ command: 'check_detection_module' }, 30000)
     }
 
-    async downloadDetectionModule() {
-        return this._sendRequest({ command: 'download_detection_module' }, 21600000)
+    async downloadDetectionModule(downloadSource = this.downloadSource) {
+        return this._sendRequest({
+            command: 'download_detection_module',
+            download_source: downloadSource === 'official' ? 'official' : 'mirror'
+        }, 21600000)
     }
 
     async deleteDetectionModule() {
@@ -359,6 +368,19 @@ class BackendService extends EventEmitter {
 
     stop() {
         if (this.process) this.process.kill()
+    }
+
+    restart(downloadSource = this.downloadSource) {
+        this.downloadSource = downloadSource === 'official' ? 'official' : 'mirror'
+        this.isReady = false
+        this.lastProcessError = ''
+        const previousProcess = this.process
+        if (previousProcess && previousProcess.exitCode === null) {
+            previousProcess.once('exit', () => this.start())
+            previousProcess.kill()
+            return
+        }
+        this.start()
     }
 }
 

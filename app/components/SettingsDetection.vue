@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { showToast } = useToast()
+const { settings } = useSettings()
 const { detectionModule, checkStatus, updateProgress } = useDetectionModuleStatus()
 
 const showDeleteConfirm = ref(false)
@@ -39,7 +40,9 @@ const handleDownload = async () => {
 
     detectionModule.status = 'downloading'
     detectionModule.progress = 0
-    detectionModule.message = '正在连接镜像下载源'
+    detectionModule.message = settings.value.downloadSource === 'official'
+        ? '正在连接官方下载源'
+        : '正在连接镜像下载源'
     detectionModule.error = ''
     try {
         const result = await window.electronAPI.downloadDetectionModule()

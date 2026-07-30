@@ -373,6 +373,9 @@ def main():
     parser.add_argument("--model-dir", type=str, help="Path to OCR model")
     parser.add_argument("--models-root", type=str, help="Path to models root")
     parser.add_argument("--modules-root", type=str, help="Path to writable service modules")
+    parser.add_argument(
+        "--download-source", choices=("mirror", "official"), default="mirror"
+    )
     parser.add_argument("--translate-worker", action="store_true")
     parser.add_argument("--detection-worker", action="store_true")
     args, _ = parser.parse_known_args()
@@ -454,7 +457,9 @@ def main():
         else:
             ocr_model_path = os.path.join(models_root, "ocr")
 
-        ocr_engine = OCREngine(model_dir=ocr_model_path)
+        ocr_engine = OCREngine(
+            model_dir=ocr_model_path, download_source=args.download_source
+        )
     except Exception as e:
         log_message(f"[ERROR] OCR Init Failed: {e}")
         send_response(
@@ -462,6 +467,9 @@ def main():
                 "type": "init_error",
                 "message": f"OCR 模型加载失败: {str(e)}",
                 "detail": "请检查网络连接，或尝试手动下载模型。",
+                "can_retry_download": bool(
+                    getattr(e, "all_sources_failed", False)
+                ),
             }
         )
         sys.exit(1)
@@ -682,7 +690,10 @@ def main():
                         )
 
                     detection_registry.unload()
-                    status = detection_manager.install(report_detection_progress)
+                    status = detection_manager.install(
+                        report_detection_progress,
+                        request.get("download_source", "mirror"),
+                    )
                     try:
                         detection_registry.load()
                     except Exception:

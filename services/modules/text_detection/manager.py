@@ -115,7 +115,7 @@ class DetectionModuleManager:
         except DetectionModuleError:
             return None
 
-    def install(self, progress_callback=None):
+    def install(self, progress_callback=None, download_source="mirror"):
         self.download_root.mkdir(parents=True, exist_ok=True)
         staging_path = self.installed_root / f".install-{uuid.uuid4().hex}"
         downloaded_assets = {}
@@ -131,6 +131,7 @@ class DetectionModuleManager:
                     completed_size,
                     total_size,
                     progress_callback,
+                    download_source,
                 )
                 try:
                     self._verify_sha256(asset_path, asset["sha256"])
@@ -210,7 +211,13 @@ class DetectionModuleManager:
         return True
 
     def _download_asset(
-        self, asset, destination, completed_size, total_size, progress_callback
+        self,
+        asset,
+        destination,
+        completed_size,
+        total_size,
+        progress_callback,
+        download_source="mirror",
     ):
         if destination.exists():
             existing_size = destination.stat().st_size
@@ -229,10 +236,17 @@ class DetectionModuleManager:
             elif asset["size"] and existing_size > asset["size"]:
                 destination.unlink(missing_ok=True)
 
-        sources = [*(asset.get("mirrors") or ()), asset["url"]]
+        mirror_sources = [
+            (url, "镜像源") for url in (asset.get("mirrors") or ())
+        ]
+        official_sources = [(asset["url"], "官方源")]
+        sources = (
+            official_sources + mirror_sources
+            if download_source == "official"
+            else mirror_sources + official_sources
+        )
         last_error = None
-        for source_index, source_url in enumerate(sources):
-            source_name = "镜像源" if source_index < len(sources) - 1 else "官方源"
+        for source_index, (source_url, source_name) in enumerate(sources):
             self._emit_progress(
                 progress_callback,
                 completed_size / max(total_size, 1) * 88,
@@ -337,6 +351,17 @@ class DetectionModuleManager:
         )
         base_model_text = base_model_text.replace("from torchsummary import summary\n", "")
         base_model_path.write_text(base_model_text, encoding="utf-8")
+
+        yolov5_utils_path = upstream_root / "utils" / "yolov5_utils.py"
+        yolov5_utils_text = yolov5_utils_path.read_text(encoding="utf-8")
+        yolov5_utils_text = yolov5_utils_text.replace(
+            "import pkg_resources as pkg\n",
+            "from packaging.version import parse as parse_version\n",
+        )
+        yolov5_utils_text = yolov5_utils_text.replace(
+            "pkg.parse_version(x)", "parse_version(x)"
+        )
+        yolov5_utils_path.write_text(yolov5_utils_text, encoding="utf-8")
 
         shutil.copy2(source_root / "LICENSE", staging_path / "LICENSE")
         shutil.copy2(assets["model"], staging_path / "comictextdetector.pt")

@@ -1,5 +1,6 @@
 // composables/useSettings.ts
 export type ThemeOption = 'system' | 'light' | 'dark'
+export type DownloadSource = 'mirror' | 'official'
 
 export const useSettings = () => {
     // 这里存放具体的设置数据
@@ -13,7 +14,8 @@ export const useSettings = () => {
         theme: 'system' as ThemeOption, // 默认为跟随系统
         ocrShortcut: '',
         prevImageShortcut: '',
-        nextImageShortcut: ''
+        nextImageShortcut: '',
+        downloadSource: 'mirror' as DownloadSource
     }))
 
     const applyTheme = () => {
