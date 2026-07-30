@@ -312,7 +312,7 @@ const handleDrop = (event: DragEvent) => {
                 </Button>
             </div> -->
             <div ref="imagesPreviewContainer" :key="listKey"
-                class="gap-2 min-h-0 bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600 overflow-y-auto">
+                class="thumbnail-list-scroll gap-2 min-h-0 bg-manga-100 dark:bg-manga-800 p-2 rounded-primary border border-manga-200 dark:border-manga-600 overflow-y-auto">
                 <ImageThumbnail v-for="(image, index) in images" :key="image.id" :image="image" :index="index"
                     :is-active="index === currentImageIndex" @select="selectImage(index)"
                     @delete="removeImage(index)" />
@@ -385,3 +385,13 @@ const handleDrop = (event: DragEvent) => {
         </div>
     </div>
 </template>
+
+<style scoped>
+.thumbnail-list-scroll {
+    scrollbar-width: none;
+}
+
+.thumbnail-list-scroll::-webkit-scrollbar {
+    display: none;
+}
+</style>
