@@ -1,7 +1,7 @@
 import type { Ref } from 'vue'
-import type { DetectedTextRegion, OcrBlock } from '~/types/interface'
+import type { DetectedTextRegion, ImageItem, OcrBlock } from '~/types/interface'
 
-export type AutoTranslateStage = 'idle' | 'detecting' | 'recognizing' | 'translating' | 'complete' | 'error'
+export type AutoTranslateStage = 'idle' | 'detecting' | 'recognizing' | 'translating' | 'complete' | 'stopped' | 'error'
 
 export interface AutoTranslatePageState {
     stage: AutoTranslateStage
@@ -11,8 +11,31 @@ export interface AutoTranslatePageState {
 
 interface AutoTranslateProcessingOptions {
     currentImageId: Ref<string | undefined>
+    images: Ref<ImageItem[]>
     ocrBlocks: Ref<OcrBlock[]>
+    allPageBlocks: Ref<Record<string, OcrBlock[]>>
     activeBlockId: Ref<string | undefined>
+}
+
+export interface AutoTranslateBatchState {
+    show: boolean
+    status: 'idle' | 'running' | 'stopping' | 'complete' | 'stopped'
+    pageIndex: number
+    pageTotal: number
+    regionIndex: number
+    regionTotal: number
+    progress: number
+    message: string
+    pageLabel: string
+    completedPages: number
+    failedPages: number
+    skippedPages: number
+}
+
+interface ProcessingToken {
+    cancelled: boolean
+    kind: 'single' | 'batch'
+    imageId?: string
 }
 
 interface SelectionData {
@@ -29,16 +52,35 @@ const createIdleState = (): AutoTranslatePageState => ({
 })
 
 export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptions) {
-    const { currentImageId, ocrBlocks, activeBlockId } = options
+    const { currentImageId, images, ocrBlocks, allPageBlocks, activeBlockId } = options
     const { settings } = useSettings()
     const { showToast } = useToast()
     const { selectedModel, loadTranslationModels, checkModelStatus } = useModelStatus()
     const pageStates = ref<Record<string, AutoTranslatePageState>>({})
-    const isProcessing = ref(false)
+    const isPreparing = ref(false)
+    const isCurrentPageProcessing = ref(false)
+    const isBatchProcessing = ref(false)
+    const isStopping = ref(false)
+    const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value || isBatchProcessing.value)
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
     const translationReady = ref(false)
     const translationMessage = ref('正在检查翻译模型')
+    const batchState = reactive<AutoTranslateBatchState>({
+        show: false,
+        status: 'idle',
+        pageIndex: 0,
+        pageTotal: 0,
+        regionIndex: 0,
+        regionTotal: 0,
+        progress: 0,
+        message: '等待开始处理',
+        pageLabel: '',
+        completedPages: 0,
+        failedPages: 0,
+        skippedPages: 0
+    })
+    let activeToken: ProcessingToken | null = null
 
     const detectorAvailable = computed(() => import.meta.client && Boolean(window.electronAPI?.detectTextRegions))
     const currentState = computed<AutoTranslatePageState>(() => {
@@ -86,15 +128,14 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         }
     }
 
-    const ensurePageState = () => {
-        const imageId = currentImageId.value
+    const ensurePageState = (imageId = currentImageId.value) => {
         if (!imageId) return null
         if (!pageStates.value[imageId]) pageStates.value[imageId] = createIdleState()
         return pageStates.value[imageId]!
     }
 
-    const updateState = (stage: AutoTranslateStage, progress: number, message: string) => {
-        const state = ensurePageState()
+    const updateState = (imageId: string, stage: AutoTranslateStage, progress: number, message: string) => {
+        const state = ensurePageState(imageId)
         if (!state) return
         state.stage = stage
         state.progress = progress
@@ -102,9 +143,8 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         log(message)
     }
 
-    const resetCurrentState = () => {
-        if (!currentImageId.value) return
-        pageStates.value[currentImageId.value] = createIdleState()
+    const resetPageState = (imageId: string) => {
+        pageStates.value[imageId] = createIdleState()
     }
 
     const getCurrentImageElement = () => {
@@ -149,8 +189,8 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         return { ...region, x, y, width: right - x, height: bottom - y }
     }
 
-    const createBlock = (region: DetectedTextRegion, index: number): OcrBlock => ({
-        id: `${currentImageId.value}-${Date.now()}-${index}`,
+    const createBlock = (imageId: string, region: DetectedTextRegion, index: number): OcrBlock => ({
+        id: `${imageId}-${Date.now()}-${index}`,
         rect: { x: region.x, y: region.y, width: region.width, height: region.height },
         original: '',
         translation: '',
@@ -160,40 +200,65 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     })
 
     const translateBlock = async (block: OcrBlock) => {
-        if (!settings.value.enableTranslation || !block.original) return
+        if (!block.original) throw new Error('没有可翻译的原文')
         const result = await window.electronAPI.translate(block.original, settings.value.translationModelId)
-        if (!result.success) throw new Error(result.error || '翻译失败')
-        block.translation = result.translation || ''
+        if (!result.success || !result.translation?.trim()) throw new Error(result.error || '翻译结果为空')
+        block.translation = result.translation
     }
 
-    const processCurrentPage = async () => {
-        if (!currentImageId.value || isProcessing.value) return
-        if (!window.electronAPI?.detectTextRegions) {
-            showToast('文字检测模块不可用，请先在设置中安装')
-            return
+    const replacePageBlocks = (imageId: string, blocks: OcrBlock[]) => {
+        allPageBlocks.value[imageId] = [...blocks]
+        if (currentImageId.value === imageId) {
+            ocrBlocks.value = [...blocks]
+            activeBlockId.value = blocks[0]?.id
         }
-        if (!(await checkTranslationReady())) {
-            showToast(translationMessage.value, 4000)
-            return
-        }
+    }
 
-        isProcessing.value = true
-        isOcrMode.value = false
-        ocrBlocks.value = []
-        activeBlockId.value = undefined
-        resetCurrentState()
+    const appendCompletedBlock = (imageId: string, block: OcrBlock) => {
+        const blocks = [...(allPageBlocks.value[imageId] || []), block]
+        replacePageBlocks(imageId, blocks)
+    }
+
+    const throwIfCancelled = (token: ProcessingToken) => {
+        if (token.cancelled) throw new DOMException('处理已停止', 'AbortError')
+    }
+
+    const isAbortError = (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
+
+    const updateProcessingProgress = (
+        imageId: string,
+        token: ProcessingToken,
+        stage: AutoTranslateStage,
+        progress: number,
+        message: string,
+        regionIndex = 0,
+        regionTotal = 0
+    ) => {
+        updateState(imageId, stage, progress, message)
+        if (token.kind !== 'batch') return
+        batchState.regionIndex = regionIndex
+        batchState.regionTotal = regionTotal
+        batchState.message = message
+        batchState.progress = Math.min(100, Math.round(
+            ((batchState.pageIndex - 1 + progress / 100) / Math.max(1, batchState.pageTotal)) * 100
+        ))
+    }
+
+    const processPage = async (imageId: string, imageElement: HTMLImageElement, token: ProcessingToken) => {
+        replacePageBlocks(imageId, [])
+        resetPageState(imageId)
 
         try {
-            const imageElement = getCurrentImageElement()
-            updateState('detecting', 8, '正在分析整页文字区域')
-            log('submitted full-page detection request')
-            const heartbeat = window.setInterval(() => log('detector is still processing the current page'), 10000)
+            updateProcessingProgress(imageId, token, 'detecting', 8, '正在分析整页文字区域')
+            log('submitted full-page detection request', imageId)
+            const heartbeat = window.setInterval(() => log('detector is still processing page', imageId), 10000)
             let detection
             try {
                 detection = await window.electronAPI.detectTextRegions(imageToBase64(imageElement))
             } finally {
                 window.clearInterval(heartbeat)
             }
+            throwIfCancelled(token)
             if (!detection.success) throw new Error(detection.error || '文字区域检测失败')
 
             const regions = (detection.regions || []).map(region => addRegionPadding(
@@ -202,73 +267,249 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 imageElement.naturalHeight
             ))
             log('expanded detected regions with OCR padding', {
+                imageId,
                 imageWidth: imageElement.naturalWidth,
                 imageHeight: imageElement.naturalHeight,
                 regionCount: regions.length
             })
-            log('detection completed, regions:', regions.length)
             if (regions.length === 0) {
-                updateState('complete', 100, '当前页面未检测到文字区域')
-                showToast('当前页面未检测到文字区域')
-                return
+                updateProcessingProgress(imageId, token, 'complete', 100, '当前页面未检测到文字区域')
+                return 'complete' as const
             }
 
-            ocrBlocks.value = regions.map(createBlock)
-            activeBlockId.value = ocrBlocks.value[0]?.id
-
+            let completedCount = 0
             for (let index = 0; index < regions.length; index++) {
+                throwIfCancelled(token)
                 const region = regions[index]!
-                const block = ocrBlocks.value[index]!
-                updateState(
+                const block = createBlock(imageId, region, index)
+                updateProcessingProgress(
+                    imageId,
+                    token,
                     'recognizing',
-                    15 + Math.round(((index + 1) / regions.length) * 45),
-                    `正在识别第 ${index + 1} / ${regions.length} 个区域`
+                    15 + Math.round(((index + 0.35) / regions.length) * 83),
+                    `正在识别第 ${index + 1} / ${regions.length} 个区域`,
+                    index + 1,
+                    regions.length
                 )
-                log('OCR started for region', index + 1, '/', regions.length)
+                log('OCR started for region', index + 1, '/', regions.length, 'on page', imageId)
                 const result = await window.electronAPI.recognizeText(cropRegion(imageElement, region))
-                if (!result.success) {
-                    block.status = 'error'
-                    console.error('[AutoTranslate] OCR failed for region', index + 1, result.error)
+                throwIfCancelled(token)
+                if (!result.success || !result.text?.trim()) {
+                    console.error('[AutoTranslate] OCR failed for region', index + 1, result.error || 'empty text')
                     continue
                 }
-                block.original = result.text || ''
-                block.status = 'done'
-                log('OCR completed for region', index + 1)
-            }
+                block.original = result.text
+                log('OCR completed for region', index + 1, 'on page', imageId)
 
-            if (settings.value.enableTranslation) {
-                for (let index = 0; index < ocrBlocks.value.length; index++) {
-                    const block = ocrBlocks.value[index]!
-                    if (block.status === 'error' || !block.original) continue
-                    updateState(
-                        'translating',
-                        60 + Math.round(((index + 1) / ocrBlocks.value.length) * 38),
-                        `正在翻译第 ${index + 1} / ${ocrBlocks.value.length} 个区域`
-                    )
-                    log('translation started for region', index + 1, '/', ocrBlocks.value.length)
-                    try {
-                        block.status = 'loading'
-                        await translateBlock(block)
-                        block.status = 'done'
-                        log('translation completed for region', index + 1)
-                    } catch (error) {
-                        block.status = 'error'
-                        console.error('[AutoTranslate] translation failed for region', index + 1, error)
-                    }
+                updateProcessingProgress(
+                    imageId,
+                    token,
+                    'translating',
+                    15 + Math.round(((index + 0.75) / regions.length) * 83),
+                    `正在翻译第 ${index + 1} / ${regions.length} 个区域`,
+                    index + 1,
+                    regions.length
+                )
+                try {
+                    await translateBlock(block)
+                    throwIfCancelled(token)
+                } catch (error) {
+                    if (isAbortError(error)) throw error
+                    console.error('[AutoTranslate] translation failed for region', index + 1, error)
+                    continue
                 }
-            } else {
-                console.warn('[AutoTranslate] translation was disabled after readiness check')
+
+                block.status = 'done'
+                appendCompletedBlock(imageId, block)
+                completedCount++
+                log('atomic region committed', index + 1, 'on page', imageId)
             }
 
-            updateState('complete', 100, `已完成 ${ocrBlocks.value.length} 个文字区域`)
+            updateProcessingProgress(
+                imageId,
+                token,
+                'complete',
+                100,
+                `已完成 ${completedCount} / ${regions.length} 个文字区域`,
+                regions.length,
+                regions.length
+            )
+            return 'complete' as const
+        } catch (error) {
+            if (isAbortError(error)) {
+                const state = ensurePageState(imageId)
+                updateState(imageId, 'stopped', state?.progress || 0, `已停止，保留 ${allPageBlocks.value[imageId]?.length || 0} 个完整区域`)
+                log('page processing stopped', imageId)
+                return 'stopped' as const
+            }
+            const message = error instanceof Error ? error.message : String(error)
+            updateState(imageId, 'error', 0, message)
+            console.error('[AutoTranslate] page processing failed', imageId, error)
+            return 'error' as const
+        }
+    }
+
+    const canStartProcessing = async () => {
+        if (!window.electronAPI?.detectTextRegions) {
+            showToast('文字检测模块不可用，请先在设置中安装')
+            return false
+        }
+        if (!(await checkTranslationReady())) {
+            showToast(translationMessage.value, 4000)
+            return false
+        }
+        return true
+    }
+
+    const prepareProcessing = async () => {
+        isPreparing.value = true
+        try {
+            return await canStartProcessing()
+        } finally {
+            isPreparing.value = false
+        }
+    }
+
+    const processCurrentPage = async () => {
+        if (isCurrentPageProcessing.value) {
+            stopProcessing()
+            return
+        }
+        const imageId = currentImageId.value
+        if (!imageId || isProcessing.value) return
+        if (!(await prepareProcessing())) return
+
+        const token: ProcessingToken = { cancelled: false, kind: 'single', imageId }
+        activeToken = token
+        isCurrentPageProcessing.value = true
+        isStopping.value = false
+        isOcrMode.value = false
+        activeBlockId.value = undefined
+
+        try {
+            const imageElement = getCurrentImageElement()
+            const result = await processPage(imageId, imageElement, token)
+            if (result === 'error') showToast('当前页面自动处理失败，请查看处理状态', 5000)
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
-            updateState('error', 0, message)
+            updateState(imageId, 'error', 0, message)
             console.error('[AutoTranslate] page processing failed', error)
             showToast(`自动处理失败：${message}`, 5000)
         } finally {
-            isProcessing.value = false
+            if (activeToken === token) activeToken = null
+            isCurrentPageProcessing.value = false
+            isStopping.value = false
         }
+    }
+
+    const loadImageElement = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = () => reject(new Error('页面图片加载失败'))
+        image.src = url
+    })
+
+    const getPageLabel = (image: ImageItem, index: number) => image.file?.name
+        || (image.type === 'pdf-page' && image.pageNumber ? `PDF 第 ${image.pageNumber} 页` : `第 ${index + 1} 页`)
+
+    const processAllPages = async () => {
+        if (!images.value.length || isProcessing.value) return
+        if (!(await prepareProcessing())) return
+        const token: ProcessingToken = { cancelled: false, kind: 'batch' }
+        activeToken = token
+        isBatchProcessing.value = true
+        isStopping.value = false
+        isOcrMode.value = false
+        Object.assign(batchState, {
+            show: true,
+            status: 'running',
+            pageIndex: 0,
+            pageTotal: images.value.length,
+            regionIndex: 0,
+            regionTotal: 0,
+            progress: 0,
+            message: '正在准备批量处理',
+            pageLabel: '',
+            completedPages: 0,
+            failedPages: 0,
+            skippedPages: 0
+        })
+        log('batch processing started, page count:', images.value.length)
+
+        try {
+            for (let index = 0; index < images.value.length; index++) {
+                throwIfCancelled(token)
+                const image = images.value[index]!
+                batchState.pageIndex = index + 1
+                batchState.pageLabel = getPageLabel(image, index)
+                batchState.regionIndex = 0
+                batchState.regionTotal = 0
+
+                if (pageStates.value[image.id]?.stage === 'complete') {
+                    batchState.skippedPages++
+                    batchState.message = '该页面已经完整处理，已跳过'
+                    batchState.progress = Math.round(((index + 1) / images.value.length) * 100)
+                    log('skipped completed page', image.id)
+                    continue
+                }
+
+                try {
+                    const imageElement = await loadImageElement(image.url)
+                    throwIfCancelled(token)
+                    const result = await processPage(image.id, imageElement, token)
+                    if (result === 'stopped') break
+                    if (result === 'complete') batchState.completedPages++
+                    else batchState.failedPages++
+                } catch (error) {
+                    if (isAbortError(error)) throw error
+                    batchState.failedPages++
+                    updateState(image.id, 'error', 0, error instanceof Error ? error.message : String(error))
+                    console.error('[AutoTranslate] batch page failed', image.id, error)
+                }
+            }
+            if (token.cancelled) {
+                batchState.status = 'stopped'
+                batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
+            } else {
+                batchState.status = 'complete'
+                batchState.progress = 100
+                batchState.message = '全部页面处理完成'
+            }
+        } catch (error) {
+            if (isAbortError(error)) {
+                batchState.status = 'stopped'
+                batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
+            } else {
+                batchState.status = 'complete'
+                batchState.failedPages++
+                batchState.message = '批量处理提前结束，请检查失败页面'
+                console.error('[AutoTranslate] batch processing failed', error)
+            }
+        } finally {
+            if (activeToken === token) activeToken = null
+            isBatchProcessing.value = false
+            isStopping.value = false
+            log('batch processing ended', batchState.status)
+        }
+    }
+
+    function stopProcessing() {
+        if (!activeToken || activeToken.cancelled) return
+        activeToken.cancelled = true
+        isStopping.value = true
+        log('stop requested for', activeToken.kind, 'processing')
+        if (activeToken.kind === 'batch') {
+            batchState.status = 'stopping'
+            batchState.message = '正在停止，将丢弃当前未完成的文字区域'
+        } else if (activeToken.imageId) {
+            const state = ensurePageState(activeToken.imageId)
+            updateState(activeToken.imageId, state?.stage || 'idle', state?.progress || 0, '正在停止当前页面处理')
+        }
+    }
+
+    const closeBatchModal = () => {
+        if (isBatchProcessing.value) return
+        batchState.show = false
     }
 
     const selectionToRegion = (selection: SelectionData, imageElement: HTMLImageElement): DetectedTextRegion => {
@@ -306,7 +547,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         try {
             const imageElement = getCurrentImageElement()
             const region = selectionToRegion(selection, imageElement)
-            block = createBlock(region, ocrBlocks.value.length)
+            block = createBlock(currentImageId.value!, region, ocrBlocks.value.length)
             ocrBlocks.value.push(block)
             activeBlockId.value = block.id
             log('manual OCR started for region', ocrBlocks.value.length)
@@ -356,12 +597,19 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         detectorAvailable,
         translationReady,
         translationMessage,
+        batchState,
         isProcessing,
+        isCurrentPageProcessing,
+        isBatchProcessing,
+        isStopping,
         isOcrMode,
         isOcrRecognizing,
         log,
         checkTranslationReady,
         processCurrentPage,
+        processAllPages,
+        stopProcessing,
+        closeBatchModal,
         startManualOcr,
         cancelManualOcr,
         handleManualCapture,

@@ -16,18 +16,25 @@ const {
     detectorAvailable,
     translationReady,
     translationMessage,
+    batchState,
     isProcessing,
+    isCurrentPageProcessing,
+    isBatchProcessing,
+    isStopping,
     isOcrMode,
     isOcrRecognizing,
     log,
     checkTranslationReady,
     processCurrentPage,
+    processAllPages,
+    stopProcessing,
+    closeBatchModal,
     startManualOcr,
     cancelManualOcr,
     handleManualCapture,
     handleReOcr,
     translateBlock
-} = useAutoTranslateProcessing({ currentImageId, ocrBlocks, activeBlockId })
+} = useAutoTranslateProcessing({ currentImageId, images, ocrBlocks, allPageBlocks, activeBlockId })
 
 watch(currentImageId, (newId, oldId) => {
     if (oldId) allPageBlocks.value[oldId] = [...ocrBlocks.value]
@@ -76,6 +83,7 @@ const toggleManualOcr = () => {
 }
 
 const goBack = () => {
+    stopProcessing()
     clearImages()
     router.push('/')
 }
@@ -89,7 +97,10 @@ onMounted(async () => {
     await initSettings()
     await checkTranslationReady()
 })
-onUnmounted(clearImages)
+onUnmounted(() => {
+    stopProcessing()
+    clearImages()
+})
 </script>
 
 <template>
@@ -122,8 +133,11 @@ onUnmounted(clearImages)
                     <AutoTranslatePanel :state="currentState" :detector-available="detectorAvailable"
                         :translation-ready="translationReady" :translation-message="translationMessage"
                         :has-images="Boolean(images.length)" :is-processing="isProcessing"
+                        :is-current-page-processing="isCurrentPageProcessing"
+                        :is-batch-processing="isBatchProcessing" :is-stopping="isStopping"
                         :is-ocr-mode="isOcrMode" :is-ocr-recognizing="isOcrRecognizing"
-                        @process="processCurrentPage" @manual-ocr="toggleManualOcr" />
+                        @process="processCurrentPage" @process-all="processAllPages"
+                        @manual-ocr="toggleManualOcr" />
 
                     <BubbleList
                         class="flex-1 min-h-0 rounded-primary overflow-hidden border border-manga-200 dark:border-manga-600"
@@ -136,5 +150,7 @@ onUnmounted(clearImages)
         </main>
 
         <SettingsModal :show="showSettingsModal" @close="handleSettingsClose" />
+        <AutoTranslateBatchModal :state="batchState" :is-processing="isBatchProcessing"
+            :is-stopping="isStopping" @stop="stopProcessing" @close="closeBatchModal" />
     </div>
 </template>

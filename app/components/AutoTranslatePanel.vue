@@ -8,12 +8,16 @@ const props = defineProps<{
     translationMessage: string
     hasImages: boolean
     isProcessing: boolean
+    isCurrentPageProcessing: boolean
+    isBatchProcessing: boolean
+    isStopping: boolean
     isOcrMode: boolean
     isOcrRecognizing: boolean
 }>()
 
 const emit = defineEmits<{
     process: []
+    processAll: []
     manualOcr: []
 }>()
 
@@ -23,6 +27,7 @@ const stageLabel = computed(() => ({
     recognizing: '识别原文',
     translating: '翻译文本',
     complete: '处理完成',
+    stopped: '处理已停止',
     error: '处理失败'
 }[props.state.stage]))
 </script>
@@ -58,12 +63,26 @@ const stageLabel = computed(() => ({
             {{ translationMessage }}
         </p>
 
-        <button type="button" :disabled="!hasImages || isProcessing || !detectorAvailable || !translationReady"
-            class="mt-4 w-full min-h-11 rounded-primary bg-primary text-white font-bold flex items-center justify-center gap-2 transition-all enabled:hover:opacity-90 enabled:hover:-translate-y-px disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
-            @click="emit('process')">
-            <IconAutoDetect class="size-5" />
-            {{ isProcessing ? '正在处理当前页' : '处理当前页' }}
-        </button>
+        <div class="mt-4 grid grid-cols-2 gap-3">
+            <button type="button"
+                :disabled="!hasImages || isBatchProcessing || isStopping || (isProcessing && !isCurrentPageProcessing) || (!isCurrentPageProcessing && (!detectorAvailable || !translationReady))"
+                class="w-full min-h-12 px-2 rounded-primary text-sm text-white font-bold flex items-center justify-center gap-2 transition-all enabled:hover:opacity-90 enabled:hover:-translate-y-px disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                :class="isCurrentPageProcessing ? 'bg-red-600' : 'bg-primary'"
+                @click="emit('process')">
+                <IconAutoDetect class="size-5 shrink-0" />
+                <span class="leading-tight">
+                    {{ isStopping && isCurrentPageProcessing ? '正在停止' : isCurrentPageProcessing ? '停止处理当前页面' : '处理当前页面' }}
+                </span>
+            </button>
+
+            <button type="button"
+                :disabled="!hasImages || isProcessing || !detectorAvailable || !translationReady"
+                class="w-full min-h-12 px-2 rounded-primary border border-primary text-sm text-primary dark:text-blue-300 font-bold flex items-center justify-center gap-2 transition-all enabled:hover:bg-primary/5 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                @click="emit('processAll')">
+                <IconAutoDetect class="size-5 shrink-0" />
+                <span class="leading-tight">处理全部页面</span>
+            </button>
+        </div>
 
         <div class="mt-3">
             <OcrButton :is-recognizing="isOcrRecognizing || isProcessing" :is-in-ocr="isOcrMode"
