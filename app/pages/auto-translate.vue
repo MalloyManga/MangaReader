@@ -10,6 +10,11 @@ const activeBlockId = ref<string>()
 const ocrBlocks = ref<OcrBlock[]>([])
 const allPageBlocks = ref<Record<string, OcrBlock[]>>({})
 const currentImageId = computed(() => images.value[currentImageIndex.value]?.id)
+const splitPaneConfig = {
+    defaultLeftPercent: 60,
+    minLeftPercent: 50,
+    maxLeftPercent: 80
+} as const
 
 const {
     currentState,
@@ -121,8 +126,9 @@ onUnmounted(() => {
         </TitleBar>
 
         <main class="max-w-screen-2xl mx-auto p-4">
-            <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 h-[calc(100vh-80px)]">
-                <section class="relative h-full lg:col-span-3 min-h-0">
+            <ResizableSplitPane v-bind="splitPaneConfig" height="calc(100vh - 80px)">
+                <template #left>
+                <section class="relative h-full min-w-0 min-h-0 overflow-hidden pr-2">
                     <FileUpload>
                         <template #overlay="{ naturalSize, containerSize }">
                             <BubbleLayer v-if="ocrBlocks.length" :blocks="ocrBlocks"
@@ -134,8 +140,10 @@ onUnmounted(() => {
                     <OcrOverlay v-if="isOcrMode" @capture-complete="handleManualCapture"
                         @cancel="cancelManualOcr" />
                 </section>
+                </template>
 
-                <aside class="lg:col-span-2 min-h-0 flex flex-col gap-4">
+                <template #right>
+                <aside class="min-w-0 min-h-0 h-full overflow-hidden flex flex-col gap-4 pl-2">
                     <AutoTranslatePanel :state="panelState" :detector-available="detectorAvailable"
                         :translation-ready="translationReady" :translation-message="translationMessage"
                         :has-images="Boolean(images.length)" :is-processing="isProcessing"
@@ -152,7 +160,8 @@ onUnmounted(() => {
                         @select-block="handleSelectBlock" @update-block="handleUpdateBlock"
                         @delete-block="handleDeleteBlock" />
                 </aside>
-            </div>
+                </template>
+            </ResizableSplitPane>
         </main>
 
         <SettingsModal :show="showSettingsModal" @close="handleSettingsClose" />

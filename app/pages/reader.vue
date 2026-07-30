@@ -4,6 +4,11 @@ import type { ImageItem, OcrBlock } from '~/types/interface'
 
 const route = useRoute()
 const router = useRouter()
+const splitPaneConfig = {
+    defaultLeftPercent: 60,
+    minLeftPercent: 50,
+    maxLeftPercent: 80
+} as const
 const { nextImage, prevImage, addImagesToStore, setImage, currentImageIndex, clearImages, images, tempBookPath } = useMangaImages()
 const { processImages, processZip, convertPdfToImages } = useFileProcessor()
 const { initSettings, settings } = useSettings()
@@ -536,12 +541,13 @@ onUnmounted(() => {
         </TitleBar>
 
         <main class="max-w-screen-2xl mx-auto p-6" :class="{ 'max-w-full p-2': settings.readingMode === 'immersive' }">
-            <div class="grid grid-cols-1 gap-6 h-[calc(100vh-120px)]"
-                :class="settings.readingMode === 'immersive' ? '' : 'lg:grid-cols-5'">
+            <ResizableSplitPane v-bind="splitPaneConfig" height="calc(100vh - 120px)"
+                :disabled="settings.readingMode === 'immersive'">
 
                 <!-- ocr框与图片区域 -->
-                <div class="relative h-full"
-                    :class="settings.readingMode === 'immersive' ? 'lg:col-span-5' : 'lg:col-span-3'">
+                <template #left>
+                <div class="relative h-full min-w-0 min-h-0 overflow-hidden"
+                    :class="{ 'pr-3': settings.readingMode !== 'immersive' }">
                     <FileUpload>
                         <template #overlay="{ naturalSize, containerSize }">
                             <BubbleLayer v-if="ocrBlocks.length > 0" :blocks="ocrBlocks"
@@ -553,10 +559,12 @@ onUnmounted(() => {
                     <!-- OCR 框选 overlay -->
                     <OcrOverlay v-if="isOcrMode" @capture-complete="handleOcrCapture" @cancel="handleOcrCancel" />
                 </div>
+                </template>
 
                 <!-- 右侧功能区域 非沉浸阅读就显示 -->
+                <template #right>
                 <div v-if="settings.readingMode !== 'immersive'"
-                    class="lg:col-span-2 overflow-hidden flex flex-col h-full">
+                    class="min-w-0 min-h-0 overflow-hidden flex flex-col h-full pl-3">
 
                     <!-- 列表模式 -->
                     <div v-if="settings.readingMode === 'list'" class="h-full flex flex-col gap-4">
@@ -577,7 +585,8 @@ onUnmounted(() => {
                     </div>
 
                 </div>
-            </div>
+                </template>
+            </ResizableSplitPane>
         </main>
 
         <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
