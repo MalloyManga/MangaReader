@@ -29,6 +29,7 @@ const {
     processAllPages,
     stopProcessing,
     closeBatchModal,
+    unmarkPageProcessed,
     startManualOcr,
     cancelManualOcr,
     handleManualCapture,
@@ -54,6 +55,10 @@ const handleSelectBlock = (id: string) => {
 const handleDeleteBlock = (id: string) => {
     ocrBlocks.value = ocrBlocks.value.filter(block => block.id !== id)
     if (activeBlockId.value === id) activeBlockId.value = ocrBlocks.value[0]?.id
+    const imageId = currentImageId.value
+    if (imageId && !ocrBlocks.value.some(block => block.status === 'done' && block.original && block.translation)) {
+        unmarkPageProcessed(imageId)
+    }
     log('deleted OCR block:', id)
 }
 

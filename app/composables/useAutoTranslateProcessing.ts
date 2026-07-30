@@ -57,11 +57,13 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const { showToast } = useToast()
     const { selectedModel, loadTranslationModels, checkModelStatus } = useModelStatus()
     const pageStates = ref<Record<string, AutoTranslatePageState>>({})
+    const processedPageIds = ref<Record<string, true>>({})
     const isPreparing = ref(false)
     const isCurrentPageProcessing = ref(false)
     const isBatchProcessing = ref(false)
     const isStopping = ref(false)
-    const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value || isBatchProcessing.value)
+    const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value
+        || isBatchProcessing.value || Boolean(activeToken))
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
     const translationReady = ref(false)
@@ -145,6 +147,17 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const resetPageState = (imageId: string) => {
         pageStates.value[imageId] = createIdleState()
+    }
+
+    const markPageProcessed = (imageId: string) => {
+        processedPageIds.value[imageId] = true
+        log('page marked as processed', imageId)
+    }
+
+    const unmarkPageProcessed = (imageId: string) => {
+        if (!processedPageIds.value[imageId]) return
+        delete processedPageIds.value[imageId]
+        log('page marked as unprocessed', imageId)
     }
 
     const getCurrentImageElement = () => {
@@ -238,13 +251,23 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         if (token.kind !== 'batch') return
         batchState.regionIndex = regionIndex
         batchState.regionTotal = regionTotal
-        batchState.message = message
+        const pageProgress = `第 ${batchState.pageIndex} / ${batchState.pageTotal} 页`
+        if (stage === 'detecting') {
+            batchState.message = `正在分析${pageProgress}文字区域`
+        } else if (stage === 'recognizing') {
+            batchState.message = `正在识别${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
+        } else if (stage === 'translating') {
+            batchState.message = `正在翻译${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
+        } else {
+            batchState.message = message
+        }
         batchState.progress = Math.min(100, Math.round(
             ((batchState.pageIndex - 1 + progress / 100) / Math.max(1, batchState.pageTotal)) * 100
         ))
     }
 
     const processPage = async (imageId: string, imageElement: HTMLImageElement, token: ProcessingToken) => {
+        unmarkPageProcessed(imageId)
         replacePageBlocks(imageId, [])
         resetPageState(imageId)
 
@@ -274,6 +297,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             })
             if (regions.length === 0) {
                 updateProcessingProgress(imageId, token, 'complete', 100, '当前页面未检测到文字区域')
+                markPageProcessed(imageId)
                 return 'complete' as const
             }
 
@@ -334,6 +358,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 regions.length,
                 regions.length
             )
+            markPageProcessed(imageId)
             return 'complete' as const
         } catch (error) {
             if (isAbortError(error)) {
@@ -445,7 +470,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 batchState.regionIndex = 0
                 batchState.regionTotal = 0
 
-                if (pageStates.value[image.id]?.stage === 'complete') {
+                if (processedPageIds.value[image.id]) {
                     batchState.skippedPages++
                     batchState.message = '该页面已经完整处理，已跳过'
                     batchState.progress = Math.round(((index + 1) / images.value.length) * 100)
@@ -496,15 +521,22 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     function stopProcessing() {
         if (!activeToken || activeToken.cancelled) return
         activeToken.cancelled = true
-        isStopping.value = true
         log('stop requested for', activeToken.kind, 'processing')
         if (activeToken.kind === 'batch') {
-            batchState.status = 'stopping'
-            batchState.message = '正在停止，将丢弃当前未完成的文字区域'
+            isBatchProcessing.value = false
+            batchState.status = 'stopped'
+            batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
         } else if (activeToken.imageId) {
             const state = ensurePageState(activeToken.imageId)
-            updateState(activeToken.imageId, state?.stage || 'idle', state?.progress || 0, '正在停止当前页面处理')
+            isCurrentPageProcessing.value = false
+            updateState(
+                activeToken.imageId,
+                'stopped',
+                state?.progress || 0,
+                `已停止，保留 ${allPageBlocks.value[activeToken.imageId]?.length || 0} 个完整区域`
+            )
         }
+        isStopping.value = false
     }
 
     const closeBatchModal = () => {
@@ -561,6 +593,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 log('manual translation completed')
             }
             block.status = 'done'
+            markPageProcessed(currentImageId.value!)
         } catch (error) {
             if (block) block.status = 'error'
             const message = error instanceof Error ? error.message : String(error)
@@ -598,6 +631,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         translationReady,
         translationMessage,
         batchState,
+        processedPageIds,
         isProcessing,
         isCurrentPageProcessing,
         isBatchProcessing,
@@ -610,6 +644,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         processAllPages,
         stopProcessing,
         closeBatchModal,
+        unmarkPageProcessed,
         startManualOcr,
         cancelManualOcr,
         handleManualCapture,

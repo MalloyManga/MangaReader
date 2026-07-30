@@ -71,7 +71,7 @@ const stageLabel = computed(() => ({
                 @click="emit('process')">
                 <IconAutoDetect class="size-5 shrink-0" />
                 <span class="leading-tight">
-                    {{ isStopping && isCurrentPageProcessing ? '正在停止' : isCurrentPageProcessing ? '停止处理当前页面' : '处理当前页面' }}
+                    {{ isCurrentPageProcessing ? '停止处理当前页面' : '处理当前页面' }}
                 </span>
             </button>
 

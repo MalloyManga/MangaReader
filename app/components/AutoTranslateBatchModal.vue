@@ -65,7 +65,7 @@ const emit = defineEmits<{
 
                     <div class="mt-6 flex justify-end">
                         <Button v-if="isProcessing" variant="danger" :disabled="isStopping" @btn-click="emit('stop')">
-                            {{ isStopping ? '正在停止' : '停止处理' }}
+                            停止处理
                         </Button>
                         <Button v-else @btn-click="emit('close')">完成</Button>
                     </div>
