@@ -25,6 +25,7 @@ export interface AppSettings {
 // OCR 结果块
 export interface OcrBlock {
     id: string
+    source?: 'manual' | 'auto'
     rect: {        // 相对原图坐标
         x: number
         y: number

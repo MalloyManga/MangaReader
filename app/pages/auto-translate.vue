@@ -13,6 +13,7 @@ const currentImageId = computed(() => images.value[currentImageIndex.value]?.id)
 
 const {
     currentState,
+    panelState,
     detectorAvailable,
     translationReady,
     translationMessage,
@@ -135,7 +136,7 @@ onUnmounted(() => {
                 </section>
 
                 <aside class="lg:col-span-2 min-h-0 flex flex-col gap-4">
-                    <AutoTranslatePanel :state="currentState" :detector-available="detectorAvailable"
+                    <AutoTranslatePanel :state="panelState" :detector-available="detectorAvailable"
                         :translation-ready="translationReady" :translation-message="translationMessage"
                         :has-images="Boolean(images.length)" :is-processing="isProcessing"
                         :is-current-page-processing="isCurrentPageProcessing"

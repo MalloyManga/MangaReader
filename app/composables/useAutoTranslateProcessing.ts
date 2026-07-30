@@ -20,6 +20,7 @@ interface AutoTranslateProcessingOptions {
 export interface AutoTranslateBatchState {
     show: boolean
     status: 'idle' | 'running' | 'stopping' | 'complete' | 'stopped'
+    stage: AutoTranslateStage
     pageIndex: number
     pageTotal: number
     regionIndex: number
@@ -62,8 +63,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const isCurrentPageProcessing = ref(false)
     const isBatchProcessing = ref(false)
     const isStopping = ref(false)
-    const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value
-        || isBatchProcessing.value || Boolean(activeToken))
+    const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value || isBatchProcessing.value)
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
     const translationReady = ref(false)
@@ -71,6 +71,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const batchState = reactive<AutoTranslateBatchState>({
         show: false,
         status: 'idle',
+        stage: 'idle',
         pageIndex: 0,
         pageTotal: 0,
         regionIndex: 0,
@@ -89,6 +90,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         const imageId = currentImageId.value
         return imageId ? (pageStates.value[imageId] || createIdleState()) : createIdleState()
     })
+    const panelState = computed<AutoTranslatePageState>(() => batchState.show ? {
+        stage: batchState.stage,
+        progress: batchState.progress,
+        message: batchState.message
+    } : currentState.value)
 
     const log = (...args: unknown[]) => console.log('[AutoTranslate]', ...args)
 
@@ -202,8 +208,14 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         return { ...region, x, y, width: right - x, height: bottom - y }
     }
 
-    const createBlock = (imageId: string, region: DetectedTextRegion, index: number): OcrBlock => ({
+    const createBlock = (
+        imageId: string,
+        region: DetectedTextRegion,
+        index: number,
+        source: 'manual' | 'auto' = 'auto'
+    ): OcrBlock => ({
         id: `${imageId}-${Date.now()}-${index}`,
+        source,
         rect: { x: region.x, y: region.y, width: region.width, height: region.height },
         original: '',
         translation: '',
@@ -238,6 +250,10 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const isAbortError = (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
 
+    const hasManualBlocks = (imageId: string) => Boolean(
+        allPageBlocks.value[imageId]?.some(block => block.source === 'manual')
+    )
+
     const updateProcessingProgress = (
         imageId: string,
         token: ProcessingToken,
@@ -249,6 +265,8 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     ) => {
         updateState(imageId, stage, progress, message)
         if (token.kind !== 'batch') return
+        if (activeToken !== token) return
+        batchState.stage = stage
         batchState.regionIndex = regionIndex
         batchState.regionTotal = regionTotal
         const pageProgress = `第 ${batchState.pageIndex} / ${batchState.pageTotal} 页`
@@ -362,8 +380,6 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             return 'complete' as const
         } catch (error) {
             if (isAbortError(error)) {
-                const state = ensurePageState(imageId)
-                updateState(imageId, 'stopped', state?.progress || 0, `已停止，保留 ${allPageBlocks.value[imageId]?.length || 0} 个完整区域`)
                 log('page processing stopped', imageId)
                 return 'stopped' as const
             }
@@ -402,6 +418,12 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         }
         const imageId = currentImageId.value
         if (!imageId || isProcessing.value) return
+        if (hasManualBlocks(imageId)) {
+            const message = '当前页面存在手动添加的文字框，请先清除后再进行自动处理'
+            updateState(imageId, 'idle', 0, message)
+            showToast(message, 4000)
+            return
+        }
         if (!(await prepareProcessing())) return
 
         const token: ProcessingToken = { cancelled: false, kind: 'single', imageId }
@@ -421,9 +443,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             console.error('[AutoTranslate] page processing failed', error)
             showToast(`自动处理失败：${message}`, 5000)
         } finally {
-            if (activeToken === token) activeToken = null
-            isCurrentPageProcessing.value = false
-            isStopping.value = false
+            if (activeToken === token) {
+                activeToken = null
+                isCurrentPageProcessing.value = false
+                isStopping.value = false
+            }
         }
     }
 
@@ -448,6 +472,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         Object.assign(batchState, {
             show: true,
             status: 'running',
+            stage: 'idle',
             pageIndex: 0,
             pageTotal: images.value.length,
             regionIndex: 0,
@@ -469,6 +494,14 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 batchState.pageLabel = getPageLabel(image, index)
                 batchState.regionIndex = 0
                 batchState.regionTotal = 0
+
+                if (hasManualBlocks(image.id)) {
+                    batchState.skippedPages++
+                    batchState.message = `第 ${index + 1} / ${images.value.length} 页存在手动画框，已跳过`
+                    batchState.progress = Math.round(((index + 1) / images.value.length) * 100)
+                    log('skipped page with manual blocks', image.id)
+                    continue
+                }
 
                 if (processedPageIds.value[image.id]) {
                     batchState.skippedPages++
@@ -492,29 +525,35 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                     console.error('[AutoTranslate] batch page failed', image.id, error)
                 }
             }
+            if (activeToken !== token) return
             if (token.cancelled) {
                 batchState.status = 'stopped'
                 batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
             } else {
                 batchState.status = 'complete'
+                batchState.stage = 'complete'
                 batchState.progress = 100
                 batchState.message = '全部页面处理完成'
             }
         } catch (error) {
+            if (activeToken !== token) return
             if (isAbortError(error)) {
                 batchState.status = 'stopped'
                 batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
             } else {
                 batchState.status = 'complete'
+                batchState.stage = 'error'
                 batchState.failedPages++
                 batchState.message = '批量处理提前结束，请检查失败页面'
                 console.error('[AutoTranslate] batch processing failed', error)
             }
         } finally {
-            if (activeToken === token) activeToken = null
-            isBatchProcessing.value = false
-            isStopping.value = false
-            log('batch processing ended', batchState.status)
+            if (activeToken === token) {
+                activeToken = null
+                isBatchProcessing.value = false
+                isStopping.value = false
+                log('batch processing ended', batchState.status)
+            }
         }
     }
 
@@ -525,17 +564,19 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         if (activeToken.kind === 'batch') {
             isBatchProcessing.value = false
             batchState.status = 'stopped'
+            batchState.stage = 'stopped'
+            batchState.progress = 0
             batchState.message = '批量处理已停止，仅保留完整处理的文字区域'
         } else if (activeToken.imageId) {
-            const state = ensurePageState(activeToken.imageId)
             isCurrentPageProcessing.value = false
             updateState(
                 activeToken.imageId,
                 'stopped',
-                state?.progress || 0,
+                0,
                 `已停止，保留 ${allPageBlocks.value[activeToken.imageId]?.length || 0} 个完整区域`
             )
         }
+        activeToken = null
         isStopping.value = false
     }
 
@@ -579,7 +620,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         try {
             const imageElement = getCurrentImageElement()
             const region = selectionToRegion(selection, imageElement)
-            block = createBlock(currentImageId.value!, region, ocrBlocks.value.length)
+            block = createBlock(currentImageId.value!, region, ocrBlocks.value.length, 'manual')
             ocrBlocks.value.push(block)
             activeBlockId.value = block.id
             log('manual OCR started for region', ocrBlocks.value.length)
@@ -627,6 +668,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     return {
         currentState,
+        panelState,
         detectorAvailable,
         translationReady,
         translationMessage,

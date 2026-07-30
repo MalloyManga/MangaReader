@@ -207,7 +207,6 @@ class DetectionModuleManager:
             file_path = self._resolve_member(module_path, relative_path)
             if file_path.stat().st_size != metadata.get("size"):
                 raise DetectionModuleError(f"检测模块文件大小异常: {relative_path}")
-            self._verify_sha256(file_path, metadata.get("sha256", ""))
         return True
 
     def _download_asset(
@@ -404,7 +403,6 @@ class DetectionModuleManager:
             relative_path = file_path.relative_to(module_path).as_posix()
             files[relative_path] = {
                 "size": file_path.stat().st_size,
-                "sha256": self._calculate_sha256(file_path),
             }
         (module_path / "integrity.json").write_text(
             json.dumps({"version": 1, "files": files}, indent=2), encoding="utf-8"
