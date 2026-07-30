@@ -3,9 +3,13 @@
 const router = useRouter()
 const route = useRoute()
 const isAppReady = ref(false)
+const { checkAllModelStatus } = useModelStatus()
 
 const handleAppReady = () => {
 	isAppReady.value = true
+	checkAllModelStatus().catch((error) => {
+		console.error('[App] Initial translation model check failed', error)
+	})
 }
 
 onMounted(() => {

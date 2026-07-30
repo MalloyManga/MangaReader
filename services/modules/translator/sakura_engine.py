@@ -59,6 +59,7 @@ class SakuraEngine(BaseTranslator):
 
         self.repo_id = "shing3232/Sakura-1.5B-Qwen2.5-v1.0-GGUF-IMX"
         self.filename = "sakura-1.5b-qwen2.5-v1.0-Q5KS.gguf"
+        self.expected_size = 1259173504
 
         # 为了更准确的判断，我们这里还是用 .gguf 结尾的文件路径
         self.model_file_path = os.path.join(self.model_dir, self.filename)
@@ -89,10 +90,17 @@ class SakuraEngine(BaseTranslator):
         # 注意：使用 hf_hub_download 后，实际文件可能是一个 symlink 指向 .cache
         # 但 os.path.exists 会自动追踪 symlink，所以逻辑是通用的
         path = self.model_file_path
-        exists = os.path.exists(path)
-        log_message(f"[INFO] [Check] Path: {path}")
-        log_message(f"[INFO] [Check] Exists: {exists}")
-        return exists
+        if not os.path.exists(path):
+            log_message(f"[INFO] Sakura model missing: {path}")
+            return False
+        actual_size = os.path.getsize(path)
+        if actual_size < self.expected_size:
+            log_message(
+                f"[INFO] Sakura model incomplete: "
+                f"{actual_size}/{self.expected_size} bytes"
+            )
+            return False
+        return True
 
     def delete_model(self):
         # 1. 释放内存

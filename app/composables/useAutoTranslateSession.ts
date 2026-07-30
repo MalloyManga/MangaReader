@@ -39,6 +39,8 @@ const createTaskContext = (): AutoTranslateTaskContext => ({
 
 export const useAutoTranslateSession = () => {
     const allPageBlocks = useState<Record<string, OcrBlock[]>>('auto-translate-page-blocks', () => ({}))
+    const deletedPageRegions = useState<Record<string, OcrBlock['rect'][]>>('auto-translate-deleted-regions', () => ({}))
+    const pageSaveRevisions = useState<Record<string, number>>('auto-translate-page-save-revisions', () => ({}))
     const pageStates = useState<Record<string, AutoTranslatePageState>>('auto-translate-page-states', () => ({}))
     const processedPageIds = useState<Record<string, true>>('auto-translate-processed-pages', () => ({}))
     const batchState = useState<AutoTranslateBatchState>('auto-translate-batch-state', createBatchState)
@@ -52,6 +54,8 @@ export const useAutoTranslateSession = () => {
 
     const resetSession = () => {
         allPageBlocks.value = {}
+        deletedPageRegions.value = {}
+        pageSaveRevisions.value = {}
         pageStates.value = {}
         processedPageIds.value = {}
         batchState.value = createBatchState()
@@ -65,6 +69,8 @@ export const useAutoTranslateSession = () => {
 
     return {
         allPageBlocks,
+        deletedPageRegions,
+        pageSaveRevisions,
         pageStates,
         processedPageIds,
         batchState,

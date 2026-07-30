@@ -630,7 +630,7 @@ def main():
             # 1. Check model status.
             elif command == "check_model":
                 model_id = request.get("model_id") or request.get("modelId")
-                selected_model_id, selected_translator = select_translator(model_id)
+                selected_model_id, selected_translator = get_or_create_translator(model_id)
                 exists = selected_translator.check_model_exists()
                 send_response(
                     {
@@ -645,7 +645,7 @@ def main():
             elif command == "download_model":
                 try:
                     model_id = request.get("model_id") or request.get("modelId")
-                    selected_model_id, selected_translator = select_translator(model_id)
+                    selected_model_id, selected_translator = get_or_create_translator(model_id)
                     selected_translator.download_model()
                     # Download only verifies file integrity; translation lazy-loads weights.
                     if not selected_translator.check_model_exists():
@@ -663,7 +663,7 @@ def main():
             # 3. 删除模型
             elif command == "delete_model":
                 model_id = request.get("model_id") or request.get("modelId")
-                selected_model_id, selected_translator = select_translator(model_id)
+                selected_model_id, selected_translator = get_or_create_translator(model_id)
                 success = selected_translator.delete_model()
                 send_response(
                     {

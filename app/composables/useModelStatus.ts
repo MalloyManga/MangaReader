@@ -1,6 +1,6 @@
 import type { TranslationModel } from '~/types/interface'
 
-type ModelStatus = 'unknown' | 'checking' | 'downloaded' | 'not_downloaded' | 'downloading'
+export type ModelStatus = 'unknown' | 'checking' | 'downloaded' | 'not_downloaded' | 'downloading' | 'check_failed'
 type DownloadProgress = number | {
     percent?: number
     model_id?: string
@@ -13,6 +13,7 @@ export interface TranslationModelState extends TranslationModel {
     status: ModelStatus
     progress: number
     downloadStage?: string
+    lastError?: string
 }
 
 const fallbackModels: TranslationModelState[] = [
@@ -55,6 +56,9 @@ const fallbackModels: TranslationModelState[] = [
 ]
 
 const modelStates = reactive<TranslationModelState[]>([...fallbackModels])
+let modelsLoaded = false
+let modelsLoadPromise: Promise<TranslationModelState[]> | null = null
+const modelCheckPromises = new Map<string, Promise<TranslationModelState | undefined>>()
 
 const ensureModel = (model: TranslationModel) => {
     let existing = modelStates.find(item => item.id === model.id)
@@ -90,58 +94,99 @@ export function useModelStatus() {
         settings.value.translationModelId = modelId
     }
 
-    const loadTranslationModels = async () => {
+    const loadTranslationModels = async (force = false) => {
+        if (modelsLoaded && !force) return modelStates
+        if (modelsLoadPromise && !force) return modelsLoadPromise
         if (!window.electronAPI?.listTranslationModels) {
             return modelStates
         }
 
-        const res = await window.electronAPI.listTranslationModels()
-        const models = res.models ?? []
-        if (res.success && models.length > 0) {
-            models.forEach(ensureModel)
+        modelsLoadPromise = (async () => {
+            const res = await window.electronAPI.listTranslationModels()
+            const models = res.models ?? []
+            if (!res.success) throw new Error(res.error || '翻译模型列表加载失败')
+            if (models.length > 0) {
+                models.forEach(ensureModel)
 
-            if (!settings.value.translationModelId) {
-                const defaultModelId = res.defaultModelId || models[0]?.id
-                if (defaultModelId) {
-                    settings.value.translationModelId = defaultModelId
+                if (!settings.value.translationModelId) {
+                    const defaultModelId = res.defaultModelId || models[0]?.id
+                    if (defaultModelId) settings.value.translationModelId = defaultModelId
                 }
             }
-        }
+            modelsLoaded = true
+            return modelStates
+        })()
 
-        return modelStates
+        try {
+            return await modelsLoadPromise
+        } finally {
+            modelsLoadPromise = null
+        }
     }
 
     const checkModelStatus = async (modelId?: string, force = false) => {
         const target = getModel(modelId || settings.value.translationModelId)
         if (!target) return
+        if (!force && !['unknown', 'checking'].includes(target.status)) return target
+        if (modelCheckPromises.has(target.id)) return modelCheckPromises.get(target.id)
 
-        if (target.status === 'unknown' || force) {
+        const checkPromise = (async () => {
             target.status = 'checking'
-        }
-
-        try {
-            const res = await window.electronAPI.checkModel(target.id)
-
-            if (res.success && res.exists) {
-                target.status = 'downloaded'
-                target.progress = 100
-                target.downloadStage = ''
-            } else {
-                target.status = 'not_downloaded'
-                target.progress = 0
-                target.downloadStage = ''
+            target.lastError = ''
+            try {
+                const res = await window.electronAPI.checkModel(target.id)
+                if (!res.success) {
+                    target.status = 'check_failed'
+                    target.lastError = res.error || '翻译模型检查失败'
+                } else if (res.exists) {
+                    target.status = 'downloaded'
+                    target.progress = 100
+                    target.downloadStage = ''
+                } else {
+                    target.status = 'not_downloaded'
+                    target.progress = 0
+                    target.downloadStage = ''
+                }
+            } catch (error) {
+                console.error('Model check failed:', error)
+                target.status = 'check_failed'
+                target.lastError = error instanceof Error ? error.message : String(error)
+            } finally {
+                modelCheckPromises.delete(target.id)
             }
-        } catch (e) {
-            console.error("Model check failed:", e)
-            target.status = 'not_downloaded'
-        }
+            return target
+        })()
+        modelCheckPromises.set(target.id, checkPromise)
+        return checkPromise
     }
 
     const checkAllModelStatus = async () => {
-        await loadTranslationModels()
+        try {
+            await loadTranslationModels()
+        } catch (error) {
+            console.error('Translation model catalog check failed:', error)
+        }
         for (const model of modelStates) {
             await checkModelStatus(model.id)
         }
+    }
+
+    const markModelDownloaded = (modelId: string) => {
+        const target = getModel(modelId)
+        if (!target) return
+        target.status = 'downloaded'
+        target.progress = 100
+        target.downloadStage = ''
+        target.lastError = ''
+    }
+
+    const markModelNotDownloaded = (modelId: string) => {
+        const target = getModel(modelId)
+        if (!target) return
+        target.status = 'not_downloaded'
+        target.progress = 0
+        target.downloadStage = ''
+        target.lastError = ''
     }
 
     const updateDownloadingProgress = (data: DownloadProgress) => {
@@ -156,6 +201,7 @@ export function useModelStatus() {
 
         target.progress = Math.max(target.progress, Math.max(0, Math.min(100, percentValue)))
         target.downloadStage = typeof data === 'number' ? '' : (data.stage || '')
+        target.lastError = ''
         if (target.status !== 'downloading' && target.progress < 100) {
             target.status = 'downloading'
         }
@@ -169,6 +215,8 @@ export function useModelStatus() {
         loadTranslationModels,
         checkModelStatus,
         checkAllModelStatus,
+        markModelDownloaded,
+        markModelNotDownloaded,
         updateDownloadingProgress
     }
 }

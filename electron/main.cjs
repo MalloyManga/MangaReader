@@ -240,6 +240,9 @@ ipcMain.handle('library:add', async (_event, pathStr, kind = 'standard') => {
             if (normalizedKind === 'auto-translate' && existingBook.kind !== 'auto-translate') {
                 existingBook.kind = 'auto-translate'
                 existingBook.autoTranslatePages = existingBook.autoTranslatePages || {}
+                existingBook.autoTranslateDeletedRegions = existingBook.autoTranslateDeletedRegions || {}
+                existingBook.autoTranslateProcessedPages = existingBook.autoTranslateProcessedPages || []
+                existingBook.autoTranslatePageRevisions = existingBook.autoTranslatePageRevisions || {}
                 store.set('library', library)
             }
             return { success: true, book: existingBook, alreadyExists: true }
@@ -265,7 +268,12 @@ ipcMain.handle('library:add', async (_event, pathStr, kind = 'standard') => {
             currentPage: 0,
             lastReadTime: Date.now(),
             kind: normalizedKind,
-            ...(normalizedKind === 'auto-translate' ? { autoTranslatePages: {} } : {})
+            ...(normalizedKind === 'auto-translate' ? {
+                autoTranslatePages: {},
+                autoTranslateDeletedRegions: {},
+                autoTranslateProcessedPages: [],
+                autoTranslatePageRevisions: {}
+            } : {})
         }
 
         library.push(newBook)
@@ -293,14 +301,46 @@ ipcMain.handle('library:update-progress', (_event, { id, currentPage, totalPage,
     return false
 })
 
-ipcMain.handle('library:update-auto-translate-page', (_event, { id, pageIndex, blocks }) => {
+ipcMain.handle('library:update-auto-translate-page', (_event, {
+    id,
+    pageIndex,
+    blocks,
+    deletedRegions,
+    processed,
+    revision
+}) => {
     const library = store.get('library', [])
     const index = library.findIndex(b => b.id === id)
     if (index === -1 || !Number.isInteger(pageIndex) || pageIndex < 0 || !Array.isArray(blocks)) return false
-    library[index].kind = 'auto-translate'
-    library[index].autoTranslatePages = library[index].autoTranslatePages || {}
-    if (blocks.length) library[index].autoTranslatePages[String(pageIndex)] = blocks
-    else delete library[index].autoTranslatePages[String(pageIndex)]
+    const book = library[index]
+    const pageKey = String(pageIndex)
+    book.kind = 'auto-translate'
+    book.autoTranslatePages = book.autoTranslatePages || {}
+    book.autoTranslateDeletedRegions = book.autoTranslateDeletedRegions || {}
+    book.autoTranslateProcessedPages = Array.isArray(book.autoTranslateProcessedPages)
+        ? book.autoTranslateProcessedPages
+        : []
+    book.autoTranslatePageRevisions = book.autoTranslatePageRevisions || {}
+
+    if (Number.isFinite(revision)) {
+        const previousRevision = book.autoTranslatePageRevisions[pageKey] || 0
+        if (revision < previousRevision) return false
+        book.autoTranslatePageRevisions[pageKey] = revision
+    }
+
+    if (blocks.length) book.autoTranslatePages[pageKey] = blocks
+    else delete book.autoTranslatePages[pageKey]
+    if (Array.isArray(deletedRegions) && deletedRegions.length) {
+        book.autoTranslateDeletedRegions[pageKey] = deletedRegions
+    } else if (Array.isArray(deletedRegions)) {
+        delete book.autoTranslateDeletedRegions[pageKey]
+    }
+    if (typeof processed === 'boolean') {
+        const processedPages = new Set(book.autoTranslateProcessedPages)
+        if (processed) processedPages.add(pageIndex)
+        else processedPages.delete(pageIndex)
+        book.autoTranslateProcessedPages = [...processedPages].sort((a, b) => a - b)
+    }
     store.set('library', library)
     return true
 })

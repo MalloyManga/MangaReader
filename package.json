@@ -3,7 +3,7 @@
   "author": "Malloy",
   "description": "A tool helps manga lover and Japanese learner read manga easily",
   "type": "module",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "main": "electron/main.cjs",
   "private": true,
   "electronMirror": "https://npmmirror.com/mirrors/electron/",

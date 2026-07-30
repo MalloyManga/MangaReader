@@ -72,7 +72,8 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         isBatchProcessing,
         isStopping,
         isProcessing,
-        taskContext
+        taskContext,
+        deletedPageRegions
     } = useAutoTranslateSession()
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
@@ -113,8 +114,18 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 console.warn('[AutoTranslate] no translation model selected')
                 return false
             }
-            await checkModelStatus(modelId, true)
-            if (selectedModel.value?.id !== modelId || selectedModel.value.status !== 'downloaded') {
+            const model = await checkModelStatus(modelId)
+            if (selectedModel.value?.id !== modelId) {
+                translationMessage.value = '请选择有效的翻译模型'
+                console.warn('[AutoTranslate] selected translation model is invalid', modelId)
+                return false
+            }
+            if (model?.status === 'check_failed') {
+                translationMessage.value = '翻译模型检查失败，请在设置中重新检查'
+                console.error('[AutoTranslate] translation model check failed', model.lastError)
+                return false
+            }
+            if (model?.status !== 'downloaded') {
                 translationMessage.value = '请先在设置中下载所选翻译模型'
                 console.warn('[AutoTranslate] selected translation model is not downloaded', modelId)
                 return false
@@ -151,12 +162,18 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const markPageProcessed = (imageId: string) => {
         processedPageIds.value[imageId] = true
+        Promise.resolve(persistPageBlocks?.(imageId, allPageBlocks.value[imageId] || [])).catch(error => {
+            console.error('[AutoTranslate] failed to persist processed page state', imageId, error)
+        })
         log('page marked as processed', imageId)
     }
 
     const unmarkPageProcessed = (imageId: string) => {
         if (!processedPageIds.value[imageId]) return
         delete processedPageIds.value[imageId]
+        Promise.resolve(persistPageBlocks?.(imageId, allPageBlocks.value[imageId] || [])).catch(error => {
+            console.error('[AutoTranslate] failed to persist unprocessed page state', imageId, error)
+        })
         log('page marked as unprocessed', imageId)
     }
 
@@ -201,6 +218,21 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         const bottom = Math.min(imageHeight, region.y + region.height + paddingY)
         return { ...region, x, y, width: right - x, height: bottom - y }
     }
+
+    const regionOverlapRatio = (
+        first: Pick<DetectedTextRegion, 'x' | 'y' | 'width' | 'height'>,
+        second: Pick<DetectedTextRegion, 'x' | 'y' | 'width' | 'height'>
+    ) => {
+        const intersectionWidth = Math.max(0, Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x))
+        const intersectionHeight = Math.max(0, Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y))
+        const intersection = intersectionWidth * intersectionHeight
+        const smallerArea = Math.min(first.width * first.height, second.width * second.height)
+        return smallerArea > 0 ? intersection / smallerArea : 0
+    }
+
+    const isDeletedRegion = (imageId: string, region: DetectedTextRegion) => (
+        deletedPageRegions.value[imageId]?.some(deleted => regionOverlapRatio(region, deleted) >= 0.6) || false
+    )
 
     const createBlock = (
         imageId: string,
@@ -313,16 +345,18 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             throwIfCancelled(token)
             if (!detection.success) throw new Error(detection.error || '文字区域检测失败')
 
-            const regions = (detection.regions || []).map(region => addRegionPadding(
+            const detectedRegions = (detection.regions || []).map(region => addRegionPadding(
                 region,
                 imageElement.naturalWidth,
                 imageElement.naturalHeight
             ))
+            const regions = detectedRegions.filter(region => !isDeletedRegion(imageId, region))
             log('expanded detected regions with OCR padding', {
                 imageId,
                 imageWidth: imageElement.naturalWidth,
                 imageHeight: imageElement.naturalHeight,
-                regionCount: regions.length
+                regionCount: regions.length,
+                ignoredRegionCount: detectedRegions.length - regions.length
             })
             if (regions.length === 0) {
                 updateProcessingProgress(imageId, token, 'complete', 100, '当前页面未检测到文字区域')
@@ -334,6 +368,10 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             for (let index = 0; index < regions.length; index++) {
                 throwIfCancelled(token)
                 const region = regions[index]!
+                if (isDeletedRegion(imageId, region)) {
+                    log('skipped region deleted during processing', index + 1, 'on page', imageId)
+                    continue
+                }
                 const block = createBlock(imageId, region, index)
                 updateProcessingProgress(
                     imageId,
@@ -652,6 +690,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         try {
             const imageElement = getCurrentImageElement()
             const region = selectionToRegion(selection, imageElement)
+            if (deletedPageRegions.value[imageId]?.length) {
+                deletedPageRegions.value[imageId] = deletedPageRegions.value[imageId]!.filter(
+                    deleted => regionOverlapRatio(region, deleted) < 0.6
+                )
+            }
             block = createBlock(imageId, region, ocrBlocks.value.length, 'manual')
             ocrBlocks.value.push(block)
             allPageBlocks.value[imageId] = [...ocrBlocks.value]

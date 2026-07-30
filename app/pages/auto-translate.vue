@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OcrBlock } from '~/types/interface'
+import type { Book, ImageItem, OcrBlock } from '~/types/interface'
 
 const router = useRouter()
 const route = useRoute()
@@ -24,12 +24,55 @@ const splitPaneConfig = {
 
 const getSourceName = (sourcePath: string) => sourcePath.split(/[\\/]/).filter(Boolean).pop() || sourcePath
 
+const restorePersistedPageState = (book: Book, sourceImages: ImageItem[]) => {
+    Object.entries(book.autoTranslatePages || {}).forEach(([pageIndex, blocks]) => {
+        const image = sourceImages[Number(pageIndex)]
+        if (!image || !blocks.length || allPageBlocks.value[image.id]?.length) return
+        allPageBlocks.value[image.id] = blocks
+    })
+    Object.entries(book.autoTranslateDeletedRegions || {}).forEach(([pageIndex, regions]) => {
+        const image = sourceImages[Number(pageIndex)]
+        if (!image || !regions.length) return
+        const localRegions = autoTranslateSession.deletedPageRegions.value[image.id] || []
+        autoTranslateSession.deletedPageRegions.value[image.id] = [
+            ...regions,
+            ...localRegions.filter(local => !regions.some(region => (
+                region.x === local.x
+                && region.y === local.y
+                && region.width === local.width
+                && region.height === local.height
+            )))
+        ]
+    })
+
+    const persistedProcessedPages = book.autoTranslateProcessedPages
+        || Object.keys(book.autoTranslatePages || {}).map(Number)
+    persistedProcessedPages.forEach((pageIndex) => {
+        const image = sourceImages[pageIndex]
+        if (image) autoTranslateSession.processedPageIds.value[image.id] = true
+    })
+}
+
+const nextPageRevision = (imageId: string) => {
+    const previous = autoTranslateSession.pageSaveRevisions.value[imageId] || 0
+    const revision = Math.max(Date.now() * 1000, previous + 1)
+    autoTranslateSession.pageSaveRevisions.value[imageId] = revision
+    return revision
+}
+
 const persistPageBlocks = async (imageId: string, blocks: OcrBlock[]) => {
     if (isRestoringBook.value) return
     const bookId = autoTranslateSession.bookId.value
     const pageIndex = images.value.findIndex(image => image.id === imageId)
     if (!bookId || pageIndex < 0) return
-    await window.electronAPI.updateAutoTranslatePage({ id: bookId, pageIndex, blocks })
+    await window.electronAPI.updateAutoTranslatePage({
+        id: bookId,
+        pageIndex,
+        blocks,
+        deletedRegions: autoTranslateSession.deletedPageRegions.value[imageId] || [],
+        processed: Boolean(autoTranslateSession.processedPageIds.value[imageId]),
+        revision: nextPageRevision(imageId)
+    })
 }
 
 const {
@@ -87,11 +130,32 @@ const handleSelectBlock = (id: string) => {
 }
 
 const handleDeleteBlock = (id: string) => {
+    const deletedBlock = ocrBlocks.value.find(block => block.id === id)
+    if (!deletedBlock) return
+    const imageId = currentImageId.value
+    if (imageId) {
+        const deletedRegions = autoTranslateSession.deletedPageRegions.value[imageId] || []
+        if (!deletedRegions.some(region => (
+            region.x === deletedBlock.rect.x
+            && region.y === deletedBlock.rect.y
+            && region.width === deletedBlock.rect.width
+            && region.height === deletedBlock.rect.height
+        ))) {
+            autoTranslateSession.deletedPageRegions.value[imageId] = [
+                ...deletedRegions,
+                { ...deletedBlock.rect }
+            ]
+        }
+    }
     ocrBlocks.value = ocrBlocks.value.filter(block => block.id !== id)
     if (activeBlockId.value === id) activeBlockId.value = ocrBlocks.value[0]?.id
-    const imageId = currentImageId.value
     if (imageId && !ocrBlocks.value.some(block => block.status === 'done' && block.original && block.translation)) {
         unmarkPageProcessed(imageId)
+    }
+    if (imageId) {
+        persistPageBlocks(imageId, ocrBlocks.value).catch(error => {
+            console.error('[AutoTranslate] failed to persist deleted block', error)
+        })
     }
     log('deleted OCR block:', id)
 }
@@ -137,20 +201,17 @@ const ensureAddedToLibrary = async () => {
         const result = await window.electronAPI.addBook(tempBookPath.value, 'auto-translate')
         if (!result.success || !result.book) throw new Error(result.error || '加入书架失败')
         autoTranslateSession.bookId.value = result.book.id
-        Object.entries(result.book.autoTranslatePages || {}).forEach(([pageIndex, blocks]) => {
-            const image = images.value[Number(pageIndex)]
-            if (!image || !blocks.length || allPageBlocks.value[image.id]?.length) return
-            allPageBlocks.value[image.id] = blocks
-            autoTranslateSession.processedPageIds.value[image.id] = true
-        })
+        restorePersistedPageState(result.book, images.value)
         const activeImageId = currentImageId.value
         if (activeImageId && allPageBlocks.value[activeImageId]?.length) {
             ocrBlocks.value = [...allPageBlocks.value[activeImageId]!]
         }
-        await Promise.all(images.value.map((image, pageIndex) => {
-            const blocks = allPageBlocks.value[image.id]
-            if (!blocks?.length) return Promise.resolve(false)
-            return window.electronAPI.updateAutoTranslatePage({ id: result.book!.id, pageIndex, blocks })
+        await Promise.all(images.value.map((image) => {
+            const blocks = allPageBlocks.value[image.id] || []
+            const deletedRegions = autoTranslateSession.deletedPageRegions.value[image.id] || []
+            const processed = Boolean(autoTranslateSession.processedPageIds.value[image.id])
+            if (!blocks.length && !deletedRegions.length && !processed) return Promise.resolve(false)
+            return persistPageBlocks(image.id, blocks)
         }))
         await window.electronAPI.updateBookProgress({
             id: result.book.id,
@@ -207,12 +268,7 @@ const loadLibraryBook = async () => {
         const loadedImages = await loadBookImages(sourcePath)
         addImagesToStore(loadedImages)
 
-        Object.entries(book?.autoTranslatePages || {}).forEach(([pageIndex, blocks]) => {
-            const image = loadedImages[Number(pageIndex)]
-            if (!image || !blocks.length) return
-            allPageBlocks.value[image.id] = blocks
-            autoTranslateSession.processedPageIds.value[image.id] = true
-        })
+        if (book) restorePersistedPageState(book, loadedImages)
 
         if (loadedImages.length) {
             const requestedPage = Number(route.query.current || book?.currentPage || 0)

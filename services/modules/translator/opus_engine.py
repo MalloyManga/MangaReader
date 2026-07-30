@@ -28,14 +28,6 @@ class OpusMtJaZhEngine(BaseTranslator):
             "tokenizer_config.json": 42,
             "vocab.json": 1803912,
         }
-        self.integrity_files = [
-            "config.json",
-            "pytorch_model.bin",
-            "source.spm",
-            "target.spm",
-            "tokenizer_config.json",
-            "vocab.json",
-        ]
         self.model = None
         self.tokenizer = None
         self.torch = None
@@ -50,10 +42,17 @@ class OpusMtJaZhEngine(BaseTranslator):
     def check_model_exists(self):
         if not os.path.isdir(self.model_dir):
             return False
-        for filename in self.integrity_files:
+        for filename, minimum_size in self.required_files.items():
             path = os.path.join(self.model_dir, filename)
-            if not os.path.exists(path) or os.path.getsize(path) == 0:
+            if not os.path.exists(path):
                 log_message(f"[INFO] OPUS model missing file: {filename}")
+                return False
+            actual_size = os.path.getsize(path)
+            if actual_size < minimum_size:
+                log_message(
+                    f"[INFO] OPUS model file incomplete: {filename} "
+                    f"({actual_size}/{minimum_size} bytes)"
+                )
                 return False
         return True
 

@@ -67,6 +67,9 @@ export interface Book {
     lastReadTime: number
     kind?: BookKind
     autoTranslatePages?: Record<string, OcrBlock[]>
+    autoTranslateDeletedRegions?: Record<string, OcrBlock['rect'][]>
+    autoTranslateProcessedPages?: number[]
+    autoTranslatePageRevisions?: Record<string, number>
 }
 
 export interface TranslationModel {
@@ -93,7 +96,14 @@ export interface IElectronAPI {
     getLibrary: () => Promise<Book[]>
     addBook: (path: string, kind?: BookKind) => Promise<{ success: boolean, book?: Book, alreadyExists?: boolean, error?: string }>
     updateBookProgress: (data: { id: string, currentPage?: number, totalPage?: number, lastReadTime?: number }) => Promise<boolean>
-    updateAutoTranslatePage: (data: { id: string, pageIndex: number, blocks: OcrBlock[] }) => Promise<boolean>
+    updateAutoTranslatePage: (data: {
+        id: string,
+        pageIndex: number,
+        blocks: OcrBlock[],
+        deletedRegions?: OcrBlock['rect'][]
+        processed?: boolean
+        revision?: number
+    }) => Promise<boolean>
     removeBook: (id: string) => Promise<boolean>
     checkFileExists: (path: string) => Promise<boolean>
 

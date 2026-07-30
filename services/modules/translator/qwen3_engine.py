@@ -85,6 +85,7 @@ class Qwen3GgufEngine(BaseTranslator):
 
     def check_model_exists(self):
         if not os.path.exists(self.model_file_path):
+            log_message(f"[INFO] Qwen3 model missing: {self.model_file_path}")
             return False
         file_size = os.path.getsize(self.model_file_path)
         if file_size < self.expected_size:

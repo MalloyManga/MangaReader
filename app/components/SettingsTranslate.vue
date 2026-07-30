@@ -8,6 +8,8 @@ const {
     setSelectedModel,
     checkAllModelStatus,
     checkModelStatus,
+    markModelDownloaded,
+    markModelNotDownloaded,
     updateDownloadingProgress
 } = useModelStatus()
 
@@ -34,22 +36,21 @@ const handleDownload = async (model: any) => {
         const res = await window.electronAPI.downloadModel(model.id)
 
         if (res.success) {
-            model.progress = 100
-            model.status = 'downloaded'
+            markModelDownloaded(model.id)
             setSelectedModel(model.id)
         } else {
             showToast(`下载失败: ${res.error}`)
-            model.status = 'not_downloaded'
+            markModelNotDownloaded(model.id)
         }
     } catch (e) {
-        model.status = 'not_downloaded'
+        markModelNotDownloaded(model.id)
         showToast('下载出错')
     }
+}
 
+const handleRetryCheck = async (model: any) => {
     await checkModelStatus(model.id, true)
-    if (model.status === 'downloaded') {
-        setSelectedModel(model.id)
-    }
+    if (model.status === 'check_failed') showToast(model.lastError || '模型检查失败，请稍后重试', 4000)
 }
 
 const handleUseModel = (model: any) => {
@@ -73,8 +74,7 @@ const confirmDelete = async () => {
         const target = deleteTarget.value
         const res = await window.electronAPI.deleteModel(target.id)
         if (res.success) {
-            target.status = 'not_downloaded'
-            target.progress = 0
+            markModelNotDownloaded(target.id)
             if (selectedModel.value?.id === target.id) {
                 const fallback = models.find(item => item.id !== target.id && item.status === 'downloaded')
                 if (fallback) {
@@ -153,6 +153,20 @@ onUnmounted(() => {
                             检查中...
                         </div>
 
+                        <div v-else-if="item.status === 'unknown'" class="text-xs text-manga-400">
+                            等待检查
+                        </div>
+
+                        <div v-else-if="item.status === 'check_failed'" class="flex items-center gap-2">
+                            <span class="max-w-24 truncate text-xs text-red-500" :title="item.lastError || '模型检查失败'">
+                                检查失败
+                            </span>
+                            <button type="button" @click="handleRetryCheck(item)"
+                                class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                                重新检查
+                            </button>
+                        </div>
+
                         <div v-else-if="item.status === 'downloaded'" class="flex items-center justify-end gap-2 min-w-28">
                             <button v-if="selectedModel?.id !== item.id" @click="handleUseModel(item)"
                                 class="w-20 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer">
@@ -180,7 +194,7 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <button v-else @click="handleDownload(item)" :disabled="isAnyModelDownloading"
+                        <button v-else-if="item.status === 'not_downloaded'" @click="handleDownload(item)" :disabled="isAnyModelDownloading"
                             class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-manga-900 dark:disabled:hover:bg-manga-700">
                             <IconDownload class="size-4" />
                             下载
