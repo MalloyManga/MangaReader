@@ -107,17 +107,4 @@ onUnmounted(stopDragging)
 .split-handle:focus .split-handle-line {
     height: 64px;
 }
-
-@media (max-width: 1023px) {
-    .resizable-split-pane {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .split-handle {
-        display: none;
-    }
-
-}
 </style>
