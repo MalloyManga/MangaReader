@@ -241,6 +241,14 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         replacePageBlocks(imageId, blocks)
     }
 
+    const persistBlocksForImage = async (imageId: string) => {
+        const blocks = currentImageId.value === imageId
+            ? [...ocrBlocks.value]
+            : [...(allPageBlocks.value[imageId] || [])]
+        allPageBlocks.value[imageId] = blocks
+        await persistPageBlocks?.(imageId, blocks)
+    }
+
     const throwIfCancelled = (token: ProcessingToken) => {
         if (token.cancelled) throw new DOMException('处理已停止', 'AbortError')
     }
@@ -636,14 +644,17 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     }
 
     const handleManualCapture = async (selection: SelectionData) => {
+        const imageId = currentImageId.value
+        if (!imageId) return
         isOcrMode.value = false
         isOcrRecognizing.value = true
         let block: OcrBlock | undefined
         try {
             const imageElement = getCurrentImageElement()
             const region = selectionToRegion(selection, imageElement)
-            block = createBlock(currentImageId.value!, region, ocrBlocks.value.length, 'manual')
+            block = createBlock(imageId, region, ocrBlocks.value.length, 'manual')
             ocrBlocks.value.push(block)
+            allPageBlocks.value[imageId] = [...ocrBlocks.value]
             activeBlockId.value = block.id
             log('manual OCR started for region', ocrBlocks.value.length)
             const result = await window.electronAPI.recognizeText(cropRegion(imageElement, region))
@@ -656,18 +667,26 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 log('manual translation completed')
             }
             block.status = 'done'
-            markPageProcessed(currentImageId.value!)
+            markPageProcessed(imageId)
         } catch (error) {
             if (block) block.status = 'error'
             const message = error instanceof Error ? error.message : String(error)
             console.error('[AutoTranslate] manual OCR failed', error)
             showToast(message, 5000)
         } finally {
+            try {
+                await persistBlocksForImage(imageId)
+                log('manual OCR block persisted', imageId)
+            } catch (error) {
+                console.error('[AutoTranslate] failed to persist manual OCR block', imageId, error)
+            }
             isOcrRecognizing.value = false
         }
     }
 
     const handleReOcr = async (id: string) => {
+        const imageId = currentImageId.value
+        if (!imageId) return
         const block = ocrBlocks.value.find(item => item.id === id)
         if (!block) return
         try {
@@ -685,6 +704,12 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             const message = error instanceof Error ? error.message : String(error)
             console.error('[AutoTranslate] re-OCR failed', error)
             showToast(message)
+        } finally {
+            try {
+                await persistBlocksForImage(imageId)
+            } catch (error) {
+                console.error('[AutoTranslate] failed to persist re-OCR block', imageId, error)
+            }
         }
     }
 

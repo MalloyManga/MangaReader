@@ -147,6 +147,11 @@ const ensureAddedToLibrary = async () => {
         if (activeImageId && allPageBlocks.value[activeImageId]?.length) {
             ocrBlocks.value = [...allPageBlocks.value[activeImageId]!]
         }
+        await Promise.all(images.value.map((image, pageIndex) => {
+            const blocks = allPageBlocks.value[image.id]
+            if (!blocks?.length) return Promise.resolve(false)
+            return window.electronAPI.updateAutoTranslatePage({ id: result.book!.id, pageIndex, blocks })
+        }))
         await window.electronAPI.updateBookProgress({
             id: result.book.id,
             totalPage: images.value.length,
