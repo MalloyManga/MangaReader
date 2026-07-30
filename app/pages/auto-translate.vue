@@ -2,8 +2,10 @@
 import type { OcrBlock } from '~/types/interface'
 
 const router = useRouter()
-const { images, currentImageIndex, clearImages, tempBookPath } = useMangaImages()
+const route = useRoute()
+const { images, currentImageIndex, clearImages, tempBookPath, addImagesToStore, setImage } = useMangaImages()
 const { initSettings, settings } = useSettings()
+const { loadBookImages } = useBookSource()
 const autoTranslateSession = useAutoTranslateSession()
 
 const showSettingsModal = ref(false)
@@ -13,11 +15,22 @@ const allPageBlocks = autoTranslateSession.allPageBlocks
 const currentImageId = computed(() => images.value[currentImageIndex.value]?.id)
 const isAddingToLibrary = ref(false)
 const preserveSessionOnUnmount = ref(false)
+const isRestoringBook = ref(false)
 const splitPaneConfig = {
     defaultLeftPercent: 60,
     minLeftPercent: 50,
     maxLeftPercent: 80
 } as const
+
+const getSourceName = (sourcePath: string) => sourcePath.split(/[\\/]/).filter(Boolean).pop() || sourcePath
+
+const persistPageBlocks = async (imageId: string, blocks: OcrBlock[]) => {
+    if (isRestoringBook.value) return
+    const bookId = autoTranslateSession.bookId.value
+    const pageIndex = images.value.findIndex(image => image.id === imageId)
+    if (!bookId || pageIndex < 0) return
+    await window.electronAPI.updateAutoTranslatePage({ id: bookId, pageIndex, blocks })
+}
 
 const {
     currentState,
@@ -44,7 +57,14 @@ const {
     handleManualCapture,
     handleReOcr,
     translateBlock
-} = useAutoTranslateProcessing({ currentImageId, images, ocrBlocks, allPageBlocks, activeBlockId })
+} = useAutoTranslateProcessing({
+    currentImageId,
+    images,
+    ocrBlocks,
+    allPageBlocks,
+    activeBlockId,
+    persistPageBlocks
+})
 
 watch(currentImageId, (newId, oldId) => {
     if (oldId) allPageBlocks.value[oldId] = [...ocrBlocks.value]
@@ -54,7 +74,12 @@ watch(currentImageId, (newId, oldId) => {
 }, { immediate: true })
 
 watch(ocrBlocks, (blocks) => {
-    if (currentImageId.value) allPageBlocks.value[currentImageId.value] = blocks
+    if (currentImageId.value) {
+        allPageBlocks.value[currentImageId.value] = blocks
+        persistPageBlocks(currentImageId.value, blocks).catch(error => {
+            console.error('[AutoTranslate] failed to persist edited blocks', error)
+        })
+    }
 }, { deep: true })
 
 const handleSelectBlock = (id: string) => {
@@ -109,9 +134,19 @@ const ensureAddedToLibrary = async () => {
     if (!tempBookPath.value || !images.value.length || autoTranslateSession.bookId.value || isAddingToLibrary.value) return
     isAddingToLibrary.value = true
     try {
-        const result = await window.electronAPI.addBook(tempBookPath.value)
+        const result = await window.electronAPI.addBook(tempBookPath.value, 'auto-translate')
         if (!result.success || !result.book) throw new Error(result.error || '加入书架失败')
         autoTranslateSession.bookId.value = result.book.id
+        Object.entries(result.book.autoTranslatePages || {}).forEach(([pageIndex, blocks]) => {
+            const image = images.value[Number(pageIndex)]
+            if (!image || !blocks.length || allPageBlocks.value[image.id]?.length) return
+            allPageBlocks.value[image.id] = blocks
+            autoTranslateSession.processedPageIds.value[image.id] = true
+        })
+        const activeImageId = currentImageId.value
+        if (activeImageId && allPageBlocks.value[activeImageId]?.length) {
+            ocrBlocks.value = [...allPageBlocks.value[activeImageId]!]
+        }
         await window.electronAPI.updateBookProgress({
             id: result.book.id,
             totalPage: images.value.length,
@@ -128,6 +163,7 @@ const ensureAddedToLibrary = async () => {
 
 watch(tempBookPath, (path, previousPath) => {
     if (previousPath && path !== previousPath) autoTranslateSession.bookId.value = null
+    if (path) autoTranslateSession.taskContext.value.bookName = getSourceName(path)
 })
 
 watch([tempBookPath, () => images.value.length], ensureAddedToLibrary)
@@ -147,9 +183,52 @@ const handleSettingsClose = async () => {
     await checkTranslationReady()
 }
 
+const loadLibraryBook = async () => {
+    const bookId = typeof route.query.id === 'string' ? route.query.id : ''
+    const sourcePath = typeof route.query.path === 'string' ? route.query.path : ''
+    if (!bookId || !sourcePath) return
+    if (autoTranslateSession.bookId.value === bookId && images.value.length) return
+
+    isRestoringBook.value = true
+    try {
+        clearImages()
+        autoTranslateSession.resetSession()
+        autoTranslateSession.bookId.value = bookId
+        autoTranslateSession.taskContext.value.bookName = getSourceName(sourcePath)
+        tempBookPath.value = sourcePath
+
+        const library = await window.electronAPI.getLibrary()
+        const book = library.find(item => item.id === bookId)
+        const loadedImages = await loadBookImages(sourcePath)
+        addImagesToStore(loadedImages)
+
+        Object.entries(book?.autoTranslatePages || {}).forEach(([pageIndex, blocks]) => {
+            const image = loadedImages[Number(pageIndex)]
+            if (!image || !blocks.length) return
+            allPageBlocks.value[image.id] = blocks
+            autoTranslateSession.processedPageIds.value[image.id] = true
+        })
+
+        if (loadedImages.length) {
+            const requestedPage = Number(route.query.current || book?.currentPage || 0)
+            setImage(Math.min(Math.max(0, requestedPage), loadedImages.length - 1))
+            const imageId = images.value[currentImageIndex.value]?.id
+            ocrBlocks.value = imageId ? [...(allPageBlocks.value[imageId] || [])] : []
+        }
+        console.log('[AutoTranslate] loaded auto-translate book from library', { bookId, pages: loadedImages.length })
+    } finally {
+        isRestoringBook.value = false
+    }
+}
+
 onMounted(async () => {
-    await initSettings()
-    await checkTranslationReady()
+    try {
+        await loadLibraryBook()
+        await initSettings()
+        await checkTranslationReady()
+    } catch (error) {
+        console.error('[AutoTranslate] failed to open library book', error)
+    }
 })
 onUnmounted(() => {
     if (!preserveSessionOnUnmount.value && !isProcessing.value) {

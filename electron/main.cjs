@@ -228,14 +228,22 @@ ipcMain.handle('library:get-all', () => {
     return store ? store.get('library', []) : []
 })
 
-ipcMain.handle('library:add', async (_event, pathStr) => {
+ipcMain.handle('library:add', async (_event, pathStr, kind = 'standard') => {
     try {
+        const normalizedKind = kind === 'auto-translate' ? 'auto-translate' : 'standard'
         /**
         * @type {Book[]}
         */
         const library = store.get('library', [])
         const existingBook = library.find(b => b.path === pathStr)
-        if (existingBook) return { success: true, book: existingBook, alreadyExists: true }
+        if (existingBook) {
+            if (normalizedKind === 'auto-translate' && existingBook.kind !== 'auto-translate') {
+                existingBook.kind = 'auto-translate'
+                existingBook.autoTranslatePages = existingBook.autoTranslatePages || {}
+                store.set('library', library)
+            }
+            return { success: true, book: existingBook, alreadyExists: true }
+        }
 
         let cover = null
         if (backendService && backendService.isReady) {
@@ -255,7 +263,9 @@ ipcMain.handle('library:add', async (_event, pathStr) => {
             cover: cover,
             totalPage: 0,
             currentPage: 0,
-            lastReadTime: Date.now()
+            lastReadTime: Date.now(),
+            kind: normalizedKind,
+            ...(normalizedKind === 'auto-translate' ? { autoTranslatePages: {} } : {})
         }
 
         library.push(newBook)
@@ -281,6 +291,18 @@ ipcMain.handle('library:update-progress', (_event, { id, currentPage, totalPage,
         return true
     }
     return false
+})
+
+ipcMain.handle('library:update-auto-translate-page', (_event, { id, pageIndex, blocks }) => {
+    const library = store.get('library', [])
+    const index = library.findIndex(b => b.id === id)
+    if (index === -1 || !Number.isInteger(pageIndex) || pageIndex < 0 || !Array.isArray(blocks)) return false
+    library[index].kind = 'auto-translate'
+    library[index].autoTranslatePages = library[index].autoTranslatePages || {}
+    if (blocks.length) library[index].autoTranslatePages[String(pageIndex)] = blocks
+    else delete library[index].autoTranslatePages[String(pageIndex)]
+    store.set('library', library)
+    return true
 })
 
 ipcMain.handle('library:remove', (_event, id) => {
@@ -319,6 +341,17 @@ ipcMain.handle('dialog:open-file', async (_event) => {
     return { canceled, filePaths }
 })
 
+ipcMain.handle('dialog:select-export-directory', async (_event, defaultName) => {
+    if (!mainWindow) return { canceled: true }
+    const safeName = path.basename(String(defaultName || 'translated-manga')).replace(/[<>:"/\\|?*]/g, '_')
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: '选择翻译图片保存文件夹',
+        defaultPath: path.join(app.getPath('downloads'), safeName),
+        properties: ['openDirectory', 'createDirectory']
+    })
+    return { canceled, directoryPath: filePaths[0] }
+})
+
 // 用户点击按钮之后唤起dialog加载文件 仅仅返回路径给前端
 ipcMain.handle('files:read-images', async (_event,/** @type {string[]} */ filePaths) => {
     try {
@@ -352,6 +385,28 @@ ipcMain.handle('files:read-images', async (_event,/** @type {string[]} */ filePa
         return { success: true, imagePaths }
     } catch (e) {
         return { success: false, error: e.message }
+    }
+})
+
+ipcMain.handle('files:save-exported-image', async (_event, { directoryPath, filename, imageDataUrl }) => {
+    try {
+        const directoryStat = await fs.promises.stat(directoryPath)
+        if (!directoryStat.isDirectory()) throw new Error('导出位置不是文件夹')
+        const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(imageDataUrl)
+        if (!match) throw new Error('导出图片数据无效')
+        const safeFilename = path.basename(filename).replace(/[<>:"/\\|?*]/g, '_')
+        const extension = path.extname(safeFilename) || '.png'
+        const baseName = path.basename(safeFilename, extension)
+        let outputPath = path.join(directoryPath, `${baseName}${extension}`)
+        let suffix = 1
+        while (fs.existsSync(outputPath)) {
+            outputPath = path.join(directoryPath, `${baseName}-${suffix}${extension}`)
+            suffix++
+        }
+        await fs.promises.writeFile(outputPath, Buffer.from(match[1], 'base64'))
+        return { success: true, path: outputPath }
+    } catch (error) {
+        return { success: false, error: error.message }
     }
 })
 

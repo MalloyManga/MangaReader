@@ -2,6 +2,7 @@
 import type { Book } from '~/types/interface'
 const { initSettings } = useSettings()
 const { showToast } = useToast()
+const autoTranslateSession = useAutoTranslateSession()
 
 const library = ref<Book[]>([])
 const loading = ref(true)
@@ -9,6 +10,7 @@ const showSettingsModal = ref(false)
 const deletingIds = ref<Set<string>>(new Set())
 const confirmModalFlag = ref<boolean>(false)
 const deleteBookId = ref<string>('')
+const exportBook = ref<Book | null>(null)
 
 const handleModalConfirm = async () => {
     await window.electronAPI.removeBook(deleteBookId.value)
@@ -48,14 +50,27 @@ const openBook = async (book: Book) => {
         }
     }
 
+    const isAutoTranslateBook = book.kind === 'auto-translate'
+    if (isAutoTranslateBook && autoTranslateSession.isProcessing.value
+        && autoTranslateSession.bookId.value !== book.id) {
+        showToast('请先停止当前正在运行的自动识别任务', 4000)
+        return
+    }
+
     navigateTo({
-        path: '/reader',
+        path: isAutoTranslateBook ? '/auto-translate' : '/reader',
         query: {
             id: book.id,
             path: book.path,
             current: book.currentPage.toString()
         }
     })
+}
+
+const openExportModal = async (event: Event, book: Book) => {
+    event.stopPropagation()
+    const latestLibrary = await window.electronAPI.getLibrary()
+    exportBook.value = latestLibrary.find(item => item.id === book.id) || book
 }
 
 const removeBook = async (e: Event, id: string) => {
@@ -113,6 +128,18 @@ onMounted(() => {
                             class="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10 cursor-pointer">
                             <IconTresh class="size-4" />
                         </button>
+
+                        <button v-if="book.kind === 'auto-translate'" type="button" title="导出翻译图片"
+                            class="absolute top-2 right-11 z-10 flex size-7 items-center justify-center rounded bg-white/90 text-manga-600 opacity-0 shadow-sm transition-all hover:bg-primary hover:text-white group-hover:opacity-100 dark:bg-manga-800/90 dark:text-manga-300"
+                            @click="openExportModal($event, book)">
+                            <IconDownload class="size-4" />
+                        </button>
+
+                        <div v-if="book.kind === 'auto-translate'"
+                            class="absolute bottom-3 left-2 flex items-center gap-1 rounded bg-black/65 px-2 py-1 text-[10px] font-medium text-white">
+                            <IconAutoDetect class="size-3" />
+                            自动检测
+                        </div>
                     </div>
 
                     <!-- 信息 -->
@@ -151,6 +178,7 @@ onMounted(() => {
             </div>
         </div>
         <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
+        <AutoTranslateExportModal :show="Boolean(exportBook)" :book="exportBook" @close="exportBook = null" />
     </div>
     <ConfirmModal @confirm="handleModalConfirm" @cancel="handleModalCancel" :show="confirmModalFlag" title="文件丢失"
         content="这本书的原文件似乎被移动或删除了，是否将它从书架中移除？" />

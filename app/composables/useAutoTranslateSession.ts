@@ -17,6 +17,26 @@ const createBatchState = (): AutoTranslateBatchState => ({
     skippedPages: 0
 })
 
+export interface AutoTranslateTaskContext {
+    bookName: string
+    imageId: string
+    pageIndex: number
+    pageTotal: number
+    regionIndex: number
+    regionTotal: number
+    stage: AutoTranslatePageState['stage']
+}
+
+const createTaskContext = (): AutoTranslateTaskContext => ({
+    bookName: '',
+    imageId: '',
+    pageIndex: 0,
+    pageTotal: 0,
+    regionIndex: 0,
+    regionTotal: 0,
+    stage: 'idle'
+})
+
 export const useAutoTranslateSession = () => {
     const allPageBlocks = useState<Record<string, OcrBlock[]>>('auto-translate-page-blocks', () => ({}))
     const pageStates = useState<Record<string, AutoTranslatePageState>>('auto-translate-page-states', () => ({}))
@@ -27,6 +47,7 @@ export const useAutoTranslateSession = () => {
     const isBatchProcessing = useState('auto-translate-batch-processing', () => false)
     const isStopping = useState('auto-translate-stopping', () => false)
     const bookId = useState<string | null>('auto-translate-book-id', () => null)
+    const taskContext = useState<AutoTranslateTaskContext>('auto-translate-task-context', createTaskContext)
     const isProcessing = computed(() => isPreparing.value || isCurrentPageProcessing.value || isBatchProcessing.value)
 
     const resetSession = () => {
@@ -39,6 +60,7 @@ export const useAutoTranslateSession = () => {
         isBatchProcessing.value = false
         isStopping.value = false
         bookId.value = null
+        taskContext.value = createTaskContext()
     }
 
     return {
@@ -52,6 +74,7 @@ export const useAutoTranslateSession = () => {
         isStopping,
         isProcessing,
         bookId,
+        taskContext,
         resetSession
     }
 }

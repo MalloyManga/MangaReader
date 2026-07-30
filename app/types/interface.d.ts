@@ -8,6 +8,7 @@ export interface Token {
 
 export type ReadingMode = 'study' | 'list' | 'immersive'
 export type DownloadSource = 'mirror' | 'official'
+export type BookKind = 'standard' | 'auto-translate'
 
 // 定义设置对象的接口
 export interface AppSettings {
@@ -65,6 +66,8 @@ export interface Book {
     totalPage: number
     currentPage: number
     lastReadTime: number
+    kind?: BookKind
+    autoTranslatePages?: Record<string, OcrBlock[]>
 }
 
 export interface TranslationModel {
@@ -89,8 +92,9 @@ export interface IElectronAPI {
     backendStatus: (callback) => () => void
 
     getLibrary: () => Promise<Book[]>
-    addBook: (path: string) => Promise<{ success: boolean, book?: Book, alreadyExists?: boolean, error?: string }>
+    addBook: (path: string, kind?: BookKind) => Promise<{ success: boolean, book?: Book, alreadyExists?: boolean, error?: string }>
     updateBookProgress: (data: { id: string, currentPage?: number, totalPage?: number, lastReadTime?: number }) => Promise<boolean>
+    updateAutoTranslatePage: (data: { id: string, pageIndex: number, blocks: OcrBlock[] }) => Promise<boolean>
     removeBook: (id: string) => Promise<boolean>
     checkFileExists: (path: string) => Promise<boolean>
 
@@ -103,6 +107,8 @@ export interface IElectronAPI {
         imagePaths?: string[],
         error?: string
     }>
+    selectExportDirectory: (defaultName: string) => Promise<{ canceled: boolean, directoryPath?: string }>
+    saveExportedImage: (data: { directoryPath: string, filename: string, imageDataUrl: string }) => Promise<{ success: boolean, path?: string, error?: string }>
 
     // OCR 核心
     recognizeText: (imageBase64: string) => Promise<{

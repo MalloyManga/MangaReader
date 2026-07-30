@@ -15,6 +15,7 @@ interface AutoTranslateProcessingOptions {
     ocrBlocks: Ref<OcrBlock[]>
     allPageBlocks: Ref<Record<string, OcrBlock[]>>
     activeBlockId: Ref<string | undefined>
+    persistPageBlocks?: (imageId: string, blocks: OcrBlock[]) => void | Promise<void>
 }
 
 export interface AutoTranslateBatchState {
@@ -58,7 +59,7 @@ const createIdleState = (): AutoTranslatePageState => ({
 })
 
 export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptions) {
-    const { currentImageId, images, ocrBlocks, allPageBlocks, activeBlockId } = options
+    const { currentImageId, images, ocrBlocks, allPageBlocks, activeBlockId, persistPageBlocks } = options
     const { settings } = useSettings()
     const { showToast } = useToast()
     const { selectedModel, loadTranslationModels, checkModelStatus } = useModelStatus()
@@ -70,7 +71,8 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         isCurrentPageProcessing,
         isBatchProcessing,
         isStopping,
-        isProcessing
+        isProcessing,
+        taskContext
     } = useAutoTranslateSession()
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
@@ -225,6 +227,9 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const replacePageBlocks = (imageId: string, blocks: OcrBlock[]) => {
         allPageBlocks.value[imageId] = [...blocks]
+        Promise.resolve(persistPageBlocks?.(imageId, blocks)).catch(error => {
+            console.error('[AutoTranslate] failed to persist page blocks', imageId, error)
+        })
         if (currentImageId.value === imageId) {
             ocrBlocks.value = [...blocks]
             activeBlockId.value = blocks[0]?.id
@@ -256,6 +261,12 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         regionTotal = 0
     ) => {
         updateState(imageId, stage, progress, message)
+        if (activeToken === token) {
+            taskContext.value.imageId = imageId
+            taskContext.value.stage = stage
+            taskContext.value.regionIndex = regionIndex
+            taskContext.value.regionTotal = regionTotal
+        }
         if (token.kind !== 'batch') return
         if (activeToken !== token) return
         batchState.value.stage = stage
@@ -425,6 +436,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         isStopping.value = false
         isOcrMode.value = false
         activeBlockId.value = undefined
+        taskContext.value.imageId = imageId
+        taskContext.value.pageIndex = images.value.findIndex(image => image.id === imageId) + 1
+        taskContext.value.pageTotal = images.value.length
+        taskContext.value.regionIndex = 0
+        taskContext.value.regionTotal = 0
 
         try {
             const image = images.value.find(item => item.id === imageId)
@@ -481,6 +497,9 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             failedPages: 0,
             skippedPages: 0
         })
+        taskContext.value.pageTotal = images.value.length
+        taskContext.value.regionIndex = 0
+        taskContext.value.regionTotal = 0
         log('batch processing started, page count:', images.value.length)
 
         try {
@@ -488,6 +507,8 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 throwIfCancelled(token)
                 const image = images.value[index]!
                 batchState.value.pageIndex = index + 1
+                taskContext.value.imageId = image.id
+                taskContext.value.pageIndex = index + 1
                 batchState.value.pageLabel = getPageLabel(image, index)
                 batchState.value.regionIndex = 0
                 batchState.value.regionTotal = 0
@@ -565,6 +586,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             batchState.value.stage = 'stopped'
             batchState.value.progress = 0
             batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
+            taskContext.value.stage = 'stopped'
         } else if (activeToken.imageId) {
             isCurrentPageProcessing.value = false
             updateState(
@@ -573,6 +595,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 0,
                 `已停止，保留 ${allPageBlocks.value[activeToken.imageId]?.length || 0} 个完整区域`
             )
+            taskContext.value.stage = 'stopped'
         }
         activeToken = null
         activeStopHandler = null

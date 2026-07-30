@@ -21,14 +21,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Library System
     getLibrary: () => ipcRenderer.invoke('library:get-all'),
-    addBook: (path) => ipcRenderer.invoke('library:add', path),
+    addBook: (path, kind) => ipcRenderer.invoke('library:add', path, kind),
     updateBookProgress: (data) => ipcRenderer.invoke('library:update-progress', data),
+    updateAutoTranslatePage: (data) => ipcRenderer.invoke('library:update-auto-translate-page', data),
     removeBook: (id) => ipcRenderer.invoke('library:remove', id),
     checkFileExists: (path) => ipcRenderer.invoke('fs:exists', path),
 
     // Dialogs
     openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
     readImageFiles: (paths) => ipcRenderer.invoke('files:read-images', paths),
+    selectExportDirectory: (defaultName) => ipcRenderer.invoke('dialog:select-export-directory', defaultName),
+    saveExportedImage: (data) => ipcRenderer.invoke('files:save-exported-image', data),
 
     // 窗口控制 声明给渲染进程
     minimizeWindow: () => ipcRenderer.send('window:minimize'),

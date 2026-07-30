@@ -7,6 +7,7 @@ const {
     isProcessing,
     isBatchProcessing,
     isCurrentPageProcessing,
+    taskContext,
     resetSession
 } = useAutoTranslateSession()
 
@@ -24,12 +25,27 @@ const visible = computed(() => route.path !== '/auto-translate' && (
 const progress = computed(() => isBatchTask.value
     ? batchState.value.progress
     : (currentPageState.value?.progress || 0))
-const message = computed(() => isBatchTask.value
-    ? batchState.value.message
-    : (currentPageState.value?.message || '正在处理当前页面'))
+const stageLabels = {
+    detecting: '正在分析文字区域',
+    recognizing: '正在识别文字',
+    translating: '正在翻译文字',
+    complete: '处理完成',
+    stopped: '处理已停止',
+    error: '处理失败',
+    idle: '正在准备'
+} as const
+const message = computed(() => {
+    if (!isProcessing.value) {
+        return isBatchTask.value ? batchState.value.message : (currentPageState.value?.message || '处理已结束')
+    }
+    const context = taskContext.value
+    const page = context.pageTotal ? `第 ${context.pageIndex} / ${context.pageTotal} 页` : ''
+    const region = context.regionTotal ? `第 ${context.regionIndex} / ${context.regionTotal} 个框` : ''
+    return [page, region, stageLabels[context.stage]].filter(Boolean).join(' · ')
+})
 const title = computed(() => {
-    if (isBatchProcessing.value) return `正在处理第 ${batchState.value.pageIndex} / ${batchState.value.pageTotal} 页`
-    if (isCurrentPageProcessing.value) return '正在处理当前页面'
+    const bookName = taskContext.value.bookName || '当前书籍'
+    if (isBatchProcessing.value || isCurrentPageProcessing.value) return `正在处理：${bookName}`
     if (batchState.value.status === 'complete' || currentPageState.value?.stage === 'complete') return '自动识别处理完成'
     if (currentPageState.value?.stage === 'error') return '自动识别处理失败'
     return '自动识别已停止'
