@@ -186,17 +186,18 @@ const handleUpdateBlock = (updatedBlock: OcrBlock) => {
     if (index === -1) return
     const originalChanged = ocrBlocks.value[index]!.original !== updatedBlock.original
     ocrBlocks.value[index] = updatedBlock
-    if (originalChanged && updatedBlock.original && settings.value.enableTranslation) {
-        updatedBlock.status = 'loading'
-        log('original text changed; translating block:', updatedBlock.id)
-        translateBlock(updatedBlock)
+    const block = ocrBlocks.value[index]!
+    if (originalChanged && block.original && settings.value.enableTranslation) {
+        block.status = 'loading'
+        log('original text changed; translating block:', block.id)
+        translateBlock(block)
             .then(() => {
-                updatedBlock.status = 'done'
-                log('updated block translation completed:', updatedBlock.id)
+                block.status = 'done'
+                log('updated block translation completed:', block.id)
             })
             .catch((error) => {
-                updatedBlock.status = 'error'
-                console.error('[AutoTranslate] updated block translation failed', updatedBlock.id, error)
+                block.status = 'error'
+                console.error('[AutoTranslate] updated block translation failed', block.id, error)
             })
     }
 }

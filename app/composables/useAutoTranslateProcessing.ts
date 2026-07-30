@@ -709,8 +709,10 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                     deleted => regionOverlapRatio(region, deleted) < 0.6
                 )
             }
-            block = createBlock(imageId, region, ocrBlocks.value.length, 'manual')
-            ocrBlocks.value.push(block)
+            const createdBlock = createBlock(imageId, region, ocrBlocks.value.length, 'manual')
+            ocrBlocks.value.push(createdBlock)
+            // Vue wraps array entries on access; keep mutating that proxy so async results repaint immediately.
+            block = ocrBlocks.value[ocrBlocks.value.length - 1]!
             allPageBlocks.value[imageId] = [...ocrBlocks.value]
             activeBlockId.value = block.id
             log('manual OCR started for region', ocrBlocks.value.length)
