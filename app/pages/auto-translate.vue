@@ -14,10 +14,13 @@ const currentImageId = computed(() => images.value[currentImageIndex.value]?.id)
 const {
     currentState,
     detectorAvailable,
+    translationReady,
+    translationMessage,
     isProcessing,
     isOcrMode,
     isOcrRecognizing,
-    appendLog,
+    log,
+    checkTranslationReady,
     processCurrentPage,
     startManualOcr,
     cancelManualOcr,
@@ -44,7 +47,7 @@ const handleSelectBlock = (id: string) => {
 const handleDeleteBlock = (id: string) => {
     ocrBlocks.value = ocrBlocks.value.filter(block => block.id !== id)
     if (activeBlockId.value === id) activeBlockId.value = ocrBlocks.value[0]?.id
-    appendLog('已删除一个文字区域')
+    log('deleted OCR block:', id)
 }
 
 const handleUpdateBlock = (updatedBlock: OcrBlock) => {
@@ -54,15 +57,15 @@ const handleUpdateBlock = (updatedBlock: OcrBlock) => {
     ocrBlocks.value[index] = updatedBlock
     if (originalChanged && updatedBlock.original && settings.value.enableTranslation) {
         updatedBlock.status = 'loading'
-        appendLog('原文已修改，正在重新翻译')
+        log('original text changed; translating block:', updatedBlock.id)
         translateBlock(updatedBlock)
             .then(() => {
                 updatedBlock.status = 'done'
-                appendLog('修改后的文本已重新翻译', 'success')
+                log('updated block translation completed:', updatedBlock.id)
             })
-            .catch(() => {
+            .catch((error) => {
                 updatedBlock.status = 'error'
-                appendLog('修改后的文本翻译失败', 'error')
+                console.error('[AutoTranslate] updated block translation failed', updatedBlock.id, error)
             })
     }
 }
@@ -77,7 +80,15 @@ const goBack = () => {
     router.push('/')
 }
 
-onMounted(initSettings)
+const handleSettingsClose = async () => {
+    showSettingsModal.value = false
+    await checkTranslationReady()
+}
+
+onMounted(async () => {
+    await initSettings()
+    await checkTranslationReady()
+})
 onUnmounted(clearImages)
 </script>
 
@@ -109,6 +120,7 @@ onUnmounted(clearImages)
 
                 <aside class="lg:col-span-2 min-h-0 flex flex-col gap-4">
                     <AutoTranslatePanel :state="currentState" :detector-available="detectorAvailable"
+                        :translation-ready="translationReady" :translation-message="translationMessage"
                         :has-images="Boolean(images.length)" :is-processing="isProcessing"
                         :is-ocr-mode="isOcrMode" :is-ocr-recognizing="isOcrRecognizing"
                         @process="processCurrentPage" @manual-ocr="toggleManualOcr" />
@@ -123,6 +135,6 @@ onUnmounted(clearImages)
             </div>
         </main>
 
-        <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
+        <SettingsModal :show="showSettingsModal" @close="handleSettingsClose" />
     </div>
 </template>

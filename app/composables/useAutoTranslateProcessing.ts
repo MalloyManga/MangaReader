@@ -2,20 +2,11 @@ import type { Ref } from 'vue'
 import type { DetectedTextRegion, OcrBlock } from '~/types/interface'
 
 export type AutoTranslateStage = 'idle' | 'detecting' | 'recognizing' | 'translating' | 'complete' | 'error'
-export type ProcessingLogLevel = 'info' | 'success' | 'error'
-
-export interface ProcessingLogEntry {
-    id: number
-    time: string
-    message: string
-    level: ProcessingLogLevel
-}
 
 export interface AutoTranslatePageState {
     stage: AutoTranslateStage
     progress: number
     message: string
-    logs: ProcessingLogEntry[]
 }
 
 interface AutoTranslateProcessingOptions {
@@ -34,25 +25,66 @@ interface SelectionData {
 const createIdleState = (): AutoTranslatePageState => ({
     stage: 'idle',
     progress: 0,
-    message: '等待开始处理',
-    logs: []
+    message: '等待开始处理'
 })
 
 export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptions) {
     const { currentImageId, ocrBlocks, activeBlockId } = options
     const { settings } = useSettings()
     const { showToast } = useToast()
+    const { selectedModel, loadTranslationModels, checkModelStatus } = useModelStatus()
     const pageStates = ref<Record<string, AutoTranslatePageState>>({})
     const isProcessing = ref(false)
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
-    let nextLogId = 1
+    const translationReady = ref(false)
+    const translationMessage = ref('正在检查翻译模型')
 
     const detectorAvailable = computed(() => import.meta.client && Boolean(window.electronAPI?.detectTextRegions))
     const currentState = computed<AutoTranslatePageState>(() => {
         const imageId = currentImageId.value
         return imageId ? (pageStates.value[imageId] || createIdleState()) : createIdleState()
     })
+
+    const log = (...args: unknown[]) => console.log('[AutoTranslate]', ...args)
+
+    const checkTranslationReady = async () => {
+        translationReady.value = false
+        log('checking translation model configuration')
+        if (!settings.value.enableTranslation) {
+            translationMessage.value = '请先在设置中启用翻译'
+            console.warn('[AutoTranslate] translation is disabled')
+            return false
+        }
+        if (!window.electronAPI?.listTranslationModels || !window.electronAPI?.checkModel) {
+            translationMessage.value = '当前环境无法检查翻译模型'
+            console.error('[AutoTranslate] translation model API is unavailable')
+            return false
+        }
+        try {
+            await loadTranslationModels()
+            const modelId = settings.value.translationModelId
+            if (!modelId) {
+                translationMessage.value = '请先在设置中选择翻译模型'
+                console.warn('[AutoTranslate] no translation model selected')
+                return false
+            }
+            await checkModelStatus(modelId, true)
+            if (selectedModel.value?.id !== modelId || selectedModel.value.status !== 'downloaded') {
+                translationMessage.value = '请先在设置中下载所选翻译模型'
+                console.warn('[AutoTranslate] selected translation model is not downloaded', modelId)
+                return false
+            }
+            translationReady.value = true
+            translationMessage.value = `已准备翻译模型：${selectedModel.value.name}`
+            log('translation model ready:', modelId)
+            return true
+        } catch (error) {
+            translationMessage.value = '翻译模型检查失败，请到设置中重试'
+            console.error('[AutoTranslate] translation model check failed', error)
+            return false
+        }
+    }
 
     const ensurePageState = () => {
         const imageId = currentImageId.value
@@ -61,31 +93,13 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         return pageStates.value[imageId]!
     }
 
-    const appendLog = (message: string, level: ProcessingLogLevel = 'info') => {
-        const state = ensurePageState()
-        if (!state) return
-        state.logs.push({
-            id: nextLogId++,
-            time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-            message,
-            level
-        })
-        if (state.logs.length > 40) state.logs.splice(0, state.logs.length - 40)
-    }
-
-    const updateState = (
-        stage: AutoTranslateStage,
-        progress: number,
-        message: string,
-        logMessage = message,
-        level: ProcessingLogLevel = 'info'
-    ) => {
+    const updateState = (stage: AutoTranslateStage, progress: number, message: string) => {
         const state = ensurePageState()
         if (!state) return
         state.stage = stage
         state.progress = progress
         state.message = message
-        appendLog(logMessage, level)
+        log(message)
     }
 
     const resetCurrentState = () => {
@@ -158,6 +172,10 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             showToast('文字检测模块不可用，请先在设置中安装')
             return
         }
+        if (!(await checkTranslationReady())) {
+            showToast(translationMessage.value, 4000)
+            return
+        }
 
         isProcessing.value = true
         isOcrMode.value = false
@@ -167,8 +185,9 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
         try {
             const imageElement = getCurrentImageElement()
-            updateState('detecting', 8, '正在分析整页文字区域', '已提交整页图片，开始检测文字区域')
-            const heartbeat = window.setInterval(() => appendLog('检测器仍在分析当前页面，请稍候'), 10000)
+            updateState('detecting', 8, '正在分析整页文字区域')
+            log('submitted full-page detection request')
+            const heartbeat = window.setInterval(() => log('detector is still processing the current page'), 10000)
             let detection
             try {
                 detection = await window.electronAPI.detectTextRegions(imageToBase64(imageElement))
@@ -182,9 +201,14 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 imageElement.naturalWidth,
                 imageElement.naturalHeight
             ))
-            appendLog(`检测完成，共找到 ${regions.length} 个文字区域`, 'success')
+            log('expanded detected regions with OCR padding', {
+                imageWidth: imageElement.naturalWidth,
+                imageHeight: imageElement.naturalHeight,
+                regionCount: regions.length
+            })
+            log('detection completed, regions:', regions.length)
             if (regions.length === 0) {
-                updateState('complete', 100, '当前页面未检测到文字区域', '处理完成，未检测到文字区域', 'success')
+                updateState('complete', 100, '当前页面未检测到文字区域')
                 showToast('当前页面未检测到文字区域')
                 return
             }
@@ -198,18 +222,18 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 updateState(
                     'recognizing',
                     15 + Math.round(((index + 1) / regions.length) * 45),
-                    `正在识别第 ${index + 1} / ${regions.length} 个区域`,
-                    `开始 OCR：区域 ${index + 1} / ${regions.length}`
+                    `正在识别第 ${index + 1} / ${regions.length} 个区域`
                 )
+                log('OCR started for region', index + 1, '/', regions.length)
                 const result = await window.electronAPI.recognizeText(cropRegion(imageElement, region))
                 if (!result.success) {
                     block.status = 'error'
-                    appendLog(`区域 ${index + 1} OCR 失败`, 'error')
+                    console.error('[AutoTranslate] OCR failed for region', index + 1, result.error)
                     continue
                 }
                 block.original = result.text || ''
                 block.status = 'done'
-                appendLog(`区域 ${index + 1} OCR 完成`, 'success')
+                log('OCR completed for region', index + 1)
             }
 
             if (settings.value.enableTranslation) {
@@ -219,27 +243,28 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                     updateState(
                         'translating',
                         60 + Math.round(((index + 1) / ocrBlocks.value.length) * 38),
-                        `正在翻译第 ${index + 1} / ${ocrBlocks.value.length} 个区域`,
-                        `开始翻译：区域 ${index + 1} / ${ocrBlocks.value.length}`
+                        `正在翻译第 ${index + 1} / ${ocrBlocks.value.length} 个区域`
                     )
+                    log('translation started for region', index + 1, '/', ocrBlocks.value.length)
                     try {
                         block.status = 'loading'
                         await translateBlock(block)
                         block.status = 'done'
-                        appendLog(`区域 ${index + 1} 翻译完成`, 'success')
-                    } catch {
+                        log('translation completed for region', index + 1)
+                    } catch (error) {
                         block.status = 'error'
-                        appendLog(`区域 ${index + 1} 翻译失败`, 'error')
+                        console.error('[AutoTranslate] translation failed for region', index + 1, error)
                     }
                 }
             } else {
-                appendLog('翻译功能未启用，本次仅完成 OCR')
+                console.warn('[AutoTranslate] translation was disabled after readiness check')
             }
 
-            updateState('complete', 100, `已完成 ${ocrBlocks.value.length} 个文字区域`, '当前页面处理完成', 'success')
+            updateState('complete', 100, `已完成 ${ocrBlocks.value.length} 个文字区域`)
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
-            updateState('error', 0, message, `处理失败：${message}`, 'error')
+            updateState('error', 0, message)
+            console.error('[AutoTranslate] page processing failed', error)
             showToast(`自动处理失败：${message}`, 5000)
         } finally {
             isProcessing.value = false
@@ -266,12 +291,12 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const startManualOcr = () => {
         if (!currentImageId.value || isProcessing.value || isOcrRecognizing.value) return
         isOcrMode.value = true
-        appendLog('已进入手动画框模式')
+        log('manual OCR mode enabled')
     }
 
     const cancelManualOcr = () => {
         isOcrMode.value = false
-        appendLog('已取消手动画框')
+        log('manual OCR mode cancelled')
     }
 
     const handleManualCapture = async (selection: SelectionData) => {
@@ -284,21 +309,21 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             block = createBlock(region, ocrBlocks.value.length)
             ocrBlocks.value.push(block)
             activeBlockId.value = block.id
-            appendLog(`已添加手动区域 ${ocrBlocks.value.length}，开始 OCR`)
+            log('manual OCR started for region', ocrBlocks.value.length)
             const result = await window.electronAPI.recognizeText(cropRegion(imageElement, region))
             if (!result.success) throw new Error(result.error || 'OCR 识别失败')
             block.original = result.text || ''
-            appendLog('手动区域 OCR 完成', 'success')
+            log('manual OCR completed')
             if (settings.value.enableTranslation && block.original) {
-                appendLog('开始翻译手动区域')
+                log('manual translation started')
                 await translateBlock(block)
-                appendLog('手动区域翻译完成', 'success')
+                log('manual translation completed')
             }
             block.status = 'done'
         } catch (error) {
             if (block) block.status = 'error'
             const message = error instanceof Error ? error.message : String(error)
-            appendLog(`手动 OCR 失败：${message}`, 'error')
+            console.error('[AutoTranslate] manual OCR failed', error)
             showToast(message, 5000)
         } finally {
             isOcrRecognizing.value = false
@@ -310,18 +335,18 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         if (!block) return
         try {
             block.status = 'loading'
-            appendLog('开始重新识别所选区域')
+            log('re-OCR started')
             const imageElement = getCurrentImageElement()
             const result = await window.electronAPI.recognizeText(cropRegion(imageElement, block.rect))
             if (!result.success) throw new Error(result.error || '重新识别失败')
             block.original = result.text || ''
             await translateBlock(block)
             block.status = 'done'
-            appendLog('所选区域重新识别完成', 'success')
+            log('re-OCR completed')
         } catch (error) {
             block.status = 'error'
             const message = error instanceof Error ? error.message : String(error)
-            appendLog(`重新识别失败：${message}`, 'error')
+            console.error('[AutoTranslate] re-OCR failed', error)
             showToast(message)
         }
     }
@@ -329,10 +354,13 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     return {
         currentState,
         detectorAvailable,
+        translationReady,
+        translationMessage,
         isProcessing,
         isOcrMode,
         isOcrRecognizing,
-        appendLog,
+        log,
+        checkTranslationReady,
         processCurrentPage,
         startManualOcr,
         cancelManualOcr,

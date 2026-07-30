@@ -117,6 +117,10 @@ MangaReader/
 - Node.js 18+
 - Python 3.8+
 
+### Backlog
+
+- **浏览器扩展**：复用现有框选、OCR Block 与翻译校对流程，支持当前网页截图、用户框选区域识别，以及后续的整页自动检测。
+
 ## ⚖️ 许可与致谢 / License & Acknowledgements
 
 本项目代码采用 **GPL-3.0** 协议开源。
