@@ -87,7 +87,7 @@ const handleClose = () => {
                             <SettingsCloseButton @settings-close-btn-click="handleClose" />
                         </div>
 
-                        <div class="flex-1 overflow-y-auto custom-scrollbar p-8">
+                        <div class="settings-content-scroll flex-1 min-h-0 overflow-y-auto p-8">
                             <Transition enter-active-class="transition duration-200 ease-out"
                                 enter-from-class="opacity-0 translate-y-2" enter-to-class="opacity-100 translate-y-0"
                                 mode="out-in">
@@ -105,17 +105,12 @@ const handleClose = () => {
 </template>
 
 <style scoped>
-/* 可选：为滚动条添加一点样式 */
-.custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
+.settings-content-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
-    border-radius: 20px;
+.settings-content-scroll::-webkit-scrollbar {
+    display: none;
 }
 </style>

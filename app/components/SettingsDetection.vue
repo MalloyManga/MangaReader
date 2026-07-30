@@ -83,7 +83,7 @@ onUnmounted(() => cleanupProgress?.())
 </script>
 
 <template>
-    <div class="space-y-5 animate-fade-in flex flex-col h-full">
+    <div class="space-y-5 animate-fade-in flex flex-col min-h-full">
         <header>
             <div class="flex items-center gap-2 text-manga-900 dark:text-white">
                 <IconAutoDetect class="size-6 text-primary" />
@@ -175,10 +175,6 @@ onUnmounted(() => cleanupProgress?.())
                 </button>
             </div>
         </section>
-
-        <p class="text-xs text-manga-400 dark:text-manga-500 leading-relaxed px-1">
-            默认优先使用镜像下载，镜像不可用时自动切换官方渠道；所有文件加载前都会完成完整性校验。
-        </p>
 
         <ConfirmModal :show="showDeleteConfirm" title="卸载自动检测模块？"
             :content="`卸载后将释放 ${detectionModule.installedSize}，需要时可再次一键安装。`"
