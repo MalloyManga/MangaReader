@@ -252,9 +252,16 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const translateBlock = async (block: OcrBlock) => {
         if (!block.original) throw new Error('没有可翻译的原文')
+        const startedAt = performance.now()
+        log('translation request started', { blockId: block.id, modelId: settings.value.translationModelId })
         const result = await window.electronAPI.translate(block.original, settings.value.translationModelId)
         if (!result.success || !result.translation?.trim()) throw new Error(result.error || '翻译结果为空')
         block.translation = result.translation
+        log('translation request completed', {
+            blockId: block.id,
+            modelId: settings.value.translationModelId,
+            elapsedMs: Math.round(performance.now() - startedAt)
+        })
     }
 
     const replacePageBlocks = (imageId: string, blocks: OcrBlock[]) => {
@@ -624,8 +631,15 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     function stopProcessing() {
         if (!activeToken || activeToken.cancelled) return
+        const wasDetecting = taskContext.value.stage === 'detecting'
         activeToken.cancelled = true
         log('stop requested for', activeToken.kind, 'processing')
+        if (wasDetecting) {
+            window.electronAPI.cancelTextDetection?.().then((result) => {
+                if (!result.success) console.warn('[AutoTranslate] detector cancellation failed', result.error)
+                else log('active detector process cancelled')
+            })
+        }
         if (activeToken.kind === 'batch') {
             isBatchProcessing.value = false
             batchState.value.status = 'stopped'
@@ -700,10 +714,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             allPageBlocks.value[imageId] = [...ocrBlocks.value]
             activeBlockId.value = block.id
             log('manual OCR started for region', ocrBlocks.value.length)
+            const ocrStartedAt = performance.now()
             const result = await window.electronAPI.recognizeText(cropRegion(imageElement, region))
             if (!result.success) throw new Error(result.error || 'OCR 识别失败')
             block.original = result.text || ''
-            log('manual OCR completed')
+            log('manual OCR completed', { elapsedMs: Math.round(performance.now() - ocrStartedAt) })
             if (settings.value.enableTranslation && block.original) {
                 log('manual translation started')
                 await translateBlock(block)

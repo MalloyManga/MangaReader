@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return ipcRenderer.invoke('ocr:recognize', imageBase64)
     },
     detectTextRegions: (imageBase64) => ipcRenderer.invoke('ocr:detect-text-regions', imageBase64),
+    cancelTextDetection: () => ipcRenderer.invoke('ocr:cancel-text-detection'),
 
     // 分词识别
     tokenize: (text) => ipcRenderer.invoke('ocr:tokenize', text),

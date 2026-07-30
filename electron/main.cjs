@@ -489,6 +489,15 @@ ipcMain.handle('ocr:detect-text-regions', async (_event, imageBase64) => {
     }
 })
 
+ipcMain.handle('ocr:cancel-text-detection', () => {
+    try {
+        if (backendService) backendService.cancelTextDetection()
+        return { success: true }
+    } catch (error) {
+        return { success: false, error: error.message }
+    }
+})
+
 // 分词请求
 ipcMain.handle('ocr:tokenize', async (_event, text) => {
     try {

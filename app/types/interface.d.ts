@@ -131,6 +131,7 @@ export interface IElectronAPI {
         regions?: DetectedTextRegion[]
         error?: string
     }>
+    cancelTextDetection: () => Promise<{ success: boolean, error?: string }>
     checkDetectionModule: () => Promise<{
         success: boolean
         installed?: boolean

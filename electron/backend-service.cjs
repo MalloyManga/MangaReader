@@ -37,6 +37,10 @@ class BackendService extends EventEmitter {
         this.requestId = 0
         this.responseBuffer = ''
         this.lastProcessError = ''
+        this.detectionProcess = null
+        this.detectionResponseBuffer = ''
+        this.detectionRequestId = 0
+        this.detectionPendingRequests = new Map()
     }
 
     start() {
@@ -348,6 +352,7 @@ class BackendService extends EventEmitter {
     }
 
     async downloadDetectionModule(downloadSource = this.downloadSource) {
+        this.cancelTextDetection()
         return this._sendRequest({
             command: 'download_detection_module',
             download_source: downloadSource === 'official' ? 'official' : 'mirror'
@@ -355,11 +360,104 @@ class BackendService extends EventEmitter {
     }
 
     async deleteDetectionModule() {
+        this.cancelTextDetection()
         return this._sendRequest({ command: 'delete_detection_module' }, 30000)
     }
 
     async detectTextRegions(imageBase64) {
-        return this._sendRequest({ command: 'detect_text_regions', image: imageBase64 }, 600000)
+        return this._sendDetectionRequest(imageBase64)
+    }
+
+    _startDetectionWorker() {
+        if (this.detectionProcess && this.detectionProcess.exitCode === null) return
+
+        const isDev = !require('electron').app.isPackaged
+        const executable = isDev
+            ? path.join(__dirname, '../services/venv/Scripts/python.exe')
+            : path.join(process.resourcesPath, 'backend', 'backend.exe')
+        const args = isDev
+            ? ['-u', path.join(__dirname, '../services/backend_service.py')]
+            : []
+        args.push('--detection-worker', '--modules-root', this.modulesPath)
+
+        const worker = spawn(executable, args, {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: '1',
+                PYTHONIOENCODING: 'utf-8'
+            }
+        })
+        this.detectionProcess = worker
+        this.detectionResponseBuffer = ''
+        worker.stdin.setDefaultEncoding('utf-8')
+        worker.stdout.setEncoding('utf-8')
+        worker.stderr.setEncoding('utf-8')
+
+        worker.stdout.on('data', (chunk) => {
+            this.detectionResponseBuffer += chunk
+            const lines = this.detectionResponseBuffer.split('\n')
+            this.detectionResponseBuffer = lines.pop() || ''
+            for (const rawLine of lines) {
+                const line = rawLine.trim()
+                if (!line) continue
+                try {
+                    const response = JSON.parse(line)
+                    const pending = this.detectionPendingRequests.get(response.worker_id)
+                    if (!pending) continue
+                    this.detectionPendingRequests.delete(response.worker_id)
+                    if (response.success) pending.resolve({ regions: response.regions || [] })
+                    else pending.reject(new Error(response.error || 'DETECTION_WORKER_FAILED'))
+                } catch (error) {
+                    console.error('[Detection Worker] Invalid response:', error)
+                }
+            }
+        })
+        worker.stderr.on('data', data => console.log('[Detection Worker]', data.toString().trim()))
+        worker.on('error', error => this._clearDetectionWorker(worker, error))
+        worker.on('exit', (code) => {
+            this._clearDetectionWorker(worker, new Error(`Detection worker exited (${code})`))
+        })
+    }
+
+    _clearDetectionWorker(worker, error) {
+        if (this.detectionProcess !== worker) return
+        this.detectionProcess = null
+        this.detectionResponseBuffer = ''
+        this.detectionPendingRequests.forEach(({ reject }) => reject(error))
+        this.detectionPendingRequests.clear()
+    }
+
+    _sendDetectionRequest(imageBase64, timeout = 600000) {
+        return new Promise((resolve, reject) => {
+            this._startDetectionWorker()
+            const worker = this.detectionProcess
+            const workerId = ++this.detectionRequestId
+            this.detectionPendingRequests.set(workerId, { resolve, reject })
+            const request = JSON.stringify({ worker_id: workerId, action: 'detect', image: imageBase64 })
+            worker.stdin.write(request + '\n', (error) => {
+                if (!error) return
+                this.detectionPendingRequests.delete(workerId)
+                reject(error)
+            })
+            setTimeout(() => {
+                if (!this.detectionPendingRequests.has(workerId)) return
+                this.detectionPendingRequests.delete(workerId)
+                reject(new Error(`Detection request timeout (${timeout}ms)`))
+                this.cancelTextDetection()
+            }, timeout)
+        })
+    }
+
+    cancelTextDetection() {
+        const worker = this.detectionProcess
+        if (!worker) return
+        this.detectionProcess = null
+        this.detectionResponseBuffer = ''
+        const error = new Error('Text detection cancelled')
+        this.detectionPendingRequests.forEach(({ reject }) => reject(error))
+        this.detectionPendingRequests.clear()
+        if (worker.exitCode === null) worker.kill()
     }
 
     async extractCover(path) {
@@ -367,10 +465,12 @@ class BackendService extends EventEmitter {
     }
 
     stop() {
+        this.cancelTextDetection()
         if (this.process) this.process.kill()
     }
 
     restart(downloadSource = this.downloadSource) {
+        this.cancelTextDetection()
         this.downloadSource = downloadSource === 'official' ? 'official' : 'mirror'
         this.isReady = false
         this.lastProcessError = ''

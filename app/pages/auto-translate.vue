@@ -60,6 +60,22 @@ const nextPageRevision = (imageId: string) => {
     return revision
 }
 
+const snapshotBlocks = (blocks: OcrBlock[]): OcrBlock[] => blocks.map(block => ({
+    id: block.id,
+    ...(block.source ? { source: block.source } : {}),
+    rect: {
+        x: block.rect.x,
+        y: block.rect.y,
+        width: block.rect.width,
+        height: block.rect.height
+    },
+    original: block.original,
+    translation: block.translation,
+    tokens: (block.tokens || []).map(token => ({ ...token })),
+    status: block.status,
+    showOriginal: block.showOriginal
+}))
+
 const persistPageBlocks = async (imageId: string, blocks: OcrBlock[]) => {
     if (isRestoringBook.value) return
     const bookId = autoTranslateSession.bookId.value
@@ -68,8 +84,13 @@ const persistPageBlocks = async (imageId: string, blocks: OcrBlock[]) => {
     await window.electronAPI.updateAutoTranslatePage({
         id: bookId,
         pageIndex,
-        blocks,
-        deletedRegions: autoTranslateSession.deletedPageRegions.value[imageId] || [],
+        blocks: snapshotBlocks(blocks),
+        deletedRegions: (autoTranslateSession.deletedPageRegions.value[imageId] || []).map(region => ({
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: region.height
+        })),
         processed: Boolean(autoTranslateSession.processedPageIds.value[imageId]),
         revision: nextPageRevision(imageId)
     })
