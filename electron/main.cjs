@@ -4,7 +4,7 @@ if (require('electron-squirrel-startup')) {
     process.exit(0)
 }
 
-const { app, BrowserWindow, protocol, Menu, globalShortcut } = require('electron')
+const { app, BrowserWindow, protocol, Menu, globalShortcut, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -71,11 +71,24 @@ function getServicesModulesPath() {
         : path.join(app.getPath('userData'), 'services', 'modules')
 }
 
+// 配置文件损坏恢复:删除损坏文件后用默认值重建(Malloy 拍板:不做备份,直接删)
+// 触发场景:config.json 被手动编辑写坏,或极罕见的写入故障(conf 默认不开 clearInvalidConfig,JSON.parse 直接抛错)
+function recoverCorruptedStore(configPath, error) {
+    console.error('[Store] 配置文件损坏,将删除并重建为默认配置:', error.message)
+    try {
+        fs.unlinkSync(configPath)
+    } catch (e) {
+        // 删除失败(权限等)时后续重建会再次失败,由外层 whenReady 的 catch 兜底
+        console.error('[Store] 删除损坏配置文件失败:', e.message)
+    }
+}
+
 //  初始化 Electron Store (处理 ESM 导入)
+// 配置文件损坏(JSON 解析失败)时:删除损坏文件 -> 默认值重建 -> 弹窗告知用户
 async function initStore() {
     const { default: Store } = await import('electron-store')
 
-    const store = new Store({
+    const options = {
         name: 'config', // 文件名为 config.json
         defaults: {     // 默认配置 防止首次运行为空
             enableTranslation: true,
@@ -87,9 +100,28 @@ async function initStore() {
             ocrShortcut: '',
             library: [] // 书架数据
         }
-    })
-    ctx.setStore(store)
-    return store
+    }
+
+    try {
+        const store = new Store(options)
+        ctx.setStore(store)
+        return store
+    } catch (error) {
+        // 仅 JSON 解析失败按损坏处理;其他错误保持原行为上抛给 whenReady 的 catch
+        if (!(error instanceof SyntaxError)) throw error
+        recoverCorruptedStore(path.join(app.getPath('userData'), 'config.json'), error)
+
+        // 文件已删除,以默认值重建;若再失败则由外层 catch 兜底
+        const store = new Store(options)
+        ctx.setStore(store)
+        dialog.showMessageBoxSync({
+            type: 'warning',
+            title: 'MangaReader',
+            message: '配置文件已损坏,已重置为默认设置',
+            detail: '本地设置与书架记录未能恢复'
+        })
+        return store
+    }
 }
 
 // 向当前窗口转发后端事件;窗口不存在或已销毁时静默丢弃
@@ -194,15 +226,15 @@ app.whenReady().then(async () => {
         // 转发后端日志到前端
         backendService.on('log', (msg) => sendToWindow('backend:log', msg))
 
-        // 统一注册全部 IPC 通道与 manga:// 协议(清单见 doc/electron-main-refactor.md §5)
+        // 统一注册全部 IPC 通道与 manga:// 协议 37 个通道: library 5 / backend 代理 19 / settings 4 / 系统 7 / files 2
         registerAll(ctx)
 
         backendService.start()
 
         createMainWindow()
     } catch (e) {
-        // 已知问题(见 doc/electron-main-refactor.md §6.1):initStore 抛错(如 config.json 损坏)时
-        // backend 不启动 窗口不创建,应用变成无界面空进程 处理策略待定,此处保持原样
+        // config.json 损坏已由 initStore 内部恢复(删除重建+告知用户)
+        // 走到这里的剩余错误(磁盘/权限等)无法恢复 应用保持退出前打日志
         console.log('启动时错误', e)
     }
 })
