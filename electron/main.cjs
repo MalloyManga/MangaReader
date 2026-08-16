@@ -4,36 +4,26 @@ if (require('electron-squirrel-startup')) {
     process.exit(0)
 }
 
-/**
- * @typedef {Object} Book
- * @property {string} id - 唯一的 UUID
- * @property {string} path - 文件夹/文件路径
- * @property {string|null} cover - 图片 Base64，如果是 null 则没有封面
- * @property {number} totalPage - 总页数
- * @property {number} currentPage - 当前阅读页
- * @property {number} lastReadTime - 最后阅读时间的时间戳
- */
-
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, shell, Menu, dialog, protocol, net } = require('electron')
+const { app, BrowserWindow, protocol, Menu, globalShortcut } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const url = require('url')
+
+// 实例抽象到ctx 注入:长期存活实例(mainWindow/backend/store/paths)由 context 持有,IPC 域模块经参数读取
 const { BackendService } = require('./backend-service.cjs')
+const ctx = require('./ipc/context.cjs')
+const { registerAll } = require('./ipc/register.cjs')
 
 const isDev = !app.isPackaged
 
 /** @type {import('electron').BrowserWindow} */
-let mainWindow // 将 mainWindow 提升到全局，以便我们可以从 ipcMain 访问它
+let mainWindow
 
 /**
  * @type {import('./backend-service.cjs').BackendService}
  */
 let backendService = null
 
-/** @type {import('electron-store').default} */
-let store
-
-// 配置manga://协议schema
+// 配置manga://协议schema(必须在 app ready 之前,故不随 protocol.handle 迁出)
 protocol.registerSchemesAsPrivileged([{
     scheme: 'manga',
     privileges: {
@@ -68,8 +58,8 @@ if (app.isPackaged) {
 // -------------------------------------------
 
 function getModelsPath() {
-    // 开发环境：项目根目录/models
-    // 生产环境：安装目录/resources/backend/models
+    // 开发环境 项目根目录/models
+    // 生产环境 安装目录/resources/backend/models
     return isDev
         ? path.join(__dirname, '../models')
         : path.join(process.resourcesPath, 'backend', 'models')
@@ -85,9 +75,9 @@ function getServicesModulesPath() {
 async function initStore() {
     const { default: Store } = await import('electron-store')
 
-    store = new Store({
+    const store = new Store({
         name: 'config', // 文件名为 config.json
-        defaults: {     // 默认配置，防止首次运行为空
+        defaults: {     // 默认配置 防止首次运行为空
             enableTranslation: true,
             translationModelId: '',
             enableTokenization: true,
@@ -98,7 +88,16 @@ async function initStore() {
             library: [] // 书架数据
         }
     })
+    ctx.setStore(store)
     return store
+}
+
+// 向当前窗口转发后端事件;窗口不存在或已销毁时静默丢弃
+function sendToWindow(channel, payload) {
+    const win = mainWindow
+    if (win && !win.isDestroyed()) {
+        win.webContents.send(channel, payload)
+    }
 }
 
 function createMainWindow() {
@@ -118,6 +117,7 @@ function createMainWindow() {
             preload: path.join(__dirname, 'preload.js')
         },
     })
+    ctx.setMainWindow(mainWindow)
 
     if (isDev) {
         mainWindow.loadURL('http://localhost:3000')
@@ -131,6 +131,7 @@ function createMainWindow() {
     // 用户通过其他方式操作窗口之后 通知UI进行处理(webContents.send)
     mainWindow.on('closed', () => {
         mainWindow = null
+        ctx.setMainWindow(null)
     })
 
     mainWindow.on('maximize', () => {
@@ -148,473 +149,11 @@ function createMainWindow() {
     })
 }
 
-// 书架部分
-ipcMain.handle('library:get-all', () => {
-    return store ? store.get('library', []) : []
-})
-
-ipcMain.handle('library:add', async (_event, pathStr, kind = 'standard') => {
-    try {
-        const normalizedKind = kind === 'auto-translate' ? 'auto-translate' : 'standard'
-        /**
-        * @type {Book[]}
-        */
-        const library = store.get('library', [])
-        const existingBook = library.find(b => b.path === pathStr)
-        if (existingBook) {
-            if (normalizedKind === 'auto-translate' && existingBook.kind !== 'auto-translate') {
-                existingBook.kind = 'auto-translate'
-                existingBook.autoTranslatePages = existingBook.autoTranslatePages || {}
-                existingBook.autoTranslateDeletedRegions = existingBook.autoTranslateDeletedRegions || {}
-                existingBook.autoTranslateProcessedPages = existingBook.autoTranslateProcessedPages || []
-                existingBook.autoTranslatePageRevisions = existingBook.autoTranslatePageRevisions || {}
-                store.set('library', library)
-            }
-            return { success: true, book: existingBook, alreadyExists: true }
-        }
-
-        let cover = null
-        if (backendService && backendService.isReady) {
-            try {
-                const res = await backendService.extractCover(pathStr)
-                if (res && res.cover) {
-                    cover = `data:image/jpeg;base64,${res.cover}`
-                }
-            } catch (e) {
-                console.error('Cover extraction failed:', e)
-            }
-        }
-
-        const newBook = {
-            id: require('crypto').randomUUID(),
-            path: pathStr,
-            cover: cover,
-            totalPage: 0,
-            currentPage: 0,
-            lastReadTime: Date.now(),
-            kind: normalizedKind,
-            ...(normalizedKind === 'auto-translate' ? {
-                autoTranslatePages: {},
-                autoTranslateDeletedRegions: {},
-                autoTranslateProcessedPages: [],
-                autoTranslatePageRevisions: {}
-            } : {})
-        }
-
-        library.push(newBook)
-        store.set('library', library)
-        return { success: true, book: newBook }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('library:update-progress', (_event, { id, currentPage, totalPage, lastReadTime }) => {
-    /**
-    * @type {Book[]}
-    */
-    const library = store.get('library', [])
-    const index = library.findIndex(b => b.id === id)
-    if (index !== -1) {
-        // 更新阅读进度
-        if (currentPage !== undefined) library[index].currentPage = currentPage
-        if (totalPage !== undefined) library[index].totalPage = totalPage
-        if (lastReadTime !== undefined) library[index].lastReadTime = lastReadTime
-        store.set('library', library)
-        return true
-    }
-    return false
-})
-
-ipcMain.handle('library:update-auto-translate-page', (_event, {
-    id,
-    pageIndex,
-    blocks,
-    deletedRegions,
-    processed,
-    revision
-}) => {
-    const library = store.get('library', [])
-    const index = library.findIndex(b => b.id === id)
-    if (index === -1 || !Number.isInteger(pageIndex) || pageIndex < 0 || !Array.isArray(blocks)) return false
-    const book = library[index]
-    const pageKey = String(pageIndex)
-    book.kind = 'auto-translate'
-    book.autoTranslatePages = book.autoTranslatePages || {}
-    book.autoTranslateDeletedRegions = book.autoTranslateDeletedRegions || {}
-    book.autoTranslateProcessedPages = Array.isArray(book.autoTranslateProcessedPages)
-        ? book.autoTranslateProcessedPages
-        : []
-    book.autoTranslatePageRevisions = book.autoTranslatePageRevisions || {}
-
-    if (Number.isFinite(revision)) {
-        const previousRevision = book.autoTranslatePageRevisions[pageKey] || 0
-        if (revision < previousRevision) return false
-        book.autoTranslatePageRevisions[pageKey] = revision
-    }
-
-    if (blocks.length) book.autoTranslatePages[pageKey] = blocks
-    else delete book.autoTranslatePages[pageKey]
-    if (Array.isArray(deletedRegions) && deletedRegions.length) {
-        book.autoTranslateDeletedRegions[pageKey] = deletedRegions
-    } else if (Array.isArray(deletedRegions)) {
-        delete book.autoTranslateDeletedRegions[pageKey]
-    }
-    if (typeof processed === 'boolean') {
-        const processedPages = new Set(book.autoTranslateProcessedPages)
-        if (processed) processedPages.add(pageIndex)
-        else processedPages.delete(pageIndex)
-        book.autoTranslateProcessedPages = [...processedPages].sort((a, b) => a - b)
-    }
-    store.set('library', library)
-    return true
-})
-
-ipcMain.handle('library:remove', (_event, id) => {
-    /**
-    * @type {Book[]}
-    */
-    let library = store.get('library', [])
-    library = library.filter(b => b.id !== id)
-    store.set('library', library)
-    return true
-})
-// ------------------------------
-
-// 主功能
-ipcMain.handle('fs:exists', async (_event, pathStr) => {
-    try {
-        await fs.promises.stat(pathStr)
-        return true
-    } catch (e) {
-        return false
-    }
-})
-
-ipcMain.handle('dialog:open-file', async (_event) => {
-    if (!mainWindow) return { canceled: true, filePaths: [] } // 这里为确保返回值相同故构建一个报错时的错误返回值
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-        title: 'Open Manga',
-        properties: ['openFile', 'multiSelections'],
-        filters: [
-            {
-                name: 'Images / PDF / Zip',
-                extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'pdf', 'zip']
-            }
-        ]
-    })
-    return { canceled, filePaths }
-})
-
-ipcMain.handle('dialog:select-export-directory', async (_event, defaultName) => {
-    if (!mainWindow) return { canceled: true }
-    const safeName = path.basename(String(defaultName || 'translated-manga')).replace(/[<>:"/\\|?*]/g, '_')
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-        title: '选择翻译图片保存文件夹',
-        defaultPath: path.join(app.getPath('downloads'), safeName),
-        properties: ['openDirectory', 'createDirectory']
-    })
-    return { canceled, directoryPath: filePaths[0] }
-})
-
-// 用户点击按钮之后唤起dialog加载文件 仅仅返回路径给前端
-ipcMain.handle('files:read-images', async (_event,/** @type {string[]} */ filePaths) => {
-    try {
-        if (!filePaths || filePaths.length === 0) return { success: false, imagePaths: [] }
-        const imagePaths = []
-        const filePath = filePaths[0]
-        if ((await fs.promises.stat(filePath)).isDirectory()) { // 如果为文件夹 则读取文件夹中所有图片的路径并排序 全部返回
-            // 此时 filePath 即 filePaths[0] 为文件夹的路径
-            const folderFilePaths = await fs.promises.readdir(filePath) // readdir 仅仅获取到文件名称及后缀
-            const sortedFilePaths = folderFilePaths.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-            for (const sortedFilePath of sortedFilePaths) {
-                const fileExt = sortedFilePath.split('.').pop().toLowerCase()
-                if (fileExt.match(/^(png|jpe?g|webp|gif)$/i)) {
-                    const fullFilePath = path.join(filePath, sortedFilePath) // path.join拼接出完整的路径
-                    imagePaths.push(fullFilePath)
-                }
-            }
-        }
-        else {
-            const folderPath = path.dirname(filePath)
-            const folderFilePaths = await fs.promises.readdir(folderPath)
-            const sortedFilePaths = folderFilePaths.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-            for (const sortedFilePath of sortedFilePaths) {
-                const fileExt = sortedFilePath.split('.').pop().toLowerCase()
-                if (fileExt.match(/^(png|jpe?g|webp|gif)$/i)) {
-                    const fullFilePath = path.join(folderPath, sortedFilePath) // path.join拼接出完整的路径
-                    imagePaths.push(fullFilePath)
-                }
-            }
-        }
-        return { success: true, imagePaths }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('files:save-exported-image', async (_event, { directoryPath, filename, imageDataUrl }) => {
-    try {
-        const directoryStat = await fs.promises.stat(directoryPath)
-        if (!directoryStat.isDirectory()) throw new Error('导出位置不是文件夹')
-        const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(imageDataUrl)
-        if (!match) throw new Error('导出图片数据无效')
-        const safeFilename = path.basename(filename).replace(/[<>:"/\\|?*]/g, '_')
-        const extension = path.extname(safeFilename) || '.png'
-        const baseName = path.basename(safeFilename, extension)
-        let outputPath = path.join(directoryPath, `${baseName}${extension}`)
-        let suffix = 1
-        while (fs.existsSync(outputPath)) {
-            outputPath = path.join(directoryPath, `${baseName}-${suffix}${extension}`)
-            suffix++
-        }
-        await fs.promises.writeFile(outputPath, Buffer.from(match[1], 'base64'))
-        return { success: true, path: outputPath }
-    } catch (error) {
-        return { success: false, error: error.message }
-    }
-})
-
-// OCR 识别请求
-ipcMain.handle('ocr:recognize', async (_event, imageBase64) => {
-    try {
-        console.log('Received OCR request, image size:', imageBase64.length)
-
-        if (!backendService || !backendService.isReady) {
-            return {
-                success: false,
-                error: 'OCR service not ready. Please wait...'
-            }
-        }
-
-        const { text } = await backendService.recognize(imageBase64)
-
-        return {
-            success: true,
-            text: text
-        }
-    } catch (error) {
-        console.error('OCR recognition error:', error)
-        return {
-            success: false,
-            error: error.message
-        }
-    }
-})
-
-ipcMain.handle('ocr:detect-text-regions', async (_event, imageBase64) => {
-    try {
-        if (!backendService || !backendService.isReady) {
-            return { success: false, error: 'OCR service not ready. Please wait...' }
-        }
-        const result = await backendService.detectTextRegions(imageBase64)
-        return { success: true, regions: result.regions || [] }
-    } catch (error) {
-        return { success: false, error: error.message }
-    }
-})
-
-ipcMain.handle('ocr:cancel-text-detection', () => {
-    try {
-        if (backendService) backendService.cancelTextDetection()
-        return { success: true }
-    } catch (error) {
-        return { success: false, error: error.message }
-    }
-})
-
-// 分词请求
-ipcMain.handle('ocr:tokenize', async (_event, text) => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.tokenize(text)
-        console.log(`Tokenize result: ${result?.tokens?.length || 0} tokens found`)
-        if (!result) {
-            throw new Error('Service returned empty result')
-        }
-
-        // Service 返回的是 { tokens: [...] }
-        return { success: true, tokens: result.tokens }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-// 翻译请求
-ipcMain.handle('ocr:translate', async (_event, text, modelId) => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.translate(text, modelId)
-        return { success: true, translation: result.translation, modelId: result.modelId }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-// -------------------------------------------
-
-// 模型相关
-ipcMain.handle('model:list', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.listTranslationModels()
-        return { success: true, ...result }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-// 检查模型状态
-ipcMain.handle('model:check', async (_event, modelId) => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.checkModel(modelId)
-        return { success: true, exists: result.exists, modelId: result.modelId }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-// 下载模型
-ipcMain.handle('model:download', async (_event, modelId) => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.downloadModel(modelId)
-        return { success: true, modelId: result.modelId }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-// 删除模型
-ipcMain.handle('model:delete', async (_event, modelId) => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.deleteModel(modelId)
-        return { success: true, modelId: result.modelId }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('detection-module:check', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        return await backendService.checkDetectionModule()
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('detection-module:download', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        return await backendService.downloadDetectionModule(store?.get('downloadSource', 'mirror'))
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('detection-module:delete', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.deleteDetectionModule()
-        return { success: true }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('dictionary:check', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        const result = await backendService.checkDictionary()
-        return { success: true, exists: result.exists }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('dictionary:download', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.downloadDictionary()
-        return { success: true }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-ipcMain.handle('dictionary:delete', async () => {
-    try {
-        if (!backendService) return { success: false, error: "Service not ready" }
-        await backendService.deleteDictionary()
-        return { success: true }
-    } catch (e) {
-        return { success: false, error: e.message }
-    }
-})
-
-//  打开模型文件夹
-ipcMain.on('open-model-folder', () => {
-    const modelsRoot = getModelsPath()
-    if (!fs.existsSync(modelsRoot)) {
-        fs.mkdirSync(modelsRoot, { recursive: true })
-    }
-    shell.openPath(modelsRoot)
-})
-
-ipcMain.on('open-detection-module-folder', () => {
-    const detectionModuleRoot = path.join(getServicesModulesPath(), 'text_detection', 'installed')
-    fs.mkdirSync(detectionModuleRoot, { recursive: true })
-    shell.openPath(detectionModuleRoot)
-})
-// -------------------------------------------
-
-// 窗口控制 IPC 监听器 监听渲染进程发送的事件 调用mainWindow的方法进行操作
-ipcMain.on('window:minimize', () => {
-    if (mainWindow) {
-        mainWindow.minimize()
-    }
-})
-
-ipcMain.on('window:maximize', () => {
-    if (mainWindow) {
-        if (mainWindow.isMaximized()) {
-            mainWindow.unmaximize()
-        } else {
-            mainWindow.maximize()
-        }
-    }
-})
-
-ipcMain.on('window:close', () => {
-    if (mainWindow) {
-        mainWindow.close()
-    }
-})
-// -------------------------------------------
-
 app.whenReady().then(async () => {
     try {
-        await initStore()
+        // electron-store 内部的初始化依赖app本身的生命周期 故必须在 whenReady 内部加载
+        const store = await initStore()
         console.log('[INFO] Electron Store initialized')
-
-        // 注册 Settings 相关的 IPC 强依赖store 故注册到whenReady的then回调当中
-        // 获取所有设置
-        ipcMain.handle('settings:get', () => {
-            return store.store
-        })
-
-        // 保存单个设置 (key, value)
-        ipcMain.on('settings:set', (_event, key, value) => {
-            store.set(key, value)
-        })
-
-        // 打开配置文件
-        ipcMain.on('settings:open-config', () => {
-            store.openInEditor()
-        })
-        // --------------------------------
 
         // 创建ocr模型文件夹
         const modelsRoot = getModelsPath()
@@ -629,156 +168,41 @@ app.whenReady().then(async () => {
             servicesModulesPath,
             store.get('downloadSource', 'mirror')
         )
+        ctx.setBackend(backendService)
+        ctx.setPaths({ modelsPath: modelsRoot, servicesModulesPath })
+
         backendService.on('ready', () => {
             console.log('Signal: Backend ready, notifying frontend...')
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('backend-status', { status: 'ready' })
-            }
+            sendToWindow('backend-status', { status: 'ready' })
         })
 
         // 监听初始化文字状态
-        backendService.on('init-status', (message) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('init-status', message)
-            }
-        })
+        backendService.on('init-status', (message) => sendToWindow('init-status', message))
 
         //  监听初始化进度
-        backendService.on('init-progress', (data) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('init-progress', data)
-            }
-        })
+        backendService.on('init-progress', (data) => sendToWindow('init-progress', data))
 
         // 监听初始化错误
-        backendService.on('init-error', (data) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('init-error', data)
-            }
-        })
+        backendService.on('init-error', (data) => sendToWindow('init-error', data))
 
-        backendService.on('download-progress', (data) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('model:download-progress', data)
-            }
-        })
+        backendService.on('download-progress', (data) => sendToWindow('model:download-progress', data))
 
-        backendService.on('dictionary-download-progress', (percent) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('dictionary:download-progress', percent)
-            }
-        })
+        backendService.on('dictionary-download-progress', (percent) => sendToWindow('dictionary:download-progress', percent))
 
-        backendService.on('detection-module-download-progress', (data) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('detection-module:download-progress', data)
-            }
-        })
+        backendService.on('detection-module-download-progress', (data) => sendToWindow('detection-module-download-progress', data))
 
         // 转发后端日志到前端
-        backendService.on('log', (msg) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('backend:log', msg)
-            }
-        })
+        backendService.on('log', (msg) => sendToWindow('backend:log', msg))
+
+        // 统一注册全部 IPC 通道与 manga:// 协议(清单见 doc/electron-main-refactor.md §5)
+        registerAll(ctx)
 
         backendService.start()
 
-        // 监听打开外部链接的请求 使用默认浏览器打开
-        ipcMain.handle('shell:open', async (_event, url) => {
-            // 安全起见，只允许打开 http/https 协议
-            if (url.startsWith('http://') || url.startsWith('https://')) {
-                await shell.openExternal(url)
-            }
-        })
-
-        ipcMain.handle('backend:check-ready', () => {
-            return backendService ? backendService.isReady : false
-        })
-
-        ipcMain.handle('backend:retry-init', (_event, source) => {
-            try {
-                const normalizedSource = source === 'official' ? 'official' : 'mirror'
-                store.set('downloadSource', normalizedSource)
-                if (!backendService) return { success: false, error: 'Service not available' }
-                backendService.restart(normalizedSource)
-                return { success: true }
-            } catch (error) {
-                return { success: false, error: error.message }
-            }
-        })
-
-        // 批量更新快捷键设置
-        ipcMain.handle('settings:update-shortcuts', (_event, /** @type {Record<String,String>} */ shortcuts) => {
-            // 先清除所有旧的快捷键
-            globalShortcut.unregisterAll()
-
-            if (!shortcuts || typeof shortcuts !== 'object') {
-                return false
-            }
-
-            // 遍历注册每个功能的快捷键
-            for (const [action, shortcut] of Object.entries(shortcuts)) {
-                if (!shortcut || typeof shortcut !== 'string' || shortcut.trim() === '') {
-                    continue
-                }
-
-                // 格式转换 "Ctrl + A" -> "Ctrl+A"
-                const accelerator = shortcut.replace(/\s+/g, '')
-
-                try {
-                    const ret = globalShortcut.register(accelerator, () => {
-                        console.log(`[INFO] 快捷键触发: ${action} (${accelerator})`)
-
-                        if (!mainWindow) return
-                        const isAppActive = mainWindow.isFocused()
-                        if (isAppActive) {
-                            mainWindow.webContents.send('shortcut:triggered', action)
-                        }
-                    })
-
-                    if (!ret) {
-                        console.warn(`[WARN] 快捷键注册失败 (可能被占用): ${action} - ${accelerator}`)
-                    }
-                } catch (err) {
-                    console.error(`[ERROR] 快捷键注册异常: ${action}`, err)
-                }
-            }
-            return true
-        })
-
-        // 自建图片协议 拦截mnaga:// 请求
-        protocol.handle('manga', async (request) => {
-            try {
-                // 1. 截掉 'manga://' 头
-                let rawPath = request.url.slice('manga://'.length)
-
-                // 2. 解码！把浏览器自动编码的 %E3%83 还原回真实的汉字/日文
-                rawPath = decodeURIComponent(rawPath)
-
-                // 3. 修复盘符！如果浏览器把 C:/ 吞成了 c/，我们手动补上冒号
-                // 正则解释：如果开头是一个字母紧跟一个斜杠 (比如 c/ 或 d/)
-                if (/^[a-zA-Z]\//.test(rawPath)) {
-                    // 在字母和斜杠中间插入冒号 -> c:/
-                    rawPath = rawPath[0] + ':' + rawPath.slice(1)
-                }
-
-                // 4. 使用 Node.js 官方 API 转换为标准 file:// 协议
-                // pathToFileURL 需要接收绝对纯净的本地路径 (例如 C:\Users\测试\1.png)
-                const fileUrl = url.pathToFileURL(rawPath).href
-
-                // 返回本地文件流
-                return net.fetch(fileUrl)
-
-            } catch (e) {
-                console.error('加载本地图片出错 URL:', request.url)
-                console.error('详细错误:', e)
-                return new Response('File not found', { status: 404 })
-            }
-        })
-
         createMainWindow()
     } catch (e) {
+        // 已知问题(见 doc/electron-main-refactor.md §6.1):initStore 抛错(如 config.json 损坏)时
+        // backend 不启动 窗口不创建,应用变成无界面空进程 处理策略待定,此处保持原样
         console.log('启动时错误', e)
     }
 })
@@ -800,6 +224,7 @@ app.on('will-quit', () => {
     if (backendService) {
         backendService.stop()
         backendService = null
+        ctx.setBackend(null)
     }
 })
 
