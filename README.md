@@ -117,18 +117,20 @@ MangaReader/
 │   ├── composables/    # 组合式函数 (状态管理)
 │   └── pages/          # 路由页面
 ├── electron/           # Electron 主进程
-│   ├── main.cjs        # 应用入口
-│   └── backend-service.cjs # Python 进程桥接
+│   ├── main.cjs        # 应用入口 (启动序列与生命周期)
+│   ├── ipc/            # IPC 域模块 (library/settings/system/files/backend-api/protocol)
+│   ├── backend-service.cjs # Python 进程桥接
+│   └── preload.js      # 渲染进程 API 桥
 ├── services/           # Python 后端 (OCR & NLP 核心)
-│   ├── modules/        # 功能模块 (OCR, Tokenizer, Translator, Detector)
-│   └── backend_service.py # 后端服务入口
+│   ├── modules/        # 功能模块 (OCR/分词/翻译/检测/会话/路由分发/handlers)
+│   └── backend_service.py # 后端服务入口 (参数解析与消息循环)
 └── public/             # 静态资源
 ```
 
 ### ⚡ 本地开发
 
-- Node.js 18+
-- Python 3.8+
+- Node.js 20+ (electron-store 等依赖要求)
+- Python 3.10+ (消息路由使用 match/case 语法)
 
 ### Backlog
 
