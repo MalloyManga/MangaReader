@@ -1,9 +1,6 @@
 # services/modules/ocr_engine.py
 import os
 import base64
-import sys
-import json
-import contextlib
 from io import BytesIO
 from PIL import Image
 from manga_ocr import MangaOcr
@@ -87,6 +84,7 @@ class OCREngine:
         return True
 
     def _load_model(self):
+        """加载OCR模型"""
         # 1. 检查本地是否存在且完整
         if self._check_integrity():
             log_message(f"[INFO] Found valid model at: {self.model_dir}")

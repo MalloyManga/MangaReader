@@ -30,6 +30,7 @@ TRANSLATOR_MODELS = [
 
 
 def get_default_translator_id():
+    """按照体积最小的来获取到默认的模型"""
     return min(
         TRANSLATOR_MODELS,
         key=lambda item: item.get("size_bytes", float("inf")),
