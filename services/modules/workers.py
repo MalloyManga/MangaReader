@@ -26,6 +26,7 @@ _ENTRY_SCRIPT = os.path.join(
 
 
 def run_translate_worker_mode(models_root):
+    """一次性 worker 进程翻译器"""
     try:
         encoded = sys.stdin.readline().strip()
         payload = json.loads(base64.b64decode(encoded).decode("utf-8"))
@@ -63,6 +64,7 @@ def run_translate_worker_mode(models_root):
 
 
 def run_detection_worker_mode(modules_root):
+    """文本检测常驻 worker 进程"""
     manager = DetectionModuleManager(modules_root)
     registry = TextDetectorRegistry(manager)
     try:
@@ -75,8 +77,10 @@ def run_detection_worker_mode(modules_root):
                 if action == "load":
                     result = {"version": registry.load()}
                 elif action == "detect":
-                    result = {"regions": registry.detect_base64(request.get("image", ""))}
-                elif action == "shutdown":
+                    result = {
+                        "regions": registry.detect_base64(request.get("image", ""))
+                    }
+                elif action == "shutdown":  # 收到 shutdown 才会退出
                     send_response({"worker_id": worker_id, "success": True})
                     return 0
                 else:
@@ -85,7 +89,11 @@ def run_detection_worker_mode(modules_root):
             except Exception as error:
                 send_response(
                     {
-                        "worker_id": request.get("worker_id") if isinstance(request, dict) else None,
+                        "worker_id": (
+                            request.get("worker_id")
+                            if isinstance(request, dict)
+                            else None
+                        ),
                         "success": False,
                         "error": str(error),
                     }
@@ -97,6 +105,7 @@ def run_detection_worker_mode(modules_root):
 
 class DetectionWorkerClient:
     """自动检测的 worker 进程类"""
+
     def __init__(self, modules_root):
         self.modules_root = modules_root
         self.process = None
@@ -133,10 +142,8 @@ class DetectionWorkerClient:
         command = [sys.executable]
         if not getattr(sys, "frozen", False):
             command.append(_ENTRY_SCRIPT)
-        command.extend(
-            ["--detection-worker", "--modules-root", str(self.modules_root)]
-        )
-        self.process = subprocess.Popen(
+        command.extend(["--detection-worker", "--modules-root", str(self.modules_root)])
+        self.process = subprocess.Popen(  # 开启自动检测的模块的 worker 进程
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -162,7 +169,7 @@ class DetectionWorkerClient:
             while True:
                 line = self.process.stdout.readline()
                 if not line:
-                    raise RuntimeError("DETECTION_WORKER_STOPPED")
+                    raise RuntimeError("DETECTION_WORKER_STOPPED")  # 没有响应 关闭进程
                 try:
                     response = json.loads(line)
                 except json.JSONDecodeError:
@@ -170,7 +177,9 @@ class DetectionWorkerClient:
                 if response.get("worker_id") != worker_id:
                     continue
                 if not response.get("success"):
-                    raise RuntimeError(response.get("error") or "DETECTION_WORKER_FAILED")
+                    raise RuntimeError(
+                        response.get("error") or "DETECTION_WORKER_FAILED"
+                    )
                 return response
         except Exception:
             self.unload()
@@ -178,18 +187,19 @@ class DetectionWorkerClient:
 
 
 def translate_in_worker(models_root, model_id, text, timeout=600):
+    """针对某一些模型 在独立的 worker 进程当中进行翻译"""
     payload = {"model_id": model_id, "text": text}
     encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
     # 命令里没有脚本路径是刻意的 本函数只在打包环境被调用(见 should_translate_in_worker)
     # 此时 sys.executable 就是 backend.exe 自身 参数直接交给入口分发
     command = [
         sys.executable,
-        "--translate-worker",
+        "--translate-worker",  # 参数表明开启的是独立的翻译 worker 进程
         "--models-root",
         models_root,
     ]
 
-    completed = subprocess.run(
+    completed = subprocess.run(  # 一个独立的新进程 重新启动 backend_service.py
         command,
         input=encoded + "\n",
         capture_output=True,
@@ -197,7 +207,11 @@ def translate_in_worker(models_root, model_id, text, timeout=600):
         encoding="utf-8",
         errors="replace",
         timeout=timeout,
-        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+        creationflags=(
+            subprocess.CREATE_NO_WINDOW
+            if hasattr(subprocess, "CREATE_NO_WINDOW")
+            else 0
+        ),
     )
 
     if completed.stderr:
@@ -214,9 +228,7 @@ def translate_in_worker(models_root, model_id, text, timeout=600):
             response = parsed
 
     if response is None:
-        raise Exception(
-            f"TRANSLATE_WORKER_NO_RESPONSE: exit={completed.returncode}"
-        )
+        raise Exception(f"TRANSLATE_WORKER_NO_RESPONSE: exit={completed.returncode}")
     if not response.get("success"):
         raise Exception(response.get("error") or "TRANSLATE_WORKER_FAILED")
     return response.get("translation", ""), response.get("model_id") or model_id

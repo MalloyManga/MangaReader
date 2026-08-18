@@ -56,7 +56,7 @@ def resolve_models_root(args):
 
 
 def parse_args():
-    """使用终端来传递启动参数"""
+    """声明启动参数给js主进程 同时接收主进程传递的参数值并返回"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=str, help="Path to OCR model")
     parser.add_argument("--models-root", type=str, help="Path to models root")

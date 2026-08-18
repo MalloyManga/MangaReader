@@ -21,6 +21,7 @@ def handle_translate(session, request):
 
     try:
         if should_translate_in_worker(selected_model_id):
+            # 使用某些特定的模型时 会在独立的 worker 进程当中去进行执行
             log_message("[DEBUG] Using isolated translate worker in packaged mode...")
             session.current_translator_id = selected_model_id
             result, worker_model_id = translate_in_worker(

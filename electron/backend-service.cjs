@@ -88,6 +88,9 @@ class BackendService extends EventEmitter {
             backendEnv.MANGAREADER_TRANSLATE_WORKER = '1'
         }
 
+        // 通过命令行的方式来启动 py 子进程
+        // args 为启动参数 --model-dir
+        // py 会将参数值放到 sys.argv 当中
         this.process = spawn(pythonPath, args, {
             // spawn 调用之后 py子进程就开始运行了
             stdio: ['pipe', 'pipe', 'pipe'],
