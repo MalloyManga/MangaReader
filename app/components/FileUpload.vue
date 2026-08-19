@@ -227,31 +227,6 @@ watch([() => images.value.length, listKey], () => {
     })
 })
 
-// const handleScreenshot = () => {
-//     if (!window.electronAPI) {
-//         showToast('截图功能仅在桌面版可用', 2000)
-//         return
-//     }
-//     window.electronAPI.send('window:capture-open')
-// }
-
-// 监听截图完成事件
-// onMounted(() => {
-//     if (window.electronAPI) {
-//         window.electronAPI.on('screenshot:captured', (base64Data: string) => {
-//             fetch(base64Data)
-//                 .then(res => res.blob())
-//                 .then(blob => {
-//                     const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' })
-//                     addImages([file])
-//                 })
-//                 .catch(err => {
-//                     console.error('截图数据处理失败:', err)
-//                 })
-//         })
-//     }
-// })
-
 // 组件卸载时清理
 onUnmounted(() => {
     window.removeEventListener('resize', updateContainerSize)
@@ -375,9 +350,6 @@ const handleDrop = (event: DragEvent) => {
                         <Button @btn-click="handleOpenFile">
                             导入 / 打开文件 📁
                         </Button>
-                        <!-- <Button variant="secondary" @btn-click="handleScreenshot">
-                            截图 ✂️
-                        </Button> -->
                     </div>
                 </div>
             </div>
