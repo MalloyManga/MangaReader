@@ -33,11 +33,9 @@ except AttributeError:
         sys.stderr.buffer, encoding="utf-8", line_buffering=True
     )
 
-from modules.dispatch import dispatch
-from modules.openmp import preload_openmp_for_ocr
-from modules.session import init_session
+# dispatch/session/openmp/workers 按模式懒加载 见 main()
+# worker 模式分流不需要主循环的重量级依赖 (handlers 链会拖入 sudachipy 等)
 from modules.utils import log_message, send_response
-from modules.workers import run_detection_worker_mode, run_translate_worker_mode
 
 
 def resolve_models_root(args):
@@ -88,7 +86,7 @@ def decode_request(line):
             return None
 
 
-def run_message_loop(session):
+def run_message_loop(session, dispatch):
     for line in sys.stdin:
         try:
             line = line.strip()
@@ -116,6 +114,10 @@ def main():
     args = parse_args()
     models_root = resolve_models_root(args)
 
+    # worker 模式在这里分流 只加载 workers 需要的模块
+    # dispatch/session 等主循环依赖延迟到主模式分支才 import 避免 worker 多加载
+    from modules.workers import run_detection_worker_mode, run_translate_worker_mode
+
     if args.translate_worker:
         sys.exit(run_translate_worker_mode(models_root))
 
@@ -125,12 +127,17 @@ def main():
     if args.detection_worker:
         sys.exit(run_detection_worker_mode(modules_root))
 
+    # 主服务模式: 加载重量级依赖并进入消息循环
+    from modules.dispatch import dispatch
+    from modules.openmp import preload_openmp_for_ocr
+    from modules.session import init_session
+
     preload_openmp_for_ocr()
 
     session = init_session(
         args, models_root, modules_root
     )  # 正式挂载 session 之后开始 msg 循环
-    run_message_loop(session)
+    run_message_loop(session, dispatch)
 
 
 if __name__ == "__main__":
