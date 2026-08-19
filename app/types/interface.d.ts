@@ -194,7 +194,7 @@ export interface IElectronAPI {
     onInitError: (callback: (data: { message: string, detail: string, can_retry_download?: boolean }) => void) => () => void
 
     getPathForFile: (file: File) => string
-    openModelFolder: (channel) => void
+    openModelFolder: () => void
     openLink: (url: string) => Promise<void>
 }
 

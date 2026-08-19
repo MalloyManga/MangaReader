@@ -69,7 +69,7 @@ export const useSettings = () => {
 
     const openModelFolder = () => {
         if (import.meta.client) {
-            window.electronAPI.openModelFolder('open-model-folder')
+            window.electronAPI.openModelFolder()
         }
     }
 
