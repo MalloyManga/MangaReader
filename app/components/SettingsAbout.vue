@@ -20,6 +20,8 @@ const techStack = [
     { name: 'Tailwind CSS', url: 'https://tailwindcss.com/', color: 'text-cyan-400' },
     { name: 'Manga OCR', url: 'https://github.com/kha-white/manga-ocr', color: 'text-red-400' },
     { name: 'Sakura LLM', url: 'https://github.com/SakuraLLM/SakuraLLM', color: 'text-pink-400' },
+    { name: 'OPUS-MT', url: 'https://huggingface.co/shun89/opus-mt-ja-zh', color: 'text-emerald-400' },
+    { name: 'Qwen3', url: 'https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF', color: 'text-purple-400' },
     { name: 'SudachiPy', url: 'https://github.com/WorksApplications/SudachiPy', color: 'text-yellow-500' },
 ]
 
@@ -52,7 +54,7 @@ const openLink = (url: string) => {
                     <button @click="openLink(config.projectGithub)" title="View Source Code"
                         class="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium text-manga-500 hover:text-blue-600 dark:text-manga-400 dark:hover:text-white bg-transparent hover:bg-blue-50 dark:hover:bg-manga-700 transition-all cursor-pointer border border-transparent hover:border-blue-100 dark:hover:border-manga-600">
                         <IconGithub class="size-3.5" />
-                        <span>GPL v3</span>
+                        <span>GPL v3 Release</span>
                     </button>
                 </div>
             </div>
@@ -112,7 +114,11 @@ const openLink = (url: string) => {
         <!-- 底部版权 -->
         <div class="mt-auto pb-4 text-xs text-manga-400 flex flex-col gap-1">
             <p>Copyright © {{ config.currentYear }} {{ config.developerName }}.</p>
-            <p>Released under the GPL License.</p>
+            <button @click="openLink(config.projectGithub)" title="View Source Code"
+                class="inline-flex items-center justify-center gap-1 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer underline decoration-dotted underline-offset-2">
+                <IconGithub class="size-3" />
+                <span>Released under the GPL-3.0 License</span>
+            </button>
         </div>
     </div>
 </template>
