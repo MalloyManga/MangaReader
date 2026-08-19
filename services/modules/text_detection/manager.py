@@ -6,6 +6,7 @@ import shutil
 import stat
 import time
 import urllib.request
+import urllib.error
 import uuid
 import zipfile
 from pathlib import Path
@@ -271,6 +272,16 @@ class DetectionModuleManager:
                 last_error = None
                 break
             except Exception as error:
+                # 区分网络问题与本地 IO 问题 磁盘满/权限等本地错误切换下载源没有意义 直接上报真实原因
+                is_network_error = isinstance(
+                    error, (urllib.error.URLError, TimeoutError, ConnectionError)
+                )
+                is_source_error = isinstance(error, DetectionModuleError)
+                if not is_network_error and not is_source_error:
+                    destination.unlink(missing_ok=True)
+                    raise DetectionModuleError(
+                        f"本地写入失败 {asset['filename']}: {error}"
+                    ) from error
                 last_error = error
                 destination.unlink(missing_ok=True)
                 if source_index < len(sources) - 1:
