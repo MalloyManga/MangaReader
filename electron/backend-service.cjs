@@ -41,6 +41,9 @@ class BackendService extends EventEmitter {
         this.detectionResponseBuffer = ''
         this.detectionRequestId = 0
         this.detectionPendingRequests = new Map()
+        // 3 分钟内无新请求则杀掉 worker 释放内存 下次请求时自动重启
+        this.detectionIdleTimer = null
+        this.detectionIdleTimeoutMs = 3 * 60 * 1000
     }
 
     start() {
@@ -425,15 +428,40 @@ class BackendService extends EventEmitter {
 
     _clearDetectionWorker(worker, error) {
         if (this.detectionProcess !== worker) return
+        this._clearDetectionIdleTimer()
         this.detectionProcess = null
         this.detectionResponseBuffer = ''
         this.detectionPendingRequests.forEach(({ reject }) => reject(error))
         this.detectionPendingRequests.clear()
     }
 
+    _clearDetectionIdleTimer() {
+        if (!this.detectionIdleTimer) return
+        clearTimeout(this.detectionIdleTimer)
+        this.detectionIdleTimer = null
+    }
+
+    // 检测 worker 空闲回收: 超过 detectionIdleTimeoutMs 没有新的检测请求就杀掉 worker 释放内存
+    // 下次 _sendDetectionRequest 时 _startDetectionWorker 会自动重新拉起
+    _resetDetectionIdleTimer() {
+        if (this.detectionIdleTimer) clearTimeout(this.detectionIdleTimer)
+        this.detectionIdleTimer = setTimeout(() => {
+            this.detectionIdleTimer = null
+            if (this.detectionPendingRequests.size > 0) {
+                // 还有请求在途(单页检测可能很久) 再等一个空闲窗口
+                this._resetDetectionIdleTimer()
+                return
+            }
+            console.log('[Detection Worker] idle timeout, releasing worker')
+            this.cancelTextDetection() // 超时取消
+        }, this.detectionIdleTimeoutMs)
+    }
+
     _sendDetectionRequest(imageBase64, timeout = 600000) {
         return new Promise((resolve, reject) => {
             this._startDetectionWorker()
+            // 每次请求刷新空闲计时器 批处理期间不会误杀
+            this._resetDetectionIdleTimer()
             const worker = this.detectionProcess
             const workerId = ++this.detectionRequestId
             this.detectionPendingRequests.set(workerId, { resolve, reject })
@@ -455,6 +483,7 @@ class BackendService extends EventEmitter {
     cancelTextDetection() {
         const worker = this.detectionProcess
         if (!worker) return
+        this._clearDetectionIdleTimer()
         this.detectionProcess = null
         this.detectionResponseBuffer = ''
         const error = new Error('Text detection cancelled')
