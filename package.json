@@ -14,10 +14,10 @@
     "fast-uri@3.1.0": "3.1.4"
   },
   "scripts": {
-    "build": "nuxt generate && node fix-paths.cjs",
+    "build": "node scripts/build.mjs",
     "build:nuxt": "nuxt build",
     "dev": "nuxt prepare && nuxt dev",
-    "generate": "nuxt generate && node fix-paths.cjs",
+    "generate": "node scripts/build.mjs",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "start": "electron-forge start",

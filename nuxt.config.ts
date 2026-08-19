@@ -6,9 +6,10 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ['./app/assets/css/main.css'],
   app: {
-    // 关键点 1: 设置为相对路径，这样资源引用会变成 ./_nuxt/...
+    // 相对 base 路径: 构建产物需要 ./ 才能在 Electron file:// 下解析资源
+    // 注意 nuxt/nuxt#28474: 这里直接写 ./ 在 generate 时会被忽略
+    // 实际生效机制是 scripts/build.mjs 注入 NUXT_APP_BASE_URL 环境变量
     baseURL: './',
-    // 关键点 2: 显式指定 buildAssetsDir，避免下划线开头的兼容性问题（可选，但推荐）
     buildAssetsDir: 'assets',
   },
 
