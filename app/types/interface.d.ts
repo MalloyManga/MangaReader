@@ -9,12 +9,14 @@ export interface Token {
 export type ReadingMode = 'study' | 'list' | 'immersive'
 export type DownloadSource = 'mirror' | 'official'
 export type BookKind = 'standard' | 'auto-translate'
+export type TargetLanguage = 'zh' | 'en'
 
 // 定义设置对象的接口
 export interface AppSettings {
     readingMode: ReadingMode
     enableTranslation: boolean
     translationModelId: string
+    targetLanguage: TargetLanguage
     enableTokenization: boolean
     translationApiKey: string // 翻译APIkey
     // 目前还没有开发该部分功能 后续需要添加防抖

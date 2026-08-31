@@ -8,6 +8,7 @@ export const useSettings = () => {
         readingMode: 'study' as 'study' | 'list' | 'immersive',
         enableTranslation: true, // 启用翻译
         translationModelId: '',
+        targetLanguage: 'zh' as 'zh' | 'en',
         enableTokenization: true, // 启用分词
         translationApiKey: '', // 翻译APIkey
         // 目前还没有开发该部分功能 后续需要添加防抖
