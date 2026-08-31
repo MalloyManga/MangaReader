@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { Book } from '~/types/interface'
-const { initSettings } = useSettings()
+const { initSettings, settings } = useSettings()
 const { showToast } = useToast()
 const autoTranslateSession = useAutoTranslateSession()
 
 const library = ref<Book[]>([])
 const loading = ref(true)
 const showSettingsModal = ref(false)
+const showLanguageModal = ref(false)
 const deletingIds = ref<Set<string>>(new Set())
 const confirmModalFlag = ref<boolean>(false)
 const deleteBookId = ref<string>('')
@@ -86,9 +87,20 @@ const removeBook = async (e: Event, id: string) => {
     }, 300)
 }
 
+const handleLanguageSelect = (language: 'zh' | 'en') => {
+    settings.value.targetLanguage = language
+    showLanguageModal.value = false
+    showToast(language === 'zh' ? '已选择中文' : 'Language set to English', 2000)
+}
+
 onMounted(() => {
     initSettings()
     loadLibrary()
+    
+    // Show language selection modal if not yet configured
+    if (!settings.value.targetLanguage || settings.value.targetLanguage === '') {
+        showLanguageModal.value = true
+    }
 })
 </script>
 
@@ -178,6 +190,7 @@ onMounted(() => {
             </div>
         </div>
         <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
+        <LanguageSelectionModal :is-open="showLanguageModal" @select="handleLanguageSelect" />
         <AutoTranslateExportModal :show="Boolean(exportBook)" :book="exportBook" @close="exportBook = null" />
     </div>
     <ConfirmModal @confirm="handleModalConfirm" @cancel="handleModalCancel" :show="confirmModalFlag" title="文件丢失"
