@@ -170,11 +170,12 @@ export interface IElectronAPI {
     updateShortcuts: (shortcuts: Record<string, string>) => Promise<boolean>
     onShortcutTriggered: (callback: (action: string) => void) => () => void
 
-    listTranslationModels: () => Promise<{
+    listTranslationModels: (targetLanguage?: string) => Promise<{
         success: boolean
         models?: TranslationModel[]
         defaultModelId?: string
         currentModelId?: string
+        targetLanguage?: string
         error?: string
     }>
     checkModel: (modelId?: string) => Promise<{ success: boolean; exists?: boolean; modelId?: string; error?: string }>

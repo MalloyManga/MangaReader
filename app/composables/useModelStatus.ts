@@ -102,7 +102,7 @@ export function useModelStatus() {
         }
 
         modelsLoadPromise = (async () => {
-            const res = await window.electronAPI.listTranslationModels()
+            const res = await window.electronAPI.listTranslationModels(settings.value.targetLanguage)
             const models = res.models ?? []
             if (!res.success) throw new Error(res.error || '翻译模型列表加载失败')
             if (models.length > 0) {

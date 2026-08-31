@@ -5,6 +5,7 @@ import traceback
 from .translator import (
     DEFAULT_TRANSLATOR_ID,
     list_translator_models,
+    list_translator_models_by_language,
     normalize_translator_id,
 )
 from .utils import log_message
@@ -71,11 +72,14 @@ def handle_translate(session, request):
 
 
 def handle_list_translation_models(session, request):
+    target_language = request.get("target_language") or request.get("targetLanguage") or "zh"
+    models = list_translator_models_by_language(target_language)
     return {
         "success": True,
-        "models": list_translator_models(),
+        "models": models,
         "default_model_id": DEFAULT_TRANSLATOR_ID,
         "current_model_id": session.current_translator_id,
+        "target_language": target_language,
     }
 
 

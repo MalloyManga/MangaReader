@@ -7,6 +7,7 @@ TRANSLATOR_MODELS = [
         "description": "轻小说/漫画向本地 GGUF 翻译模型",
         "engine": "sakura",
         "adapted_types": ["manga", "light_novel", "galgame"],
+        "target_languages": ["zh"],
     },
     {
         "id": "qwen3-4b-instruct-2507-q4-k-m",
@@ -16,6 +17,7 @@ TRANSLATOR_MODELS = [
         "description": "通用指令日译中 GGUF 模型，质量更高但下载和运行占用更大",
         "engine": "qwen3-gguf",
         "adapted_types": ["manga", "general", "dialogue"],
+        "target_languages": ["zh"],
     },
     {
         "id": "opus-mt-ja-zh",
@@ -25,15 +27,17 @@ TRANSLATOR_MODELS = [
         "description": "小型日译中 NMT 模型，速度快、体积小",
         "engine": "opus-mt-ja-zh",
         "adapted_types": ["manga", "general"],
+        "target_languages": ["zh"],
     },
     {
         "id": "opus-mt-ja-en",
         "name": "OPUS-MT ja-en",
-        "size": "约 307 MB",
+        "size": "~307 MB",
         "size_bytes": 322011136,
-        "description": "小型日译英 NMT 模型，速度快、体积小",
+        "description": "Small and fast Japanese-to-English NMT model",
         "engine": "opus-mt-ja-en",
         "adapted_types": ["manga", "general"],
+        "target_languages": ["en"],
     },
 ]
 
@@ -72,6 +76,14 @@ def normalize_translator_id(model_id):
 def list_translator_models():
     return sorted(
         TRANSLATOR_MODELS,
+        key=lambda item: item.get("size_bytes", float("inf")),
+    )
+
+
+def list_translator_models_by_language(target_language):
+    """Filter translator models by target language (zh or en)"""
+    return sorted(
+        [m for m in TRANSLATOR_MODELS if target_language in m.get("target_languages", [])],
         key=lambda item: item.get("size_bytes", float("inf")),
     )
 
