@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { Book } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
+
 const { initSettings, settings } = useSettings()
 const { showToast } = useToast()
+const { t } = useI18n()
 const autoTranslateSession = useAutoTranslateSession()
 
 const library = ref<Book[]>([])
@@ -33,7 +36,7 @@ const loadLibrary = async () => {
 }
 
 const handleAddBook = () => {
-    showToast('💡 提示：选中任意一张图片，即可导入整个文件夹', 2500)
+    showToast('💡 ' + t('reader.detectText'), 2500)
     navigateTo('/reader')
 }
 
@@ -54,7 +57,7 @@ const openBook = async (book: Book) => {
     const isAutoTranslateBook = book.kind === 'auto-translate'
     if (isAutoTranslateBook && autoTranslateSession.isProcessing.value
         && autoTranslateSession.bookId.value !== book.id) {
-        showToast('请先停止当前正在运行的自动识别任务', 4000)
+        showToast(t('messages.languageChanged'), 4000)
         return
     }
 
@@ -110,7 +113,7 @@ onMounted(() => {
         <ToastContainer />
         <div class="max-w-7xl mx-auto w-full flex-1 p-6">
             <h1 class="text-2xl font-bold mb-6 text-manga-900 dark:text-gray-100 flex items-center gap-2">
-                <span>📚</span> 我的书架
+                <span>📚</span> {{ t('library.title') }}
             </h1>
 
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
@@ -124,7 +127,7 @@ onMounted(() => {
                         <img v-if="book.cover" :src="book.cover" class="w-full h-full object-cover" />
                         <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2">
                             <span class="text-4xl">📄</span>
-                            <span class="text-xs">无封面</span>
+                            <span class="text-xs">{{ t('library.empty') }}</span>
                         </div>
 
                         <!-- 阅读进度条 -->
@@ -150,7 +153,7 @@ onMounted(() => {
                         <div v-if="book.kind === 'auto-translate'"
                             class="absolute bottom-3 left-2 flex items-center gap-1 rounded bg-black/65 px-2 py-1 text-[10px] font-medium text-white">
                             <IconAutoDetect class="size-3" />
-                            自动检测
+                            {{ t('autoTranslate.title') }}
                         </div>
                     </div>
 
@@ -174,7 +177,7 @@ onMounted(() => {
                         class="size-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
                         <IconAdd class="size-6 text-gray-500 group-hover:text-primary transition-colors" />
                     </div>
-                    <div class="text-xs font-medium">导入新书</div>
+                    <div class="text-xs font-medium">{{ t('library.uploadBook') }}</div>
                 </div>
 
                 <div @click="openAutoTranslate"
@@ -183,8 +186,8 @@ onMounted(() => {
                         class="size-12 rounded-full bg-manga-100 dark:bg-manga-800 flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
                         <IconAutoDetect class="size-7 text-manga-500 group-hover:text-primary transition-colors" />
                     </div>
-                    <div class="text-xs font-medium">自动识别翻译</div>
-                    <div class="text-[10px] mt-1 text-manga-400">检测整页文字区域</div>
+                    <div class="text-xs font-medium">{{ t('autoTranslate.batch') }}</div>
+                    <div class="text-[10px] mt-1 text-manga-400">{{ t('reader.detectText') }}</div>
                 </div>
 
             </div>
@@ -193,6 +196,6 @@ onMounted(() => {
         <LanguageSelectionModal :is-open="showLanguageModal" @select="handleLanguageSelect" />
         <AutoTranslateExportModal :show="Boolean(exportBook)" :book="exportBook" @close="exportBook = null" />
     </div>
-    <ConfirmModal @confirm="handleModalConfirm" @cancel="handleModalCancel" :show="confirmModalFlag" title="文件丢失"
-        content="这本书的原文件似乎被移动或删除了，是否将它从书架中移除？" />
+    <ConfirmModal @confirm="handleModalConfirm" @cancel="handleModalCancel" :show="confirmModalFlag" :title="t('messages.fileNotFound')"
+        :content="t('library.deleteConfirm')" />
 </template>

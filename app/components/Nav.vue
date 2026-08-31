@@ -1,6 +1,10 @@
 <!-- components/Nav.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 const isDark = ref(false)
+const { t } = useI18n()
+
 const toggleDark = () => {
     isDark.value = !isDark.value
     document.documentElement.classList.toggle('dark')
@@ -32,7 +36,7 @@ const handleSettings = () => {
         </div>
         <div class="flex items-center gap-3">
             <Button variant="secondary" size="sm" @btn-click="handleSettings">
-                ⚙️ 设置
+                ⚙️ {{ t('common.settings') }}
             </Button>
             <Button size="sm" @btn-click="toggleDark">
                 <!-- 模式切换按钮 -->
