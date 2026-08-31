@@ -1,0 +1,78 @@
+{
+  "common": {
+    "add": "Add",
+    "remove": "Remove",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "close": "Close",
+    "search": "Search",
+    "error": "Error",
+    "warning": "Warning",
+    "success": "Success",
+    "loading": "Loading...",
+    "language": "Language",
+    "settings": "Settings",
+    "about": "About"
+  },
+  "library": {
+    "title": "Library",
+    "empty": "No books in library",
+    "addBook": "Add Book",
+    "uploadBook": "Upload Book",
+    "deleteBook": "Delete Book",
+    "editBook": "Edit Book",
+    "deleteConfirm": "Are you sure you want to delete this book?",
+    "selectLanguage": "Select Language",
+    "selectLanguageDesc": "Please select your preferred translation language"
+  },
+  "reader": {
+    "title": "Reader",
+    "originalText": "Original",
+    "translatedText": "Translation",
+    "autoTranslate": "Auto Translate",
+    "translate": "Translate",
+    "copy": "Copy",
+    "copied": "Copied",
+    "detection": "Text Detection",
+    "detectText": "Detect Text"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "translation": "Translation",
+    "detection": "Detection",
+    "language": "Language Settings",
+    "selectLanguage": "Select Translation Language",
+    "selectModel": "Select Translation Model",
+    "modelSize": "Model Size",
+    "downloadModel": "Download Model",
+    "downloaded": "Downloaded",
+    "downloading": "Downloading",
+    "failed": "Download Failed",
+    "token": "API Token",
+    "removeToken": "Remove Token"
+  },
+  "autoTranslate": {
+    "title": "Auto Translate",
+    "batch": "Batch Translate",
+    "export": "Export",
+    "progress": "Progress",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancel": "Cancel",
+    "exportSuccess": "Export successful",
+    "exportFailed": "Export failed",
+    "selectModel": "Please select a translation model first"
+  },
+  "messages": {
+    "fileNotFound": "File not found",
+    "networkError": "Network error",
+    "modelDownloadError": "Model download failed",
+    "translationError": "Translation failed",
+    "confirmDelete": "Are you sure you want to delete?",
+    "languageChanged": "已选择中文",
+    "languageChangedEn": "Language set to English"
+  }
+}
