@@ -1,5 +1,6 @@
 <!-- components/SettingsModal.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import SettingsGeneral from './SettingsGeneral.vue'
 import SettingsTranslate from './SettingsTranslate.vue'
 import SettingsDetection from './SettingsDetection.vue'
@@ -11,6 +12,9 @@ interface Props {
     show: boolean
 }
 defineProps<Props>()
+
+const { t } = useI18n()
+
 // 当前选中的 Tab
 type TabType = 'general' | 'translate' | 'detection' | 'language' | 'about'
 interface MenuItem {
@@ -20,14 +24,14 @@ interface MenuItem {
 }
 const currentTab = ref<TabType>('general')
 
-// 侧边栏菜单配置
-const menuItems: MenuItem[] = [
-    { id: 'general', label: '常规设置', icon: 'CogIcon' },
-    { id: 'translate', label: '翻译模型', icon: 'LanguageIcon' },
-    { id: 'detection', label: '自动检测', icon: 'AutoDetectIcon' },
-    { id: 'language', label: '界面语言', icon: 'LanguageIcon' },
-    { id: 'about', label: '关于', icon: 'InfoIcon' },
-]
+// 侧边栏菜单配置（使用 computed 保证响应式）
+const menuItems = computed(() => [
+    { id: 'general', label: t('settings.general'), icon: 'CogIcon' },
+    { id: 'translate', label: t('settings.translation'), icon: 'LanguageIcon' },
+    { id: 'detection', label: t('settings.detection'), icon: 'AutoDetectIcon' },
+    { id: 'language', label: t('settings.language'), icon: 'LanguageIcon' },
+    { id: 'about', label: t('common.about'), icon: 'InfoIcon' },
+] as MenuItem[])
 
 const emit = defineEmits<{
     close: []
@@ -62,7 +66,7 @@ const handleClose = () => {
                     <div
                         class="w-48 bg-manga-50 dark:bg-manga-900 border-r border-manga-200 dark:border-manga-700 flex flex-col pt-6 pb-4">
                         <div class="px-6 mb-6">
-                            <h2 class="text-xl font-bold text-manga-900 dark:text-white">设置</h2>
+                            <h2 class="text-xl font-bold text-manga-900 dark:text-white">{{ t('common.settings') }}</h2>
                         </div>
 
                         <nav class="flex-1 px-3 space-y-1">

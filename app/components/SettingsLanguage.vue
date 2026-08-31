@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 const { settings } = useSettings()
 
 const languages = [
@@ -26,7 +26,7 @@ onMounted(() => {
 <template>
   <div class="p-6">
     <h3 class="text-lg font-semibold text-manga-900 dark:text-white mb-6">
-      {{ locale === 'zh' ? '界面语言' : 'Interface Language' }}
+      {{ t('settings.language') }}
     </h3>
 
     <div class="space-y-3">
