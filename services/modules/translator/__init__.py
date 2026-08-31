@@ -26,6 +26,15 @@ TRANSLATOR_MODELS = [
         "engine": "opus-mt-ja-zh",
         "adapted_types": ["manga", "general"],
     },
+    {
+        "id": "opus-mt-ja-en",
+        "name": "OPUS-MT ja-en",
+        "size": "约 307 MB",
+        "size_bytes": 322011136,
+        "description": "小型日译英 NMT 模型，速度快、体积小",
+        "engine": "opus-mt-ja-en",
+        "adapted_types": ["manga", "general"],
+    },
 ]
 
 
@@ -44,6 +53,7 @@ _ALIASES = {
     "sakura-1.5b": "sakura-1.5b",
     "opus": "opus-mt-ja-zh",
     "opus-mt-ja-zh": "opus-mt-ja-zh",
+    "opus-mt-ja-en": "opus-mt-ja-en",
     "qwen3": "qwen3-4b-instruct-2507-q4-k-m",
     "qwen3-4b": "qwen3-4b-instruct-2507-q4-k-m",
     "qwen3-4b-instruct-2507-q4-k-m": "qwen3-4b-instruct-2507-q4-k-m",
@@ -76,6 +86,10 @@ def get_translator_engine(model_id, model_root_dir):
         from .opus_engine import OpusMtJaZhEngine
 
         return OpusMtJaZhEngine(model_root_dir)
+    if normalized == "opus-mt-ja-en":
+        from .opus_english_engine import OpusEnglishEngine
+
+        return OpusEnglishEngine(model_root_dir)
     if normalized == "qwen3-4b-instruct-2507-q4-k-m":
         from .qwen3_engine import Qwen3GgufEngine
 
