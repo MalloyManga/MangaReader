@@ -3,6 +3,7 @@
 import SettingsGeneral from './SettingsGeneral.vue'
 import SettingsTranslate from './SettingsTranslate.vue'
 import SettingsDetection from './SettingsDetection.vue'
+import SettingsLanguage from './SettingsLanguage.vue'
 import SettingsAbout from './SettingsAbout.vue'
 
 // 接收一个布尔值控制显示隐藏
@@ -11,7 +12,7 @@ interface Props {
 }
 defineProps<Props>()
 // 当前选中的 Tab
-type TabType = 'general' | 'translate' | 'detection' | 'about'
+type TabType = 'general' | 'translate' | 'detection' | 'language' | 'about'
 interface MenuItem {
     id: TabType,
     label: string,
@@ -24,6 +25,7 @@ const menuItems: MenuItem[] = [
     { id: 'general', label: '常规设置', icon: 'CogIcon' },
     { id: 'translate', label: '翻译模型', icon: 'LanguageIcon' },
     { id: 'detection', label: '自动检测', icon: 'AutoDetectIcon' },
+    { id: 'language', label: '界面语言', icon: 'LanguageIcon' },
     { id: 'about', label: '关于', icon: 'InfoIcon' },
 ]
 
@@ -94,7 +96,8 @@ const handleClose = () => {
                                 <component :is="currentTab === 'general' ? SettingsGeneral
                                     : currentTab === 'translate' ? SettingsTranslate
                                         : currentTab === 'detection' ? SettingsDetection
-                                            : SettingsAbout" />
+                                            : currentTab === 'language' ? SettingsLanguage
+                                                : SettingsAbout" />
                             </Transition>
                         </div>
                     </div>

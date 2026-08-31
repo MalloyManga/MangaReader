@@ -1,8 +1,12 @@
 // composables/useSettings.ts
+import { useI18n } from 'vue-i18n'
+
 export type ThemeOption = 'system' | 'light' | 'dark'
 export type DownloadSource = 'mirror' | 'official'
 
 export const useSettings = () => {
+    const { locale } = useI18n()
+    
     // 这里存放具体的设置数据
     const settings = useState('app-settings', () => ({
         readingMode: 'study' as 'study' | 'list' | 'immersive',
@@ -44,6 +48,10 @@ export const useSettings = () => {
         watch(settings, (newVal) => {
             try {
                 applyTheme()
+                // 同步 i18n locale
+                if (newVal.targetLanguage) {
+                    locale.value = newVal.targetLanguage
+                }
                 if (!window.electronAPI) return
                 const rawSettings = toRaw(newVal)
                 for (const [key, value] of Object.entries(rawSettings)) {
@@ -100,6 +108,11 @@ export const useSettings = () => {
                     prev: settings.value.prevImageShortcut || '',
                     next: settings.value.nextImageShortcut || ''
                 })
+                
+                // 初始化 i18n locale
+                if (settings.value.targetLanguage) {
+                    locale.value = settings.value.targetLanguage
+                }
 
                 console.log('⚙️ Settings loaded from Electron Store')
             } catch (e) {

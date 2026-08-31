@@ -1,5 +1,7 @@
 <!-- components/LanguageSelectionModal.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 defineProps<{
     isOpen: boolean
 }>()
@@ -8,7 +10,10 @@ const emit = defineEmits<{
     select: [language: 'zh' | 'en']
 }>()
 
+const { t, locale } = useI18n()
+
 const selectLanguage = (language: 'zh' | 'en') => {
+    locale.value = language
     emit('select', language)
 }
 </script>
@@ -22,10 +27,10 @@ const selectLanguage = (language: 'zh' | 'en') => {
             <div v-if="isOpen" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
                 <div class="bg-white dark:bg-manga-800 rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
                     <h2 class="text-2xl font-bold text-center mb-2 text-manga-900 dark:text-white">
-                        Select Language / 選択言語
+                        {{ t('library.selectLanguage') }}
                     </h2>
                     <p class="text-center text-manga-500 dark:text-manga-400 mb-8">
-                        Choose your preferred UI and translation language
+                        {{ t('library.selectLanguageDesc') }}
                     </p>
 
                     <div class="space-y-4">
