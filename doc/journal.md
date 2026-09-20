@@ -58,6 +58,36 @@ Malloy 的 5 点：①首进书架要弹语言选择、且要写进 settings jso
 4. `useModelStatus` 的 fallback 目录仍只有中文模型与中文文案，后端不可用且界面为英文时列表会空。
 5. `library.deleteBook` tooltip 与语言弹窗残留 DOM 属未亲眼所见/环境所致，需在 Electron 里确认一次。
 
+---
+
+## 会话交接（2026-09-20 19:05，feat/japanese-to-english-adaptation）
+
+工作树干净，全部改动已提交；下一个会话可直接从"未验证清单"开干。
+
+### 分支完成度
+
+| 块 | 状态 | 证据 |
+|---|---|---|
+| 后端日→英能力（opus-mt-ja-en、engine、registry） | 完成 | `4c0ef51`、`78f7234`；本轮直调 `list_translator_models_by_language` |
+| 前端 i18n 全覆盖（无硬编码文案） | 完成 | `npm run check:i18n`：334/334 键、零差集、零缺失、未使用 0、硬编码 CJK 仅剩 2 处可接受项 |
+| 语言驱动模型目录（IPC 参数 + 按语言默认模型） | **代码完成，未实机验证** | Python 直调：`zh→3 模型/default=opus-mt-ja-zh`，`en→仅 opus-mt-ja-en/default=opus-mt-ja-en` |
+| 图标按钮可访问名 | 完成 | 浏览器读出中/英 `最小化/最大化/关闭`；`library.deleteBook` 仅静态验证 |
+
+本轮 commit：`de2fade` `cd50b62` `fb83702` `aca6de2` `dfc0ab8`（19:00）。
+
+### 下个会话的切入点（按优先级）
+
+1. **跑 `npm start` 验语言→模型链路**：英文界面 Settings > 翻译应只出现 `OPUS-MT ja-en`（英文描述）；在语言设置里切 zh↔en，卡片集合与"当前使用"应随之变化。注意后端首启可能自动下载模型（数百 MB），跑之前先确认是否接受。
+2. **装 vue-tsc 进 devDependencies**，让 `nuxt typecheck` 可用（B-2026-003 至今未解，意味着这轮所有 TS 改动都没过类型检查）。
+3. **`useModelStatus` fallback 目录**：后端不可用时的兜底仍是中文-only，英文界面会空列表（B-2026-004 遗留）。
+4. **`useFileProcessor.ts:5` 模块顶层 `useToast()`**：目前是侥幸安全。
+
+### 本会话踩过的三个坑（给后续会话避雷）
+
+- `useI18n` **不在** Nuxt 自动引入范围（无 `@nuxtjs/i18n`），判据是 `.nuxt/imports.d.ts`；仓库惯例是显式 import（B-2026-006）。
+- `ssr: false` 下 curl 拿 200 不代表运行时没崩，必须读浏览器控制台（B-2026-006）。
+- 改 Nuxt 插件或其新依赖后若见 503 / 模块 MIME 报错，先清 `node_modules/.vite` + `.nuxt/cache` 重启再说代码有问题（B-2026-009）。
+
 ## 2026-09-01（Malloy + AI）
 - 00:01–00:28 — 前端 i18n 基础搭建与分批改造（`ff1e09c` → `ff9d79e`）：vue-i18n、语言选择弹窗、SettingsLanguage、library/Settings 国际化。
 
