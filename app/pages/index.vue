@@ -139,7 +139,7 @@ onMounted(async () => {
                         </div>
 
                         <!-- 删除按钮 -->
-                        <button @click="(e) => removeBook(e, book.id)"
+                        <button @click="(e) => removeBook(e, book.id)" :aria-label="t('library.deleteBook')" :title="t('library.deleteBook')"
                             class="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10 cursor-pointer">
                             <IconTresh class="size-4" />
                         </button>
