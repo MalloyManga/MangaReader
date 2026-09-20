@@ -19,18 +19,17 @@ const { t } = useI18n()
 type TabType = 'general' | 'translate' | 'detection' | 'language' | 'about'
 interface MenuItem {
     id: TabType,
-    label: string,
-    icon: string
+    label: string
 }
 const currentTab = ref<TabType>('general')
 
 // 侧边栏菜单配置（使用 computed 保证响应式）
 const menuItems = computed(() => [
-    { id: 'general', label: t('settings.general'), icon: 'CogIcon' },
-    { id: 'translate', label: t('settings.translation'), icon: 'LanguageIcon' },
-    { id: 'detection', label: t('settings.detection'), icon: 'AutoDetectIcon' },
-    { id: 'language', label: t('settings.language'), icon: 'LanguageIcon' },
-    { id: 'about', label: t('common.about'), icon: 'InfoIcon' },
+    { id: 'general', label: t('settings.general') },
+    { id: 'translate', label: t('settings.translation') },
+    { id: 'detection', label: t('settings.detection') },
+    { id: 'language', label: t('settings.language') },
+    { id: 'about', label: t('common.about') },
 ] as MenuItem[])
 
 const emit = defineEmits<{
@@ -80,6 +79,7 @@ const handleClose = () => {
                                 <IconCog v-if="item.id === 'general'" class="size-5" />
                                 <IconTranslate v-else-if="item.id === 'translate'" class="size-5" />
                                 <IconAutoDetect v-else-if="item.id === 'detection'" class="size-5" />
+                                <IconLanguage v-else-if="item.id === 'language'" class="size-5" />
                                 <IconInfo v-else class="size-5" />
                                 {{ item.label }}
                             </button>
