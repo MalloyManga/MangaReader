@@ -19,6 +19,7 @@
     "dev": "nuxt prepare && nuxt dev",
     "generate": "node scripts/build.mjs",
     "preview": "nuxt preview",
+    "check:i18n": "node scripts/check-i18n.cjs",
     "postinstall": "nuxt prepare",
     "start": "electron-forge start",
     "package": "electron-forge package",
