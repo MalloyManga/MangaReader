@@ -1,28 +1,22 @@
 {
   "common": {
-    "add": "添加",
-    "remove": "移除",
     "delete": "删除",
     "cancel": "取消",
     "confirm": "确认",
-    "save": "保存",
     "close": "关闭",
-    "search": "搜索",
-    "error": "错误",
-    "warning": "警告",
-    "success": "成功",
-    "loading": "加载中...",
     "copy": "复制",
     "copied": "已复制",
     "copyFailed": "复制失败！",
     "copiedClipboard": "已复制 📋",
     "download": "下载",
     "confirmDelete": "确认删除",
-    "language": "语言",
     "settings": "设置",
     "about": "关于",
     "unknownError": "未知错误",
     "backToLibrary": "返回书架",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
     "confirmTitle": "确认操作",
     "confirmContent": "你确定要执行此操作吗？",
     "imageAlt": "当前图片 {index}",
@@ -30,7 +24,6 @@
     "electronApiUnavailable": "Electron API 不可用"
   },
   "about": {
-    "description": "专为日语学习者打造的离线漫画阅读与翻译工具。",
     "developedBy": "开发者",
     "poweredBy": "技术支持",
     "viewSource": "查看源代码",
@@ -42,10 +35,8 @@
   "library": {
     "title": "书架",
     "empty": "书架为空",
-    "addBook": "添加书籍",
     "uploadBook": "上传书籍",
     "deleteBook": "删除书籍",
-    "editBook": "编辑书籍",
     "deleteConfirm": "确定要删除该书籍吗？",
     "selectLanguage": "选择语言",
     "selectLanguageDesc": "请选择您的首选翻译语言",
@@ -54,14 +45,6 @@
     "languageChangeHint": "您可以随时在设置中更改"
   },
   "reader": {
-    "title": "阅读器",
-    "originalText": "原文",
-    "translatedText": "译文",
-    "autoTranslate": "自动翻译",
-    "translate": "翻译",
-    "copy": "复制",
-    "copied": "已复制",
-    "detection": "文本检测",
     "detectText": "检测文字"
   },
   "readerWorkflow": {
@@ -147,20 +130,10 @@
     "cannotRestartDownload": "无法重新启动下载"
   },
   "settings": {
-    "title": "设置",
     "general": "通用",
     "translation": "翻译",
     "detection": "检测",
     "language": "语言设置",
-    "selectLanguage": "选择翻译语言",
-    "selectModel": "选择翻译模型",
-    "modelSize": "模型大小",
-    "downloadModel": "下载模型",
-    "downloaded": "已下载",
-    "downloading": "下载中",
-    "failed": "下载失败",
-    "token": "API Token",
-    "removeToken": "删除 Token",
     "languageNameZh": "中文",
     "languageNameEn": "English",
     "languageZh": "中文",
@@ -295,15 +268,7 @@
   },
   "autoTranslate": {
     "title": "自动翻译",
-    "batch": "批量翻译",
-    "export": "导出",
-    "progress": "进度",
-    "completed": "已完成",
-    "failed": "失败",
-    "cancel": "取消",
-    "exportSuccess": "导出成功",
-    "exportFailed": "导出失败",
-    "selectModel": "请先选择翻译模型"
+    "batch": "批量翻译"
   },
   "autoTranslateWorkflow": {
     "title": "自动识别翻译",
@@ -395,10 +360,6 @@
   },
   "messages": {
     "fileNotFound": "文件丢失",
-    "networkError": "网络错误",
-    "modelDownloadError": "模型下载失败",
-    "translationError": "翻译失败",
-    "confirmDelete": "确定要删除吗？",
     "languageChanged": "已选择中文",
     "languageChangedEn": "已选择英文",
     "processingAnotherBook": "请先停止当前正在运行的自动识别任务"
