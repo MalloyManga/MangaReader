@@ -521,7 +521,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const loadImageElement = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image()
         image.onload = () => resolve(image)
-        image.onerror = () => reject(new Error('页面图片加载失败'))
+        image.onerror = () => reject(new Error(t('autoTranslateWorkflow.pageImageLoadFailed')))
         image.src = url
     })
 

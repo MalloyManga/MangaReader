@@ -40,3 +40,20 @@ console.log('unused count:', unused.length)
 console.log(unused.join('\n'))
 console.log('--- dynamic t() call sites (manual review) ---')
 console.log([...new Set(dynamicSpots)].join('\n'))
+
+// 硬编码文案检测：剥掉注释与 console 日志后，任何残留的中日韩文都应走 i18n
+const stripNonCode = source => source
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+  .replace(/console\.\w+\((?:[^()\n]|\([^()]*\))*\)/g, '')
+
+const hardcoded = []
+for (const f of files) {
+  const lines = stripNonCode(fs.readFileSync(f, 'utf8')).split(/\r?\n/)
+  lines.forEach((line, i) => {
+    if (/[一-鿿]/.test(line)) hardcoded.push(`${f}:${i + 1}  ${line.trim().slice(0, 90)}`)
+  })
+}
+console.log('\n--- hardcoded CJK text outside comments/logs ---')
+console.log(hardcoded.length ? hardcoded.join('\n') : 'none')

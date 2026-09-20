@@ -134,8 +134,6 @@
     "translation": "Translation",
     "detection": "Detection",
     "language": "Language Settings",
-    "languageNameZh": "Chinese (中文)",
-    "languageNameEn": "English",
     "languageZh": "中文",
     "languageEn": "English",
     "languageHint": "The interface language applies to all UI text and takes effect immediately."
@@ -355,6 +353,7 @@
     ,"stoppedKeepRegions": "Stopped. Kept {count} fully processed regions"
     ,"invalidSelection": "The selection does not contain valid image content"
     ,"imageNotLoadedYet": "The current image has not finished loading"
+    ,"pageImageLoadFailed": "Failed to load the page image"
     ,"preparingBatch": "Preparing batch processing"
     ,"pageCompleted": "Page {page} completed"
   },

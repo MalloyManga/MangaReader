@@ -537,7 +537,7 @@ onUnmounted(() => {
         <TitleBar @open-settings="showSettingsModal = true">
             <template #extra-buttons>
                 <Button class="text-sm font-bold" variant="secondary" @btn-click="goBackToLibrary">
-                    📚 返回书架
+                    📚 {{ t('common.backToLibrary') }}
                 </Button>
             </template>
         </TitleBar>

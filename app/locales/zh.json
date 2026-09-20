@@ -134,10 +134,8 @@
     "translation": "翻译",
     "detection": "检测",
     "language": "语言设置",
-    "languageNameZh": "中文",
-    "languageNameEn": "English",
     "languageZh": "中文",
-    "languageEn": "英语",
+    "languageEn": "English",
     "languageHint": "界面语言会影响所有 UI 文本的显示。更改将立即生效。"
   },
   "general": {
@@ -355,6 +353,7 @@
     ,"stoppedKeepRegions": "已停止，保留 {count} 个完整区域"
     ,"invalidSelection": "选区未包含有效图片内容"
     ,"imageNotLoadedYet": "当前图片尚未加载完成"
+    ,"pageImageLoadFailed": "页面图片加载失败"
     ,"preparingBatch": "正在准备批量处理"
     ,"pageCompleted": "第 {page} 页已完成"
   },
