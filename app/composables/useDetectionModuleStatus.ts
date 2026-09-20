@@ -1,3 +1,5 @@
+import { useI18n } from 'vue-i18n'
+
 export type DetectionModuleStatus = 'checking' | 'not_installed' | 'downloading' | 'installed' | 'corrupted' | 'unavailable' | 'error'
 
 export interface DetectionModuleState {

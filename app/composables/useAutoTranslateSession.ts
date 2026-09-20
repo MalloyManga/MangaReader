@@ -1,7 +1,9 @@
 import type { OcrBlock } from '~/types/interface'
 import type { AutoTranslateBatchState, AutoTranslatePageState } from '~/composables/useAutoTranslateProcessing'
-import { useI18n } from 'vue-i18n'
+import { i18n } from '~/locales/instance'
 
+// createBatchState 会在 setup 之外被调用（如切换书籍时重置会话），
+// 因此这里取全局实例翻译，不能用依赖注入上下文的组合式函数。
 const createBatchState = (): AutoTranslateBatchState => ({
     show: false,
     status: 'idle',
@@ -11,7 +13,7 @@ const createBatchState = (): AutoTranslateBatchState => ({
     regionIndex: 0,
     regionTotal: 0,
     progress: 0,
-    message: useI18n().t('autoTranslateWorkflow.initialWaiting'),
+    message: i18n.global.t('autoTranslateWorkflow.initialWaiting'),
     pageLabel: '',
     completedPages: 0,
     failedPages: 0,

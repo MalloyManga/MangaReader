@@ -1,6 +1,7 @@
 import type { ImageItem } from '~/types/interface.js'
 import JSZip from 'jszip'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { useI18n } from 'vue-i18n'
 type PDFJS = typeof import('pdfjs-dist')
 const { showToast } = useToast()
 

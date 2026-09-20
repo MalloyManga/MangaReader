@@ -1,4 +1,5 @@
 import type { Book, OcrBlock } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
 
 export type ExportScope = 'current' | 'all'
 

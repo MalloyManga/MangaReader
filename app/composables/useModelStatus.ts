@@ -1,4 +1,5 @@
 import type { TranslationModel } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
 
 export type ModelStatus = 'unknown' | 'checking' | 'downloaded' | 'not_downloaded' | 'downloading' | 'check_failed'
 type DownloadProgress = number | {

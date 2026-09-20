@@ -1,3 +1,5 @@
+import { useI18n } from 'vue-i18n'
+
 const dictionaryState = reactive({
     id: 'sudachi-core',
     name: 'SudachiDict-core',
