@@ -25,10 +25,17 @@
   - "未使用 key"结论修正：我的扫描器漏判三元/变量 key（`messages.languageChanged*` 实为已用），且 `library.deleteBook` 等并非残留，而是**图标按钮从未接线**（书架删除按钮、窗口最小化/最大化/关闭按钮均无 `title`/`aria-label`）。校验脚本落库为 `scripts/check-i18n.cjs` + `npm run check:i18n`。
 - **15:52** — 浏览器实测（in-app browser，视口 0×0 故部分点击不可驱动）：应用启动无报错；语言切到 English 后 `⚙️ Settings`/`Library`/`Batch Translate` 生效；General 面板全英文；词典条目渲染为 `SudachiDict-core / Approx. 207 MB`（证明 `useDictionaryStatus` 的 `t()` 已修复）。
 
-### 待决（需 Malloy 定）
-1. 9 个 key 是**冗余别名**（同句文案已有在用的 key）：`reader.copy`、`settings.title`、`autoTranslate.cancel` 等 → 建议删。
-2. 34 个 key 是**孤儿**，其中至少 `library.deleteBook`、窗口控制三键属该接线而未接线（兼无障碍缺陷）→ 建议接上；其余（`settings.token`/`library.editBook` 等）需确认是待开发功能还是废案。
-3. `useFileProcessor.ts:5` 在模块顶层调用 `useToast()`，当前因 `useToast` 不依赖 inject 而侥幸可用，属隐患。
+### 当时的待决事项 → 已由 Malloy 决策
+1. 9 个冗余别名 key（同句文案已有在用 key，如 `settings.title` vs `common.settings`）与 34 个从未接线的孤儿 key（`settings.token`/`removeToken`、`library.editBook` 等）：**全部删除**。
+2. `library.deleteBook` 与窗口最小化/最大化/关闭三键：**补上**（兼无障碍修复）。
+3. `useFileProcessor.ts:5` 模块顶层调用 `useToast()`：暂不动（`useToast` 不依赖 inject，当前安全）。
+
+- **16:05–16:28** — 执行上述决策：
+  - 接线：`MinimizeButton`/`MaximizeButton`/`CloseButton` 加 `aria-label` + `title`（`MaximizeButton` 按 `isMaximized` 在 `common.maximize` / `common.restore` 间切换）；`index.vue` 书架删除按钮接 `library.deleteBook`；新增 `common.minimize/maximize/restore` 双语 key。顺带修正 `MinimizeButton.vue` 顶部注释误写为 `CloseButton.vue`。
+  - 清理：删除 42 个从未使用的 key，locale 总量 377 → **335**；`npm run check:i18n` 结果：无重复、en/zh 零差集、引用零缺失、**未使用数 0**。
+  - 浏览器实测：控制台无 error；重载后窗口三键读出 `最小化/最大化/关闭`，切英文后读出 `Minimize/Maximize/Close`；图标按钮已无可访问名缺失者。
+  - 注意：`library.deleteBook` 的 tooltip 只做了静态验证——浏览器环境下 `window.electronAPI` 不可用、无法往书架添加书籍，故未能亲眼看到该按钮渲染。
+  - 提交：`11f48dc` `refactor: prune 42 unused locale keys and add window control labels`、`6b49ee8` `fix: add missing accessible labels to icon-only window and delete buttons`。
 
 ## 2026-09-01（Malloy + AI）
 

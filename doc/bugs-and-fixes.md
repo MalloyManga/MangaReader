@@ -72,5 +72,7 @@
 - **现象二**：我此前报告"44 个未使用 key 属早期脚手架残留"，该结论有两处错误：
   1. 扫描器只匹配 `t('字面量')`，漏判三元与变量 key —— `messages.languageChanged` / `languageChangedEn`（`t(cond ? 'a' : 'b')`）实为已用，属**误报**；
   2. 剩下的 key 也不是脚手架：`git log -S` 显示这些点号 key 在**任何历史 commit 的代码中都没出现过**，即建词表时写入但从未接线。按中文值再分类：**9 个是冗余别名**（同句文案已有在用的 key，如 `settings.title` 与 `common.settings`），**34 个是孤儿**——其中 `library.deleteBook`、窗口最小化/最大化/关闭按钮等，对应的是**今天没有任何 `title`/`aria-label` 的纯图标按钮**，即 i18n 未接线兼无障碍缺失，不是废文本。
-- **解决二**：校验脚本落库 `scripts/check-i18n.cjs`（引用识别扩展到任意引号内的点号路径，排除 `="a.b"` 这类 HTML 属性值误报；报告重复/差集/缺失/未使用），并加 `npm run check:i18n`。接线与否待 Malloy 决策，未擅自删 key。
+- **解决二**：校验脚本落库 `scripts/check-i18n.cjs`（引用识别扩展到任意引号内的点号路径，排除 `="a.b"` 这类 HTML 属性值误报；报告重复/差集/缺失/未使用），并加 `npm run check:i18n`。
+- **最终处置（2026-09-20 16:05–16:28，Malloy 决策）**：42 个从未使用的 key 全部删除（含 `settings.token`/`removeToken`、`library.editBook`、`about.description` 等），locale 总数 377 → 335；`library.deleteBook` 与窗口最小化/最大化/关闭三键补上 `aria-label` + `title`（新增 `common.minimize`/`maximize`/`restore`，`MaximizeButton` 随 `isMaximized` 在最大化/还原间切换）。复跑校验：无重复、零差集、零缺失、未使用 = 0；浏览器控制台无 error，中英文下三键分别读出 `最小化/最大化/关闭` 与 `Minimize/Maximize/Close`。
+- **验证留手**：`library.deleteBook` 的 tooltip 仅静态验证——纯浏览器环境下 `window.electronAPI` 不可用，无法向书架添加书籍，未能亲眼见到该按钮渲染。
 - **教训**：未使用 key 要先分辨"误报 / 冗余别名 / 该接未接"，不得直接打成脚手架残留；纯图标按钮缺可访问名本身就是 bug。
