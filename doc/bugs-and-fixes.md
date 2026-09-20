@@ -50,3 +50,27 @@
 - **解决方式**：删除追加块中的重复项，保留正文定义；校验脚本升级为**按原文行扫描记录重复**（不再依赖 JSON.parse），并补充 unused-key 报告。复跑结果：en/zh 各 374 键、无重复、无缺失。
 - **验证**：dev server 下 `/`、`/library`、`/reader`、`/auto-translate` 全部 200。
 - **教训**：i18n 校验必须包含①单文件内重复 key ②两边集合 diff ③引用可解析 三项；JSON.parse 会吞掉重复 key，不能作为查重手段。
+
+## B-2026-006 `ReferenceError: useI18n is not defined`（app 初始化崩溃）
+
+- **发现时间**：2026-09-20 15:00（Malloy 运行时报错；此前 B-2026-001 声称"改造完成"，但 dev server 路由 200 掩盖了它）
+- **现象**：`error caught during app initialization ReferenceError: useI18n is not defined`。
+- **根因**：项目**没有安装 `@nuxtjs/i18n` 模块**，只用 `app/plugins/i18n.ts` 手写 `createI18n` 并 `vueApp.use()`。Nuxt 的自动引入只覆盖自家 `app/composables`、`app/utils` 与 Vue/Nuxt 内置 API，**不含第三方包导出**（见 `.nuxt/imports.d.ts`，其中只有 `useSettings`、`useToast` 等，无 `useI18n`）。因此 `useI18n` 必须显式 import。仓库里 31 个文件都显式 import，唯独 5 个 composable 漏了：
+  - 早前 i18n commit 遗留：`useFileProcessor`、`useDetectionModuleStatus`、`useTranslatedImageExport`
+  - 本次改造引入：`useDictionaryStatus`、`useModelStatus`
+  `app.vue` 启动即调用 `useModelStatus().checkAllModelStatus()` → 首次求值就抛 ReferenceError。
+- **为何此前没被发现**：`ssr: false`，`curl` 拿到的只是外壳 HTML，**运行时错误不会体现在 HTTP 状态码里**；而浏览器控制台未被读取。
+- **解决方式**：5 个文件补 `import { useI18n } from 'vue-i18n'`（与仓库既有惯例一致，优于改 nuxt.config 配 `imports.presets`——后者会与 31 处显式 import 形成两套约定）。
+- **验证**：浏览器加载 `http://localhost:3000/#/`，控制台无 error；`🚀 App Launched` 正常输出；Settings > General 面板渲染出英文 `SudachiDict-core / Approx. 207 MB`，证明 `useDictionaryStatus` 内的 `t()` 可用。
+- **教训**：①"路由 200"不等于运行时无错，SPA/`ssr:false` 必须读浏览器控制台；②判断某 API 是否自动引入，唯一可信依据是 `.nuxt/imports.d.ts`，不能凭 Nuxt 一般印象。
+
+## B-2026-007 setup 之外调用 `useI18n()` + 未使用 key 的误判
+
+- **发现时间**：2026-09-20 15:10（修 B-2026-006 时自查；未使用 key 部分由 Malloy 质疑后复查）
+- **现象一**：`useAutoTranslateSession.ts` 的 `createBatchState()` 里写了 `useI18n().t(...)`。该工厂除经 `useState` 初始化器（setup 内）调用外，还被 `resetSession()` 在切换书籍等运行期调用——那时已脱离 setup 上下文，`useI18n()` 会失败。
+- **解决一**：把 i18n 实例从插件中抽出为 `app/locales/instance.ts`（插件只负责 `vueApp.use(i18n)`），非组件上下文改用 `i18n.global.t(...)`。
+- **现象二**：我此前报告"44 个未使用 key 属早期脚手架残留"，该结论有两处错误：
+  1. 扫描器只匹配 `t('字面量')`，漏判三元与变量 key —— `messages.languageChanged` / `languageChangedEn`（`t(cond ? 'a' : 'b')`）实为已用，属**误报**；
+  2. 剩下的 key 也不是脚手架：`git log -S` 显示这些点号 key 在**任何历史 commit 的代码中都没出现过**，即建词表时写入但从未接线。按中文值再分类：**9 个是冗余别名**（同句文案已有在用的 key，如 `settings.title` 与 `common.settings`），**34 个是孤儿**——其中 `library.deleteBook`、窗口最小化/最大化/关闭按钮等，对应的是**今天没有任何 `title`/`aria-label` 的纯图标按钮**，即 i18n 未接线兼无障碍缺失，不是废文本。
+- **解决二**：校验脚本落库 `scripts/check-i18n.cjs`（引用识别扩展到任意引号内的点号路径，排除 `="a.b"` 这类 HTML 属性值误报；报告重复/差集/缺失/未使用），并加 `npm run check:i18n`。接线与否待 Malloy 决策，未擅自删 key。
+- **教训**：未使用 key 要先分辨"误报 / 冗余别名 / 该接未接"，不得直接打成脚手架残留；纯图标按钮缺可访问名本身就是 bug。
