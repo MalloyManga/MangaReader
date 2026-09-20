@@ -15,10 +15,10 @@ interface Props {
 }
 
 const {
-    title = t('common.confirmTitle'),
-    content = t('common.confirmContent'),
-    confirmText = t('common.confirm'),
-    cancelText = t('common.cancel'),
+    title,
+    content,
+    confirmText,
+    cancelText,
     isDanger = false,
     loading = false
 } = defineProps<Props>()
@@ -52,10 +52,10 @@ const emit = defineEmits<{
                         </div>
                         <div>
                             <h3 class="text-lg font-bold text-manga-900 dark:text-white">
-                                {{ title }}
+                                {{ title ?? t('common.confirmTitle') }}
                             </h3>
                             <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">
-                                {{ content }}
+                                {{ content ?? t('common.confirmContent') }}
                             </p>
                         </div>
                     </div>
@@ -63,13 +63,13 @@ const emit = defineEmits<{
                     <!-- 取消及确认按钮 -->
                     <div class="flex justify-end gap-3 mt-6">
                         <Button @btn-click="emit('cancel')" :disabled="loading" variant="outline" size="sm">
-                            {{ cancelText }}
+                            {{ cancelText ?? t('common.cancel') }}
                         </Button>
                         <Button @btn-click="emit('confirm')" :disabled="loading" variant="danger" size="sm"
                             :class="loading ? 'opacity-70 cursor-not-allowed' : ''">
                             <span v-if="loading"
                                 class="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></span>
-                            {{ confirmText }}
+                            {{ confirmText ?? t('common.confirm') }}
                         </Button>
                     </div>
                 </div>
