@@ -4,15 +4,18 @@ import { useI18n } from 'vue-i18n'
 
 const { locale, t } = useI18n()
 const { settings } = useSettings()
+const { loadTranslationModels } = useModelStatus()
 
+// 语言名一律用自称，两种界面语言下都显示「中文 / English」
 const languages = [
-  { code: 'zh', nameKey: 'settings.languageNameZh', labelKey: 'settings.languageZh' },
-  { code: 'en', nameKey: 'settings.languageNameEn', labelKey: 'settings.languageEn' }
+  { code: 'zh', nameKey: 'settings.languageZh' },
+  { code: 'en', nameKey: 'settings.languageEn' }
 ]
 
-const changeLanguage = (code: 'zh' | 'en') => {
+const changeLanguage = async (code: 'zh' | 'en') => {
   locale.value = code
   settings.value.targetLanguage = code
+  await loadTranslationModels()
 }
 
 onMounted(() => {
@@ -40,13 +43,8 @@ onMounted(() => {
           @change="changeLanguage(lang.code as 'zh' | 'en')"
           class="w-4 h-4 cursor-pointer"
         />
-        <label :for="`lang-${lang.code}`" class="ml-3 cursor-pointer flex-1">
-          <div class="font-medium text-manga-900 dark:text-white">
-            {{ t(lang.nameKey) }}
-          </div>
-          <div class="text-sm text-manga-500 dark:text-manga-400">
-            {{ t(lang.labelKey) }}
-          </div>
+        <label :for="`lang-${lang.code}`" class="ml-3 cursor-pointer flex-1 font-medium text-manga-900 dark:text-white">
+          {{ t(lang.nameKey) }}
         </label>
       </div>
     </div>

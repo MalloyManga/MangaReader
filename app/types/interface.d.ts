@@ -83,6 +83,7 @@ export interface TranslationModel {
     description: string
     engine: string
     adapted_types?: string[]
+    target_languages?: string[]
 }
 
 export interface DownloadProgress {

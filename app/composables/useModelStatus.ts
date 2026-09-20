@@ -26,6 +26,7 @@ const fallbackModels: TranslationModelState[] = [
         description: '小型日译中 NMT 模型，速度快、体积小',
         engine: 'opus-mt-ja-zh',
         adapted_types: ['manga', 'general'],
+        target_languages: ['zh'],
         status: 'unknown',
         progress: 0,
         downloadStage: ''
@@ -38,6 +39,7 @@ const fallbackModels: TranslationModelState[] = [
         description: '轻小说/漫画向本地 GGUF 翻译模型',
         engine: 'sakura',
         adapted_types: ['manga', 'light_novel', 'galgame'],
+        target_languages: ['zh'],
         status: 'unknown',
         progress: 0,
         downloadStage: ''
@@ -50,6 +52,7 @@ const fallbackModels: TranslationModelState[] = [
         description: '通用指令日译中 GGUF 模型，质量更高但下载和运行占用更大',
         engine: 'qwen3-gguf',
         adapted_types: ['manga', 'general', 'dialogue'],
+        target_languages: ['zh'],
         status: 'unknown',
         progress: 0,
         downloadStage: ''
@@ -57,9 +60,20 @@ const fallbackModels: TranslationModelState[] = [
 ]
 
 const modelStates = reactive<TranslationModelState[]>([...fallbackModels])
-let modelsLoaded = false
+// 记录目录当前对应哪种目标语言，语言变化时必须重新拉取
+let modelsLoadedLang: string | null = null
 let modelsLoadPromise: Promise<TranslationModelState[]> | null = null
 const modelCheckPromises = new Map<string, Promise<TranslationModelState | undefined>>()
+
+const modelsForLang = (lang: string) =>
+    modelStates.filter(model => (model.target_languages ?? ['zh']).includes(lang))
+
+const pickDefaultModelId = (lang: string) => {
+    const available = modelsForLang(lang)
+    if (!available.length) return undefined
+    return available.reduce((smallest, model) =>
+        (model.size_bytes ?? Infinity) < (smallest.size_bytes ?? Infinity) ? model : smallest).id
+}
 
 const ensureModel = (model: TranslationModel) => {
     let existing = modelStates.find(item => item.id === model.id)
@@ -78,6 +92,7 @@ const ensureModel = (model: TranslationModel) => {
         existing.description = model.description
         existing.engine = model.engine
         existing.adapted_types = model.adapted_types
+        existing.target_languages = model.target_languages
     }
     return existing
 }
@@ -97,25 +112,31 @@ export function useModelStatus() {
     }
 
     const loadTranslationModels = async (force = false) => {
-        if (modelsLoaded && !force) return modelStates
+        const lang = settings.value.targetLanguage || 'zh'
+        if (modelsLoadedLang === lang && !force) return modelStates
         if (modelsLoadPromise && !force) return modelsLoadPromise
         if (!window.electronAPI?.listTranslationModels) {
             return modelStates
         }
 
         modelsLoadPromise = (async () => {
-            const res = await window.electronAPI.listTranslationModels(settings.value.targetLanguage)
+            const res = await window.electronAPI.listTranslationModels(lang)
             const models = res.models ?? []
             if (!res.success) throw new Error(res.error || t('fileWorkflow.modelListLoadFailed'))
             if (models.length > 0) {
                 models.forEach(ensureModel)
-
-                if (!settings.value.translationModelId) {
-                    const defaultModelId = res.defaultModelId || models[0]?.id
-                    if (defaultModelId) settings.value.translationModelId = defaultModelId
+                // 目录只保留目标语言的模型，切换语言后另一种语言的模型不再出现
+                const visible = new Set(models.map(model => model.id))
+                for (let index = modelStates.length - 1; index >= 0; index--) {
+                    if (!visible.has(modelStates[index].id)) modelStates.splice(index, 1)
                 }
+
+                // 已选模型不属于新语言时，自动切到该语言的默认（体积最小）模型
+                if (!models.some(model => model.id === settings.value.translationModelId)) {
+                    settings.value.translationModelId = res.defaultModelId || pickDefaultModelId(lang)
+                }
+                modelsLoadedLang = lang
             }
-            modelsLoaded = true
             return modelStates
         })()
 

@@ -8,6 +8,7 @@ defineProps<{
 
 const emit = defineEmits<{
     select: [language: 'zh' | 'en']
+    dismiss: []
 }>()
 
 const { t, locale } = useI18n()
@@ -17,7 +18,8 @@ const selectLanguage = (language: 'zh' | 'en') => {
     emit('select', language)
 }
 
-const close = () => selectLanguage('zh')
+// 关闭不算做出选择：不写入 targetLanguage，下次启动仍会弹出
+const close = () => emit('dismiss')
 </script>
 
 <template>
@@ -46,7 +48,7 @@ const close = () => selectLanguage('zh')
                             :class="locale === 'zh' ? 'border-primary bg-primary/5' : 'border-manga-200 dark:border-manga-600'"
                             class="w-full px-6 py-4 rounded-lg border-2 hover:border-primary dark:hover:border-blue-400 transition-colors text-left group">
                             <div class="font-bold text-lg text-manga-900 dark:text-white group-hover:text-primary dark:group-hover:text-blue-400">
-                                中文
+                                {{ t('settings.languageZh') }}
                             </div>
                             <div class="text-sm text-manga-500 dark:text-manga-400 mt-1">
                                 {{ t('library.chineseOption') }}
@@ -58,7 +60,7 @@ const close = () => selectLanguage('zh')
                             :class="locale === 'en' ? 'border-primary bg-primary/5' : 'border-manga-200 dark:border-manga-600'"
                             class="w-full px-6 py-4 rounded-lg border-2 hover:border-primary dark:hover:border-blue-400 transition-colors text-left group">
                             <div class="font-bold text-lg text-manga-900 dark:text-white group-hover:text-primary dark:group-hover:text-blue-400">
-                                English
+                                {{ t('settings.languageEn') }}
                             </div>
                             <div class="text-sm text-manga-500 dark:text-manga-400 mt-1">
                                 {{ t('library.englishOption') }}

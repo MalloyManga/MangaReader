@@ -3,6 +3,7 @@ import type { Book } from '~/types/interface'
 import { useI18n } from 'vue-i18n'
 
 const { initSettings, settings, isLanguageConfigured } = useSettings()
+const { loadTranslationModels } = useModelStatus()
 const { showToast } = useToast()
 const { t } = useI18n()
 const autoTranslateSession = useAutoTranslateSession()
@@ -90,9 +91,11 @@ const removeBook = async (e: Event, id: string) => {
     }, 300)
 }
 
-const handleLanguageSelect = (language: 'zh' | 'en') => {
+const handleLanguageSelect = async (language: 'zh' | 'en') => {
     settings.value.targetLanguage = language
     showLanguageModal.value = false
+    // 目录与已选模型要跟着目标语言走，否则仍是另一种语言的模型
+    await loadTranslationModels()
     showToast(t(language === 'zh' ? 'messages.languageChanged' : 'messages.languageChangedEn'), 2000)
 }
 
@@ -193,7 +196,7 @@ onMounted(async () => {
             </div>
         </div>
         <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-        <LanguageSelectionModal :is-open="showLanguageModal" @select="handleLanguageSelect" />
+        <LanguageSelectionModal :is-open="showLanguageModal" @select="handleLanguageSelect" @dismiss="showLanguageModal = false" />
         <AutoTranslateExportModal :show="Boolean(exportBook)" :book="exportBook" @close="exportBook = null" />
     </div>
     <ConfirmModal @confirm="handleModalConfirm" @cancel="handleModalCancel" :show="confirmModalFlag" :title="t('messages.fileNotFound')"
