@@ -374,7 +374,6 @@
     ,"noRegionsOnPage": "当前页面未检测到文字区域"
     ,"noOriginalText": "没有可翻译的原文"
     ,"emptyTranslation": "翻译结果为空"
-    ,"pageProgress": "第 {current} / {total} 页"
     ,"analyzingPage": "正在分析{page}文字区域"
     ,"recognizingRegion": "正在识别{page}的第 {current} / {total} 个文字框"
     ,"translatingRegion": "正在翻译{page}的第 {current} / {total} 个文字框"

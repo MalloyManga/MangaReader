@@ -374,7 +374,6 @@
     ,"noRegionsOnPage": "No text regions detected on this page"
     ,"noOriginalText": "No original text available to translate"
     ,"emptyTranslation": "Translation result is empty"
-    ,"pageProgress": "Page {current} / {total}"
     ,"analyzingPage": "Analyzing text regions on {page}"
     ,"recognizingRegion": "Recognizing region {current} / {total} on {page}"
     ,"translatingRegion": "Translating region {current} / {total} on {page}"
