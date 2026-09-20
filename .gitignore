@@ -38,7 +38,9 @@ services/build
 out/
 
 # Local design documents (never commit)
-doc/
+doc/*
+!doc/journal.md
+!doc/bugs-and-fixes.md
 
 models/*
 !models/.gitkeep
