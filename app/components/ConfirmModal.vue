@@ -1,9 +1,13 @@
 <!-- components/ConfirmModal.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 interface Props {
     show: boolean
-    title: string
-    content: string
+    title?: string
+    content?: string
     confirmText?: string
     cancelText?: string
     isDanger?: boolean
@@ -11,10 +15,10 @@ interface Props {
 }
 
 const {
-    title = '确认操作',
-    content = '你确定要执行此操作吗？',
-    confirmText = '确定',
-    cancelText = '取消',
+    title = t('common.confirmTitle'),
+    content = t('common.confirmContent'),
+    confirmText = t('common.confirm'),
+    cancelText = t('common.cancel'),
     isDanger = false,
     loading = false
 } = defineProps<Props>()

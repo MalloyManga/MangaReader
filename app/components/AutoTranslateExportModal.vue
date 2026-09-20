@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Book } from '~/types/interface'
 import type { ExportScope } from '~/composables/useTranslatedImageExport'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
     show: boolean
@@ -12,6 +13,7 @@ const emit = defineEmits<{
 }>()
 
 const { showToast } = useToast()
+const { t } = useI18n()
 const { exportBook, getExportablePageIndices } = useTranslatedImageExport()
 const scope = ref<ExportScope>('all')
 const isExporting = ref(false)
@@ -37,7 +39,7 @@ const startExport = async () => {
     if (!props.book || isExporting.value) return
     isExporting.value = true
     progress.value = 0
-    progressMessage.value = '正在准备导出'
+    progressMessage.value = t('autoTranslateWorkflow.preparingExport')
     try {
         const result = await exportBook(props.book, scope.value, (current, total, message) => {
             progress.value = Math.round((current / Math.max(1, total)) * 100)
@@ -49,8 +51,8 @@ const startExport = async () => {
             return
         }
         progress.value = 100
-        progressMessage.value = `已导出 ${result.exported} 页`
-        showToast(`已导出 ${result.exported} 张翻译图片`, 3000)
+        progressMessage.value = t('autoTranslateWorkflow.exportedPages', { count: result.exported })
+        showToast(t('autoTranslateWorkflow.exportedImages', { count: result.exported }), 3000)
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         progressMessage.value = message
@@ -74,11 +76,11 @@ const startExport = async () => {
                             <IconDownload class="size-5" />
                         </div>
                         <div class="min-w-0 flex-1">
-                            <h2 class="text-lg font-bold text-manga-900 dark:text-manga-100">导出翻译图片</h2>
+                            <h2 class="text-lg font-bold text-manga-900 dark:text-manga-100">{{ t('autoTranslateWorkflow.exportTitle') }}</h2>
                             <p class="mt-1 truncate text-sm text-manga-500 dark:text-manga-400" :title="bookName">{{ bookName }}</p>
                         </div>
                         <button type="button" class="flex size-8 items-center justify-center text-manga-500 hover:text-manga-900 disabled:opacity-40 dark:hover:text-white"
-                            :disabled="isExporting" title="关闭" @click="close">
+                            :disabled="isExporting" :title="t('common.close')" @click="close">
                             <IconClose class="size-4" />
                         </button>
                     </div>
@@ -87,12 +89,12 @@ const startExport = async () => {
                         <button type="button" class="h-10 rounded-md text-sm font-medium transition-colors"
                             :class="scope === 'current' ? 'bg-white text-primary shadow-sm dark:bg-manga-800' : 'text-manga-500'"
                             @click="scope = 'current'">
-                            当前页（{{ currentAvailable }}）
+                            {{ t('autoTranslateWorkflow.currentPage', { count: currentAvailable }) }}
                         </button>
                         <button type="button" class="h-10 rounded-md text-sm font-medium transition-colors"
                             :class="scope === 'all' ? 'bg-white text-primary shadow-sm dark:bg-manga-800' : 'text-manga-500'"
                             @click="scope = 'all'">
-                            全部页面（{{ allAvailable }}）
+                            {{ t('autoTranslateWorkflow.allPages', { count: allAvailable }) }}
                         </button>
                     </div>
 
@@ -108,11 +110,11 @@ const startExport = async () => {
 
                     <div class="mt-6 flex justify-end gap-3">
                         <button type="button" class="h-10 px-4 text-sm font-medium text-manga-600 disabled:opacity-40 dark:text-manga-300"
-                            :disabled="isExporting" @click="close">取消</button>
+                            :disabled="isExporting" @click="close">{{ t('common.cancel') }}</button>
                         <button type="button" class="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                             :disabled="isExporting || (scope === 'current' ? !currentAvailable : !allAvailable)" @click="startExport">
                             <IconDownload class="size-4" />
-                            {{ isExporting ? '正在导出' : '选择文件夹并导出' }}
+                            {{ isExporting ? t('autoTranslateWorkflow.exporting') : t('autoTranslateWorkflow.selectFolderExport') }}
                         </button>
                     </div>
                 </section>

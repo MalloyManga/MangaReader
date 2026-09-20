@@ -1,18 +1,21 @@
 <!-- components/SettingsGeneral.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 const { settings, saveSettings } = useSettings()
 const { showToast } = useToast()
 const { selectedModel, checkAllModelStatus } = useModelStatus()
 const { dictionary, checkDictionaryStatus } = useDictionaryStatus()
 
-const themeOptions: Record<ThemeOption, {
+const themeOptions = computed<Record<ThemeOption, {
     icon: string,
     desc: string
-}> = {
-    'light': { icon: '☀️', desc: '浅色' },
-    'dark': { icon: '🌙', desc: '深色' },
-    'system': { icon: '💻', desc: '跟随系统' }
-}
+}>>(() => ({
+    'light': { icon: '☀️', desc: t('general.themeLight') },
+    'dark': { icon: '🌙', desc: t('general.themeDark') },
+    'system': { icon: '💻', desc: t('general.themeSystem') }
+}))
 
 const isRecording = ref(false)
 const showDeleteDictionaryModal = ref(false)
@@ -21,26 +24,26 @@ let cleanupDictionaryProgress: (() => void) | null = null
 // 记录当前正在录制哪个快捷键
 const recordingTarget = ref<'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut' | null>(null)
 
-const modeOptions = [
+const modeOptions = computed(() => [
     {
         mode: 'study',
-        label: '精读模式',
-        desc: '经典的左图右文布局，适合逐句精读学习。',
+        label: t('general.studyMode'),
+        desc: t('general.studyModeDesc'),
         hint: ''
     },
     {
         mode: 'list',
-        label: '列表模式',
-        desc: 'OCR 结果以列表形式排列，适合快速浏览。',
-        hint: '建议配置ocr快捷键'
+        label: t('general.listMode'),
+        desc: t('general.listModeDesc'),
+        hint: t('general.ocrShortcutHint')
     },
     {
         mode: 'immersive',
-        label: '沉浸模式',
-        desc: '全屏显示图片，翻译作为浮层显示。',
-        hint: '需要配置ocr快捷键'
+        label: t('general.immersiveMode'),
+        desc: t('general.immersiveModeDesc'),
+        hint: t('general.ocrShortcutRequired')
     }
-]
+])
 
 // 判断模型是否不可用 study模式默认可用 (翻译)模型未下载时为不可用 true
 const isModeDisabled = (modeValue: string) => {
@@ -50,7 +53,7 @@ const isModeDisabled = (modeValue: string) => {
 
 const handleModeClick = (modeValue: any) => {
     if (isModeDisabled(modeValue)) {
-        showToast('⚠️ 该模式需要翻译模型，请先在“翻译设置”中下载模型')
+        showToast(t('general.translationModelRequired'))
         return
     }
     settings.value.readingMode = modeValue
@@ -61,7 +64,7 @@ const handleModeClick = (modeValue: any) => {
 const startRecording = (target: 'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut') => {
     isRecording.value = true
     recordingTarget.value = target
-    showToast('按下组合键，Enter 确认，Esc 取消', 3000)
+    showToast(t('general.recordShortcutHint'), 3000)
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,7 +93,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
         saveSettings()
         stopRecording();
         (e.target as HTMLElement).blur()
-        showToast('快捷键已清除', 1500)
+        showToast(t('general.shortcutCleared'), 1500)
         return
     }
 
@@ -147,12 +150,12 @@ const handleDownloadDictionary = async () => {
             dictionary.progress = 100
             dictionary.status = 'downloaded'
         } else {
-            showToast(`下载失败: ${res.error}`)
+            showToast(`${t('general.downloadFailed')}: ${res.error}`)
             dictionary.status = 'not_downloaded'
         }
     } catch (e) {
         dictionary.status = 'not_downloaded'
-        showToast('下载出错')
+        showToast(t('general.downloadError'))
     }
 }
 
@@ -165,10 +168,10 @@ const confirmDeleteDictionary = async () => {
             dictionary.progress = 0
             showDeleteDictionaryModal.value = false
         } else {
-            showToast('删除失败')
+            showToast(t('general.deleteFailed'))
         }
     } catch (e) {
-        showToast('删除出错')
+        showToast(t('general.deleteError'))
     } finally {
         isDeletingDictionary.value = false
     }
@@ -201,7 +204,7 @@ onUnmounted(() => {
 
         <section>
             <!-- 阅读模式设置部分 -->
-            <h3 class="text-lg font-bold text-manga-900 dark:text-white mb-3">阅读模式</h3>
+            <h3 class="text-lg font-bold text-manga-900 dark:text-white mb-3">{{ t('general.readingMode') }}</h3>
             <div class="flex flex-col gap-3">
                 <button v-for="modeOption in modeOptions" :key="modeOption.mode"
                     @click="handleModeClick(modeOption.mode)"
@@ -218,7 +221,7 @@ onUnmounted(() => {
                         class="absolute inset-0 z-10 bg-white/50 dark:bg-black/50 flex items-center justify-center backdrop-blur-[1px]">
                         <span
                             class="bg-black/75 text-white text-[10px] px-2 py-1 rounded-full font-medium tracking-wide shadow-sm">
-                            需配置翻译模型
+                            {{ t('general.translationModelRequiredShort') }}
                         </span>
                     </div>
 
@@ -259,42 +262,42 @@ onUnmounted(() => {
             <div
                 class="mt-3 px-3 py-2.5 rounded-lg bg-manga-50 dark:bg-manga-900/40 border border-manga-100 dark:border-manga-700/50 text-xs text-manga-600 dark:text-manga-400">
                 <div class="font-bold mb-1.5 flex items-center gap-1.5 text-manga-700 dark:text-manga-300">
-                    气泡操作
+                    {{ t('general.bubbleControls') }}
                 </div>
                 <div class="space-y-1">
                     <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                        <span class="opacity-80">左键单击：</span> 切换 <span
-                            class="font-medium text-manga-800 dark:text-manga-200">原文 / 译文</span>
+                        <span class="opacity-80">{{ t('general.leftClick') }}：</span> {{ t('general.toggle') }} <span
+                            class="font-medium text-manga-800 dark:text-manga-200">{{ t('general.originalTranslation') }}</span>
                     </div>
                     <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-                        <span class="opacity-80">双击气泡：</span> 重新进行 <span
-                            class="font-medium text-manga-800 dark:text-manga-200">OCR 识别</span>
+                        <span class="opacity-80">{{ t('general.doubleClickBubble') }}：</span> {{ t('general.runAgain') }} <span
+                            class="font-medium text-manga-800 dark:text-manga-200">OCR {{ t('general.recognition') }}</span>
                     </div>
                     <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-red-400"></span> <span
-                            class="opacity-80">右键点击：</span> <span
-                            class="font-medium text-red-600 dark:text-red-400">删除</span> 选中文本框</div>
+                            class="opacity-80">{{ t('general.rightClick') }}：</span> <span
+                            class="font-medium text-red-600 dark:text-red-400">{{ t('common.delete') }}</span> {{ t('general.selectedTextBox') }}</div>
                 </div>
             </div>
         </section>
 
         <div>
-            <h3 class="text-lg font-bold text-manga-900 dark:text-white">常规设置</h3>
-            <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">控制软件的基础功能与外观</p>
+            <h3 class="text-lg font-bold text-manga-900 dark:text-white">{{ t('general.title') }}</h3>
+            <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">{{ t('general.description') }}</p>
         </div>
 
         <div class="space-y-4">
-            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">核心功能</h4>
+            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">{{ t('general.coreFeatures') }}</h4>
 
             <div class="p-4 rounded-lg border border-manga-100 dark:border-manga-700 bg-manga-50 dark:bg-manga-900/50">
                 <div class="mb-3">
-                    <div class="font-medium text-manga-900 dark:text-manga-200">下载源</div>
-                    <div class="text-xs text-manga-500">下载失败时会自动切换到另一个来源</div>
+                    <div class="font-medium text-manga-900 dark:text-manga-200">{{ t('general.downloadSource') }}</div>
+                    <div class="text-xs text-manga-500">{{ t('general.downloadSourceDesc') }}</div>
                 </div>
                 <div class="grid grid-cols-2 rounded-lg bg-manga-200/70 dark:bg-manga-700 p-1" role="radiogroup"
-                    aria-label="下载源">
+                    :aria-label="t('general.downloadSource')">
                     <button v-for="source in ([
-                        { id: 'mirror', label: '镜像源' },
-                        { id: 'official', label: '官方源' }
+                        { id: 'mirror', label: t('general.mirrorSource') },
+                        { id: 'official', label: t('general.officialSource') }
                     ] as const)" :key="source.id" type="button" role="radio"
                         :aria-checked="settings.downloadSource === source.id"
                         class="h-9 text-sm font-medium rounded-md transition-colors cursor-pointer"
@@ -310,8 +313,8 @@ onUnmounted(() => {
             <div
                 class="flex items-center justify-between p-4 rounded-lg border border-manga-100 dark:border-manga-700 bg-manga-50 dark:bg-manga-900/50">
                 <div>
-                    <div class="font-medium text-manga-900 dark:text-manga-200">启用分词</div>
-                    <div class="text-xs text-manga-500">对识别结果进行日语分词处理</div>
+                    <div class="font-medium text-manga-900 dark:text-manga-200">{{ t('general.enableTokenization') }}</div>
+                    <div class="text-xs text-manga-500">{{ t('general.enableTokenizationDesc') }}</div>
                 </div>
                 <!-- 简单的 Toggle 开关样式 -->
                 <label class="relative inline-flex items-center cursor-pointer">
@@ -337,15 +340,15 @@ onUnmounted(() => {
 
                 <div class="flex items-center gap-3 shrink-0">
                     <div v-if="dictionary.status === 'checking'" class="text-xs text-manga-400">
-                        检查中...
+                        {{ t('general.checking') }}
                     </div>
 
                     <div v-else-if="dictionary.status === 'downloaded'" class="flex items-center gap-1">
                         <span class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                             <IconSuccess class="size-4" />
-                            已就绪
+                            {{ t('general.ready') }}
                         </span>
-                        <button @click="showDeleteDictionaryModal = true" title="删除词典"
+                        <button @click="showDeleteDictionaryModal = true" :title="t('general.deleteDictionary')"
                             class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer">
                             <IconTresh class="size-5" />
                         </button>
@@ -353,7 +356,7 @@ onUnmounted(() => {
 
                     <div v-else-if="dictionary.status === 'downloading'" class="w-28">
                         <div class="flex justify-between text-xs text-manga-500 mb-1">
-                            <span>下载中</span>
+                            <span>{{ t('general.downloading') }}</span>
                             <span>{{ Math.round(dictionary.progress) }}%</span>
                         </div>
                         <div class="w-full bg-manga-100 dark:bg-manga-700 rounded-full h-1.5 overflow-hidden">
@@ -365,7 +368,7 @@ onUnmounted(() => {
                     <button v-else @click="handleDownloadDictionary"
                         class="flex items-center gap-1.5 px-3 py-1.5 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all cursor-pointer whitespace-nowrap">
                         <IconDownload class="size-4" />
-                        下载
+                        {{ t('common.download') }}
                     </button>
                 </div>
             </div>
@@ -373,8 +376,8 @@ onUnmounted(() => {
             <div
                 class="flex items-center justify-between p-4 rounded-lg border border-manga-100 dark:border-manga-700 bg-manga-50 dark:bg-manga-900/50">
                 <div>
-                    <div class="font-medium text-manga-900 dark:text-manga-200">启用翻译</div>
-                    <div class="text-xs text-manga-500">开启后将加载本地 LLM 模型</div>
+                    <div class="font-medium text-manga-900 dark:text-manga-200">{{ t('general.enableTranslation') }}</div>
+                    <div class="text-xs text-manga-500">{{ t('general.enableTranslationDesc') }}</div>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" v-model="settings.enableTranslation" @change="saveSettings"
@@ -388,15 +391,15 @@ onUnmounted(() => {
 
         <!-- 快捷键设置区域 -->
         <div class="space-y-4">
-            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">全局快捷键</h4>
+            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">{{ t('general.globalShortcuts') }}</h4>
 
             <!-- OCR 截图 -->
             <div>
-                <label class="text-xs text-manga-500 mb-1 block">OCR 截图</label>
+                <label class="text-xs text-manga-500 mb-1 block">{{ t('general.ocrCapture') }}</label>
                 <div class="relative group">
                     <!-- 判断 只有正在录制并且录制的为ocr快捷键true 才会显示设置的快捷键或者提示文本 false时显示已经设置的快捷键或者提示文本 即保证总是显示快捷键 -->
                     <input type="text" readonly
-                        :value="(isRecording && recordingTarget === 'ocrShortcut') ? (settings.ocrShortcut || '请按下按键...') : (settings.ocrShortcut || '未设置')"
+                        :value="(isRecording && recordingTarget === 'ocrShortcut') ? (settings.ocrShortcut || t('general.pressKey')) : (settings.ocrShortcut || t('general.notSet'))"
                         @click="startRecording('ocrShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
                         class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
                         :class="[
@@ -411,17 +414,17 @@ onUnmounted(() => {
                             <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                         </span>
                         <span v-else
-                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">{{ t('general.clickToRecord') }}</span>
                     </div>
                 </div>
             </div>
 
             <!-- 上一张图片 -->
             <div>
-                <label class="text-xs text-manga-500 mb-1 block">上一张图片</label>
+                <label class="text-xs text-manga-500 mb-1 block">{{ t('general.previousImage') }}</label>
                 <div class="relative group">
                     <input type="text" readonly
-                        :value="(isRecording && recordingTarget === 'prevImageShortcut') ? (settings.prevImageShortcut || '请按下按键...') : (settings.prevImageShortcut || '未设置')"
+                        :value="(isRecording && recordingTarget === 'prevImageShortcut') ? (settings.prevImageShortcut || t('general.pressKey')) : (settings.prevImageShortcut || t('general.notSet'))"
                         @click="startRecording('prevImageShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
                         class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
                         :class="[
@@ -437,17 +440,17 @@ onUnmounted(() => {
                             <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                         </span>
                         <span v-else
-                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">{{ t('general.clickToRecord') }}</span>
                     </div>
                 </div>
             </div>
 
             <!-- 下一张图片 -->
             <div>
-                <label class="text-xs text-manga-500 mb-1 block">下一张图片</label>
+                <label class="text-xs text-manga-500 mb-1 block">{{ t('general.nextImage') }}</label>
                 <div class="relative group">
                     <input type="text" readonly
-                        :value="(isRecording && recordingTarget === 'nextImageShortcut') ? (settings.nextImageShortcut || '请按下按键...') : (settings.nextImageShortcut || '未设置')"
+                        :value="(isRecording && recordingTarget === 'nextImageShortcut') ? (settings.nextImageShortcut || t('general.pressKey')) : (settings.nextImageShortcut || t('general.notSet'))"
                         @click="startRecording('nextImageShortcut')" @keydown="handleKeyDown" @blur="stopRecording"
                         class="w-full px-4 py-3 rounded-lg text-sm font-mono text-center cursor-pointer transition-all border outline-none"
                         :class="[
@@ -463,7 +466,7 @@ onUnmounted(() => {
                             <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                         </span>
                         <span v-else
-                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">点击录制</span>
+                            class="text-xs text-manga-400 bg-manga-100 dark:bg-manga-800 px-2 py-1 rounded">{{ t('general.clickToRecord') }}</span>
                     </div>
                 </div>
             </div>
@@ -471,7 +474,7 @@ onUnmounted(() => {
 
         <!-- 主题外观 -->
         <div class="space-y-4">
-            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">外观</h4>
+            <h4 class="text-xs font-semibold text-manga-400 uppercase tracking-wider">{{ t('general.appearance') }}</h4>
             <div class="grid grid-cols-3 gap-3">
                 <button v-for="(theme, themeId) in themeOptions" :key="themeId"
                     @click="settings.theme = themeId; saveSettings()"
@@ -494,8 +497,8 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <ConfirmModal :show="showDeleteDictionaryModal" title="删除分词词典？"
-            :content="`确定要删除 ${dictionary.name} 吗？这将释放约 ${dictionary.size} 的磁盘空间。`" confirm-text="确认删除"
+        <ConfirmModal :show="showDeleteDictionaryModal" :title="t('general.deleteDictionaryConfirm')"
+            :content="t('general.deleteDictionaryContent', { name: dictionary.name, size: dictionary.size })" :confirm-text="t('common.confirmDelete')"
             :is-danger="true" :loading="isDeletingDictionary" @cancel="showDeleteDictionaryModal = false"
             @confirm="confirmDeleteDictionary" />
     </div>

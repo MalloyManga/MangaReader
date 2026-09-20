@@ -2,7 +2,7 @@
 import type { Book } from '~/types/interface'
 import { useI18n } from 'vue-i18n'
 
-const { initSettings, settings } = useSettings()
+const { initSettings, settings, isLanguageConfigured } = useSettings()
 const { showToast } = useToast()
 const { t } = useI18n()
 const autoTranslateSession = useAutoTranslateSession()
@@ -57,7 +57,7 @@ const openBook = async (book: Book) => {
     const isAutoTranslateBook = book.kind === 'auto-translate'
     if (isAutoTranslateBook && autoTranslateSession.isProcessing.value
         && autoTranslateSession.bookId.value !== book.id) {
-        showToast(t('messages.languageChanged'), 4000)
+        showToast(t('messages.processingAnotherBook'), 4000)
         return
     }
 
@@ -93,15 +93,15 @@ const removeBook = async (e: Event, id: string) => {
 const handleLanguageSelect = (language: 'zh' | 'en') => {
     settings.value.targetLanguage = language
     showLanguageModal.value = false
-    showToast(language === 'zh' ? '已选择中文' : 'Language set to English', 2000)
+    showToast(t(language === 'zh' ? 'messages.languageChanged' : 'messages.languageChangedEn'), 2000)
 }
 
-onMounted(() => {
-    initSettings()
+onMounted(async () => {
+    await initSettings()
     loadLibrary()
     
     // Show language selection modal if not yet configured
-    if (!settings.value.targetLanguage || settings.value.targetLanguage === '') {
+    if (!isLanguageConfigured.value) {
         showLanguageModal.value = true
     }
 })
@@ -144,7 +144,7 @@ onMounted(() => {
                             <IconTresh class="size-4" />
                         </button>
 
-                        <button v-if="book.kind === 'auto-translate'" type="button" title="导出翻译图片"
+                        <button v-if="book.kind === 'auto-translate'" type="button" :title="t('autoTranslateWorkflow.exportTitle')"
                             class="absolute top-2 right-11 z-10 flex size-7 items-center justify-center rounded bg-white/90 text-manga-600 opacity-0 shadow-sm transition-all hover:bg-primary hover:text-white group-hover:opacity-100 dark:bg-manga-800/90 dark:text-manga-300"
                             @click="openExportModal($event, book)">
                             <IconDownload class="size-4" />

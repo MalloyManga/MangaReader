@@ -6,8 +6,8 @@ const { locale, t } = useI18n()
 const { settings } = useSettings()
 
 const languages = [
-  { code: 'zh', label: '中文', name: 'Chinese' },
-  { code: 'en', label: 'English', name: 'English' }
+  { code: 'zh', nameKey: 'settings.languageNameZh', labelKey: 'settings.languageZh' },
+  { code: 'en', nameKey: 'settings.languageNameEn', labelKey: 'settings.languageEn' }
 ]
 
 const changeLanguage = (code: 'zh' | 'en') => {
@@ -42,10 +42,10 @@ onMounted(() => {
         />
         <label :for="`lang-${lang.code}`" class="ml-3 cursor-pointer flex-1">
           <div class="font-medium text-manga-900 dark:text-white">
-            {{ lang.label }}
+            {{ t(lang.nameKey) }}
           </div>
           <div class="text-sm text-manga-500 dark:text-manga-400">
-            {{ lang.name }}
+            {{ t(lang.labelKey) }}
           </div>
         </label>
       </div>
@@ -53,7 +53,7 @@ onMounted(() => {
 
     <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
       <p class="text-sm text-blue-800 dark:text-blue-200">
-        {{ locale === 'zh' ? '界面语言会影响所有 UI 文本的显示。更改将立即生效。' : 'Changing the interface language will affect the display of all UI text. Changes take effect immediately.' }}
+        {{ t('settings.languageHint') }}
       </p>
     </div>
   </div>

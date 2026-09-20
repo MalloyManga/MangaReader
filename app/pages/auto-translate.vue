@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { Book, ImageItem, OcrBlock } from '~/types/interface'
 
 const router = useRouter()
@@ -221,7 +224,7 @@ const ensureAddedToLibrary = async () => {
     isAddingToLibrary.value = true
     try {
         const result = await window.electronAPI.addBook(tempBookPath.value, 'auto-translate')
-        if (!result.success || !result.book) throw new Error(result.error || '加入书架失败')
+        if (!result.success || !result.book) throw new Error(result.error || t('fileWorkflow.addedToLibraryFailed'))
         autoTranslateSession.bookId.value = result.book.id
         restorePersistedPageState(result.book, images.value)
         const activeImageId = currentImageId.value
@@ -327,7 +330,7 @@ onUnmounted(() => {
         <TitleBar @open-settings="showSettingsModal = true">
             <template #extra-buttons>
                 <Button class="text-sm font-bold" variant="secondary" @btn-click="goBack">
-                    📚 返回书架
+                    📚 {{ t('common.backToLibrary') }}
                 </Button>
             </template>
         </TitleBar>
@@ -362,8 +365,8 @@ onUnmounted(() => {
 
                     <BubbleList
                         class="flex-1 min-h-0 rounded-primary overflow-hidden border border-manga-200 dark:border-manga-600"
-                        :blocks="ocrBlocks" :active-id="activeBlockId" title="识别区域"
-                        empty-text="尚未生成文字区域" empty-hint="自动处理或手动画框后，可在这里检查和修改"
+                        :blocks="ocrBlocks" :active-id="activeBlockId" :title="t('autoTranslateWorkflow.regionList')"
+                        :empty-text="t('autoTranslateWorkflow.noRegions')" :empty-hint="t('autoTranslateWorkflow.regionListHint')"
                         @select-block="handleSelectBlock" @update-block="handleUpdateBlock"
                         @delete-block="handleDeleteBlock" />
                 </aside>

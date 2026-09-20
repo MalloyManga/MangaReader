@@ -1,5 +1,8 @@
 <!-- app/components/TokenButton.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 type TokenType = 'noun' | 'verb' | 'particle' | 'adjective' | 'other'
 interface Prop {
     word: string
@@ -27,7 +30,7 @@ const getTokenClasses = (tokenType: TokenType) => {
 
 const handleClick = () => {
     navigator.clipboard.writeText(word)
-    showToast('已复制 📋')
+    showToast(t('common.copiedClipboard'))
 }
 </script>
 

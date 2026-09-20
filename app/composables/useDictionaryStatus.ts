@@ -1,13 +1,19 @@
 const dictionaryState = reactive({
     id: 'sudachi-core',
     name: 'SudachiDict-core',
-    size: '约 207 MB',
-    description: '日语分词所需词典；下载后才能显示分词结果。',
+    size: '',
+    description: '',
     status: 'unknown',
     progress: 0
 })
 
 export function useDictionaryStatus() {
+    const { t } = useI18n()
+
+    // 静态元信息随当前语言刷新
+    dictionaryState.size = t('general.dictionarySize')
+    dictionaryState.description = t('general.dictionaryDescription')
+
     const checkDictionaryStatus = async (force = false) => {
         if (dictionaryState.status === 'unknown' || force) {
             dictionaryState.status = 'checking'

@@ -1,5 +1,8 @@
 <!-- app/components/TokenizedWords.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 interface Token {
     word: string
     reading?: string
@@ -37,22 +40,22 @@ const tokenizeText = async (text: string) => {
                 errorMessage.value = ''
             } else if (result?.error === 'DICTIONARY_NOT_FOUND') {
                 tokens.value = []
-                errorMessage.value = '需要先在设置 > 翻译模型中下载日语分词词典。'
+                errorMessage.value = t('readerWorkflow.dictionaryRequired')
             } else {
                 console.error('Backend error:', result.error)
-                errorMessage.value = '分词失败，请稍后重试。'
+                errorMessage.value = t('readerWorkflow.tokenizationFailed')
             }
         } else {
             console.warn('Electron API not found (Browser mode?)')
-            errorMessage.value = '当前环境无法调用分词服务。'
+            errorMessage.value = t('readerWorkflow.tokenizationUnavailable')
         }
 
     } catch (error) {
         console.error('分词失败:', error)
         tokens.value = []
         errorMessage.value = error instanceof Error && error.message === 'DICTIONARY_NOT_FOUND'
-            ? '需要先在设置 > 翻译模型中下载日语分词词典。'
-            : '分词失败，请稍后重试。'
+            ? t('readerWorkflow.dictionaryRequired')
+            : t('readerWorkflow.tokenizationFailed')
     } finally {
         isTokenizing.value = false
     }
@@ -94,13 +97,13 @@ onUnmounted(() => {
 <template>
     <div class="card">
         <div class="text-xs font-semibold mb-3 text-manga-600 dark:text-manga-200">
-            🔤 分词结果
+            {{ t('readerWorkflow.tokenizationResult') }}
         </div>
 
         <!-- 加载状态 -->
         <div v-if="isTokenizing" class="flex items-center gap-2 text-manga-600 dark:text-manga-400">
             <div class="animate-spin h-4 w-4 border-2 rounded-full border-primary border-t-transparent"></div>
-            <span class="text-sm">分词中...</span>
+            <span class="text-sm">{{ t('readerWorkflow.tokenizing') }}</span>
         </div>
 
         <!-- 分词结果 -->
@@ -115,7 +118,7 @@ onUnmounted(() => {
 
         <!-- 空状态 没有在等待API同时tokens.length长度小于等于0 -->
         <div v-else class="text-sm text-manga-600 dark:text-manga-400">
-            分词结果将显示在这里...
+            {{ t('readerWorkflow.tokenizationPlaceholder') }}
         </div>
 
         <!-- 图例 -->

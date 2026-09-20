@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 const { showToast } = useToast()
 const { settings } = useSettings()
 const { detectionModule, checkStatus, updateProgress } = useDetectionModuleStatus()
@@ -8,13 +11,13 @@ const isDeleting = ref(false)
 let cleanupProgress: (() => void) | null = null
 
 const statusLabel = computed(() => ({
-    checking: '检查中',
-    not_installed: '未安装',
-    downloading: '安装中',
-    installed: '可用',
-    corrupted: '需要修复',
-    unavailable: '暂不可用',
-    error: '状态异常'
+    checking: t('detectionManagement.checking'),
+    not_installed: t('detectionManagement.notInstalled'),
+    downloading: t('detectionManagement.installing'),
+    installed: t('detectionManagement.available'),
+    corrupted: t('detectionManagement.needsRepair'),
+    unavailable: t('detectionManagement.unavailable'),
+    error: t('detectionManagement.statusError')
 }[detectionModule.status]))
 
 const statusClass = computed(() => ({
@@ -28,12 +31,12 @@ const statusClass = computed(() => ({
 }[detectionModule.status]))
 
 const actionLabel = computed(() => detectionModule.status === 'corrupted'
-    ? '修复并重新安装'
-    : '一键下载并安装')
+    ? t('detectionManagement.repairAndReinstall')
+    : t('detectionManagement.downloadAndInstall'))
 
 const handleDownload = async () => {
     if (!window.electronAPI?.downloadDetectionModule) {
-        showToast('检测模块需要在桌面应用中下载')
+        showToast(t('detectionManagement.desktopDownloadRequired'))
         return
     }
     if (detectionModule.status === 'downloading') return
@@ -41,19 +44,19 @@ const handleDownload = async () => {
     detectionModule.status = 'downloading'
     detectionModule.progress = 0
     detectionModule.message = settings.value.downloadSource === 'official'
-        ? '正在连接官方下载源'
-        : '正在连接镜像下载源'
+        ? t('detectionManagement.connectingOfficial')
+        : t('detectionManagement.connectingMirror')
     detectionModule.error = ''
     try {
         const result = await window.electronAPI.downloadDetectionModule()
-        if (!result.success) throw new Error(result.error || '模块安装失败')
+        if (!result.success) throw new Error(result.error || t('detectionManagement.installationFailed'))
         await checkStatus()
-        showToast('自动检测模块安装完成')
+        showToast(t('detectionManagement.installedSuccessfully'))
     } catch (error) {
         detectionModule.status = 'error'
         detectionModule.error = error instanceof Error ? error.message : String(error)
-        detectionModule.message = '安装失败，可以重新尝试'
-        showToast(`安装失败：${detectionModule.error}`)
+        detectionModule.message = t('detectionManagement.installationFailedRetry')
+        showToast(`${t('detectionManagement.installationFailed')}: ${detectionModule.error}`)
     }
 }
 
@@ -62,10 +65,10 @@ const handleDelete = async () => {
     isDeleting.value = true
     try {
         const result = await window.electronAPI.deleteDetectionModule()
-        if (!result.success) throw new Error(result.error || '卸载失败')
+        if (!result.success) throw new Error(result.error || t('detectionManagement.uninstallFailed'))
         showDeleteConfirm.value = false
         await checkStatus()
-        showToast('自动检测模块已卸载')
+        showToast(t('detectionManagement.uninstalled'))
     } catch (error) {
         showToast(error instanceof Error ? error.message : String(error))
     } finally {
@@ -90,9 +93,9 @@ onUnmounted(() => cleanupProgress?.())
         <header>
             <div class="flex items-center gap-2 text-manga-900 dark:text-white">
                 <IconAutoDetect class="size-6 text-primary" />
-                <h3 class="text-lg font-bold">自动检测</h3>
+                <h3 class="text-lg font-bold">{{ t('detectionManagement.title') }}</h3>
             </div>
-            <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">管理漫画文字区域检测组件</p>
+            <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">{{ t('detectionManagement.description') }}</p>
         </header>
 
         <section class="bg-white dark:bg-manga-900 border border-manga-200 dark:border-manga-700 rounded-lg shadow-sm overflow-hidden">
@@ -117,15 +120,15 @@ onUnmounted(() => cleanupProgress?.())
 
                 <dl class="mt-5 divide-y divide-manga-100 dark:divide-manga-700 border-y border-manga-100 dark:border-manga-700">
                     <div class="py-3 flex items-center justify-between gap-4 text-sm">
-                        <dt class="text-manga-500 dark:text-manga-400">下载大小</dt>
+                        <dt class="text-manga-500 dark:text-manga-400">{{ t('detectionManagement.downloadSize') }}</dt>
                         <dd class="font-medium text-manga-800 dark:text-manga-200">{{ detectionModule.downloadSize }}</dd>
                     </div>
                     <div class="py-3 flex items-center justify-between gap-4 text-sm">
-                        <dt class="text-manga-500 dark:text-manga-400">安装后占用</dt>
+                        <dt class="text-manga-500 dark:text-manga-400">{{ t('detectionManagement.installedSize') }}</dt>
                         <dd class="font-medium text-manga-800 dark:text-manga-200">{{ detectionModule.installedSize }}</dd>
                     </div>
                     <div class="py-3 flex items-center justify-between gap-4 text-sm">
-                        <dt class="text-manga-500 dark:text-manga-400">文件来源</dt>
+                        <dt class="text-manga-500 dark:text-manga-400">{{ t('detectionManagement.source') }}</dt>
                         <dd class="text-right text-manga-700 dark:text-manga-300">GitHub · GitHub Release · PyPI</dd>
                     </div>
                 </dl>
@@ -138,7 +141,7 @@ onUnmounted(() => cleanupProgress?.())
                     <IconCheckMark v-else-if="detectionModule.status === 'installed'" class="size-4 shrink-0 mt-0.5 text-green-600" />
                     <span v-else-if="detectionModule.status === 'downloading'"
                         class="download-dots mt-0.5 flex size-4 shrink-0 items-center justify-between"
-                        aria-label="正在下载">
+                        :aria-label="t('detectionManagement.downloading')">
                         <span v-for="index in 3" :key="index" />
                     </span>
                     <IconInfo v-else class="size-4 shrink-0 mt-0.5" />
@@ -165,13 +168,13 @@ onUnmounted(() => cleanupProgress?.())
                         class="flex-1 min-h-10 flex items-center justify-center gap-2 px-4 rounded-lg border border-manga-200 dark:border-manga-600 text-sm font-medium text-manga-700 dark:text-manga-200 hover:border-primary hover:text-primary transition-colors cursor-pointer"
                         @click="openModuleFolder">
                         <IconFolder class="size-4" />
-                        打开目录
+                        {{ t('detectionManagement.openFolder') }}
                     </button>
                     <button type="button"
                         class="min-h-10 flex items-center justify-center gap-2 px-4 rounded-lg border border-red-200 dark:border-red-800 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer"
                         @click="showDeleteConfirm = true">
                         <IconTresh class="size-4" />
-                        卸载
+                        {{ t('detectionManagement.uninstall') }}
                     </button>
                 </template>
                 <button v-else type="button"
@@ -179,14 +182,14 @@ onUnmounted(() => cleanupProgress?.())
                     class="w-full h-11 min-h-11 overflow-hidden whitespace-nowrap flex items-center justify-center gap-2 px-4 rounded-lg bg-primary text-white text-sm font-bold leading-none transition-colors enabled:hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
                     @click="handleDownload">
                     <IconDownload class="size-4" />
-                    {{ detectionModule.status === 'downloading' ? '正在安装' : actionLabel }}
+                    {{ detectionModule.status === 'downloading' ? t('detectionManagement.installing') : actionLabel }}
                 </button>
             </div>
         </section>
 
-        <ConfirmModal :show="showDeleteConfirm" title="卸载自动检测模块？"
-            :content="`卸载后将释放 ${detectionModule.installedSize}，需要时可再次一键安装。`"
-            confirm-text="确认卸载" :is-danger="true" :loading="isDeleting"
+        <ConfirmModal :show="showDeleteConfirm" :title="t('detectionManagement.uninstallConfirm')"
+            :content="t('detectionManagement.uninstallContent', { size: detectionModule.installedSize })"
+            :confirm-text="t('detectionManagement.uninstall')" :is-danger="true" :loading="isDeleting"
             @cancel="showDeleteConfirm = false" @confirm="handleDelete" />
     </div>
 </template>

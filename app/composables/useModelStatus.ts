@@ -86,6 +86,7 @@ const getModel = (modelId?: string) => {
 }
 
 export function useModelStatus() {
+    const { t } = useI18n()
     const { settings } = useSettings()
 
     const selectedModel = computed(() => getModel(settings.value.translationModelId))
@@ -104,7 +105,7 @@ export function useModelStatus() {
         modelsLoadPromise = (async () => {
             const res = await window.electronAPI.listTranslationModels(settings.value.targetLanguage)
             const models = res.models ?? []
-            if (!res.success) throw new Error(res.error || '翻译模型列表加载失败')
+            if (!res.success) throw new Error(res.error || t('fileWorkflow.modelListLoadFailed'))
             if (models.length > 0) {
                 models.forEach(ensureModel)
 
@@ -137,7 +138,7 @@ export function useModelStatus() {
                 const res = await window.electronAPI.checkModel(target.id)
                 if (!res.success) {
                     target.status = 'check_failed'
-                    target.lastError = res.error || '翻译模型检查失败'
+                    target.lastError = res.error || t('translationManagement.checkFailed')
                 } else if (res.exists) {
                     target.status = 'downloaded'
                     target.progress = 100

@@ -1,5 +1,8 @@
 <!-- components/TitleBar.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 const isDark = ref(false)
 const isMaximized = ref(false)
 
@@ -52,7 +55,7 @@ onMounted(() => {
         <div class="non-draggable flex items-center gap-2 px-2 h-full">
             <slot name="extra-buttons"></slot>
             <Button variant="secondary" size="sm" @btn-click="emit('openSettings')">
-                ⚙️ 设置
+                ⚙️ {{ t('common.settings') }}
             </Button>
             <Button size="sm" @btn-click="toggleDark">
                 {{ isDark ? '☀️' : '🌙' }}

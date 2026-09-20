@@ -1,5 +1,8 @@
 <!-- components/SettingsTranslate.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 const { openModelFolder } = useSettings()
 const { showToast } = useToast()
 const {
@@ -19,14 +22,14 @@ const isAnyModelDownloading = computed(() => models.some(item => item.status ===
 let cleanupModelProgress: (() => void) | null = null
 
 const getDownloadLabel = (model: any) => {
-    if (model.downloadStage === 'runtime') return '安装组件...'
-    return '下载中...'
+    if (model.downloadStage === 'runtime') return t('translationManagement.installingComponent')
+    return t('translationManagement.downloading')
 }
 
 const handleDownload = async (model: any) => {
     if (model.status === 'downloading') return
     if (isAnyModelDownloading.value) {
-        showToast('请等待当前模型下载完成后再下载其他模型')
+        showToast(t('translationManagement.waitForDownload'))
         return
     }
     model.status = 'downloading'
@@ -39,23 +42,23 @@ const handleDownload = async (model: any) => {
             markModelDownloaded(model.id)
             setSelectedModel(model.id)
         } else {
-            showToast(`下载失败: ${res.error}`)
+            showToast(`${t('translationManagement.downloadFailed')}: ${res.error}`)
             markModelNotDownloaded(model.id)
         }
     } catch (e) {
         markModelNotDownloaded(model.id)
-        showToast('下载出错')
+        showToast(t('translationManagement.downloadError'))
     }
 }
 
 const handleRetryCheck = async (model: any) => {
     await checkModelStatus(model.id, true)
-    if (model.status === 'check_failed') showToast(model.lastError || '模型检查失败，请稍后重试', 4000)
+    if (model.status === 'check_failed') showToast(model.lastError || t('translationManagement.checkFailedRetry'), 4000)
 }
 
 const handleUseModel = (model: any) => {
     if (model.status !== 'downloaded') {
-        showToast('请先下载该翻译模型')
+        showToast(t('translationManagement.downloadFirst'))
         return
     }
     setSelectedModel(model.id)
@@ -64,7 +67,7 @@ const handleUseModel = (model: any) => {
 const confirmDelete = async () => {
     if (!deleteTarget.value) return
     if (isAnyModelDownloading.value) {
-        showToast('请等待当前模型下载完成后再删除')
+        showToast(t('translationManagement.waitBeforeDelete'))
         deleteTarget.value = null
         return
     }
@@ -83,10 +86,10 @@ const confirmDelete = async () => {
             }
             deleteTarget.value = null
         } else {
-            showToast('删除失败')
+            showToast(t('translationManagement.deleteFailed'))
         }
     } catch (e) {
-        showToast('删除出错')
+        showToast(t('translationManagement.deleteError'))
     } finally {
         isDeleting.value = false
     }
@@ -118,10 +121,10 @@ onUnmounted(() => {
     <div class="space-y-6 animate-fade-in flex flex-col h-full">
         <div>
             <h3 class="text-lg font-bold text-manga-900 dark:text-white">
-                翻译模型管理
+                {{ t('translationManagement.title') }}
             </h3>
             <p class="text-sm text-manga-500 dark:text-manga-400 mt-1">
-                选择并管理本地离线翻译模型
+                {{ t('translationManagement.description') }}
             </p>
         </div>
 
@@ -150,33 +153,33 @@ onUnmounted(() => {
 
                     <div class="flex items-center gap-3 shrink-0">
                         <div v-if="item.status === 'checking'" class="text-xs text-manga-400">
-                            检查中...
+                            {{ t('translationManagement.checking') }}
                         </div>
 
                         <div v-else-if="item.status === 'unknown'" class="text-xs text-manga-400">
-                            等待检查
+                            {{ t('translationManagement.pendingCheck') }}
                         </div>
 
                         <div v-else-if="item.status === 'check_failed'" class="flex items-center gap-2">
-                            <span class="max-w-24 truncate text-xs text-red-500" :title="item.lastError || '模型检查失败'">
-                                检查失败
+                            <span class="max-w-24 truncate text-xs text-red-500" :title="item.lastError || t('translationManagement.checkFailed')">
+                                {{ t('translationManagement.checkFailed') }}
                             </span>
                             <button type="button" @click="handleRetryCheck(item)"
                                 class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
-                                重新检查
+                                {{ t('translationManagement.recheck') }}
                             </button>
                         </div>
 
                         <div v-else-if="item.status === 'downloaded'" class="flex items-center justify-end gap-2 min-w-28">
                             <button v-if="selectedModel?.id !== item.id" @click="handleUseModel(item)"
                                 class="w-20 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer">
-                                使用
+                                {{ t('translationManagement.use') }}
                             </button>
                             <span v-else
                                 class="w-20 text-center px-2 py-1.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                                当前使用
+                                {{ t('translationManagement.active') }}
                             </span>
-                            <button @click="deleteTarget = item" title="删除模型"
+                            <button @click="deleteTarget = item" :title="t('translationManagement.deleteModel')"
                                 :disabled="isAnyModelDownloading"
                                 class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-manga-400 disabled:hover:bg-transparent">
                                 <IconTresh class="size-5" />
@@ -197,7 +200,7 @@ onUnmounted(() => {
                         <button v-else-if="item.status === 'not_downloaded'" @click="handleDownload(item)" :disabled="isAnyModelDownloading"
                             class="flex items-center gap-2 px-4 py-2 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-manga-900 dark:disabled:hover:bg-manga-700">
                             <IconDownload class="size-4" />
-                            下载
+                            {{ t('common.download') }}
                         </button>
                     </div>
                 </div>
@@ -212,23 +215,23 @@ onUnmounted(() => {
                     </div>
                     <div class="flex-1">
                         <h4 class="text-sm font-bold text-manga-900 dark:text-blue-100">
-                            下载遇到问题？
+                            {{ t('translationManagement.downloadTrouble') }}
                         </h4>
                         <p class="text-xs text-manga-500 dark:text-blue-200/70 mt-1 leading-relaxed">
-                            自动下载失败时，可以打开模型文件夹检查本地文件。
+                            {{ t('translationManagement.downloadTroubleDesc') }}
                         </p>
 
                         <div class="flex gap-3 mt-3">
                             <button @click="openModelFolder"
                                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white dark:bg-manga-800 border border-blue-200 dark:border-blue-700 rounded text-manga-700 dark:text-blue-100 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer">
                                 <IconFolder class="size-4" />
-                                打开模型文件夹
+                                {{ t('translationManagement.openModelFolder') }}
                             </button>
 
-                            <button type="button" title="参考教程"
+                            <button type="button" :title="t('translationManagement.referenceGuide')"
                                 @click="openLink('https://github.com/MalloyManga/MangaReader?tab=readme-ov-file#-%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97')"
                                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
-                                参考教程
+                                {{ t('translationManagement.referenceGuide') }}
                                 <IconGithub class="text-black dark:text-white size-4" />
                             </button>
                         </div>
@@ -237,9 +240,9 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <ConfirmModal :show="!!deleteTarget" title="删除模型文件？"
-            :content="`确定要删除 ${deleteTarget?.name || ''} 吗？这将释放约 ${deleteTarget?.size || ''} 的磁盘空间。`"
-            confirm-text="确认删除" :is-danger="true" :loading="isDeleting" @cancel="deleteTarget = null"
+        <ConfirmModal :show="!!deleteTarget" :title="t('translationManagement.deleteModelConfirm')"
+            :content="t('translationManagement.deleteModelContent', { name: deleteTarget?.name || '', size: deleteTarget?.size || '' })"
+            :confirm-text="t('common.confirmDelete')" :is-danger="true" :loading="isDeleting" @cancel="deleteTarget = null"
             @confirm="confirmDelete" />
     </div>
 </template>

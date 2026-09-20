@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { DetectedTextRegion, ImageItem, OcrBlock } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
 
 export type AutoTranslateStage = 'idle' | 'detecting' | 'recognizing' | 'translating' | 'complete' | 'stopped' | 'error'
 
@@ -52,13 +53,14 @@ interface SelectionData {
     height: number
 }
 
-const createIdleState = (): AutoTranslatePageState => ({
+const createIdleState = (message: string): AutoTranslatePageState => ({
     stage: 'idle',
     progress: 0,
-    message: '等待开始处理'
+    message
 })
 
 export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptions) {
+    const { t } = useI18n()
     const { currentImageId, images, ocrBlocks, allPageBlocks, activeBlockId, persistPageBlocks } = options
     const { settings } = useSettings()
     const { showToast } = useToast()
@@ -78,12 +80,12 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     const isOcrMode = ref(false)
     const isOcrRecognizing = ref(false)
     const translationReady = ref(false)
-    const translationMessage = ref('正在检查翻译模型')
+    const translationMessage = ref(t('autoTranslateWorkflow.checkingTranslationModel'))
 
     const detectorAvailable = computed(() => import.meta.client && Boolean(window.electronAPI?.detectTextRegions))
     const currentState = computed<AutoTranslatePageState>(() => {
         const imageId = currentImageId.value
-        return imageId ? (pageStates.value[imageId] || createIdleState()) : createIdleState()
+        return imageId ? (pageStates.value[imageId] || createIdleState(t('autoTranslateWorkflow.waiting'))) : createIdleState(t('autoTranslateWorkflow.waiting'))
     })
     const panelState = computed<AutoTranslatePageState>(() => batchState.value.show ? {
         stage: batchState.value.stage,
@@ -97,12 +99,12 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         translationReady.value = false
         log('checking translation model configuration')
         if (!settings.value.enableTranslation) {
-            translationMessage.value = '请先在设置中启用翻译'
+            translationMessage.value = t('autoTranslateWorkflow.enableTranslationFirst')
             console.warn('[AutoTranslate] translation is disabled')
             return false
         }
         if (!window.electronAPI?.listTranslationModels || !window.electronAPI?.checkModel) {
-            translationMessage.value = '当前环境无法检查翻译模型'
+            translationMessage.value = t('autoTranslateWorkflow.modelCheckUnavailable')
             console.error('[AutoTranslate] translation model API is unavailable')
             return false
         }
@@ -110,32 +112,32 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             await loadTranslationModels()
             const modelId = settings.value.translationModelId
             if (!modelId) {
-                translationMessage.value = '请先在设置中选择翻译模型'
+                translationMessage.value = t('autoTranslateWorkflow.selectModelFirst')
                 console.warn('[AutoTranslate] no translation model selected')
                 return false
             }
             const model = await checkModelStatus(modelId)
             if (selectedModel.value?.id !== modelId) {
-                translationMessage.value = '请选择有效的翻译模型'
+                translationMessage.value = t('autoTranslateWorkflow.selectValidModel')
                 console.warn('[AutoTranslate] selected translation model is invalid', modelId)
                 return false
             }
             if (model?.status === 'check_failed') {
-                translationMessage.value = '翻译模型检查失败，请在设置中重新检查'
+                translationMessage.value = t('autoTranslateWorkflow.modelCheckFailedRecheck')
                 console.error('[AutoTranslate] translation model check failed', model.lastError)
                 return false
             }
             if (model?.status !== 'downloaded') {
-                translationMessage.value = '请先在设置中下载所选翻译模型'
+                translationMessage.value = t('autoTranslateWorkflow.downloadSelectedModelFirst')
                 console.warn('[AutoTranslate] selected translation model is not downloaded', modelId)
                 return false
             }
             translationReady.value = true
-            translationMessage.value = `已准备翻译模型：${selectedModel.value.name}`
+            translationMessage.value = t('autoTranslateWorkflow.modelReady', { name: selectedModel.value.name })
             log('translation model ready:', modelId)
             return true
         } catch (error) {
-            translationMessage.value = '翻译模型检查失败，请到设置中重试'
+            translationMessage.value = t('autoTranslateWorkflow.modelCheckFailedRetry')
             console.error('[AutoTranslate] translation model check failed', error)
             return false
         }
@@ -143,7 +145,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const ensurePageState = (imageId = currentImageId.value) => {
         if (!imageId) return null
-        if (!pageStates.value[imageId]) pageStates.value[imageId] = createIdleState()
+        if (!pageStates.value[imageId]) pageStates.value[imageId] = createIdleState(t('autoTranslateWorkflow.waiting'))
         return pageStates.value[imageId]!
     }
 
@@ -157,7 +159,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     }
 
     const resetPageState = (imageId: string) => {
-        pageStates.value[imageId] = createIdleState()
+        pageStates.value[imageId] = createIdleState(t('autoTranslateWorkflow.waiting'))
     }
 
     const markPageProcessed = (imageId: string) => {
@@ -178,9 +180,9 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     }
 
     const getCurrentImageElement = () => {
-        const imageElement = document.querySelector('img[alt^="当前图片"]') as HTMLImageElement | null
+        const imageElement = document.querySelector('img[data-current-image]') as HTMLImageElement | null
         if (!imageElement?.complete || !imageElement.naturalWidth) {
-            throw new Error('当前图片尚未加载完成')
+            throw new Error(t('autoTranslateWorkflow.imageNotLoadedYet'))
         }
         return imageElement
     }
@@ -251,11 +253,11 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     })
 
     const translateBlock = async (block: OcrBlock) => {
-        if (!block.original) throw new Error('没有可翻译的原文')
+        if (!block.original) throw new Error(t('autoTranslateWorkflow.noOriginalText'))
         const startedAt = performance.now()
         log('translation request started', { blockId: block.id, modelId: settings.value.translationModelId })
         const result = await window.electronAPI.translate(block.original, settings.value.translationModelId)
-        if (!result.success || !result.translation?.trim()) throw new Error(result.error || '翻译结果为空')
+        if (!result.success || !result.translation?.trim()) throw new Error(result.error || t('autoTranslateWorkflow.emptyTranslation'))
         block.translation = result.translation
         log('translation request completed', {
             blockId: block.id,
@@ -289,7 +291,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     }
 
     const throwIfCancelled = (token: ProcessingToken) => {
-        if (token.cancelled) throw new DOMException('处理已停止', 'AbortError')
+        if (token.cancelled) throw new DOMException(t('autoTranslateWorkflow.processingStopped'), 'AbortError')
     }
 
     const isAbortError = (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
@@ -319,13 +321,13 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         batchState.value.stage = stage
         batchState.value.regionIndex = regionIndex
         batchState.value.regionTotal = regionTotal
-        const pageProgress = `第 ${batchState.value.pageIndex} / ${batchState.value.pageTotal} 页`
+        const pageProgress = t('autoTranslateWorkflow.pageProgress', { current: batchState.value.pageIndex, total: batchState.value.pageTotal })
         if (stage === 'detecting') {
-            batchState.value.message = `正在分析${pageProgress}文字区域`
+            batchState.value.message = t('autoTranslateWorkflow.analyzingPage', { page: pageProgress })
         } else if (stage === 'recognizing') {
-            batchState.value.message = `正在识别${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
+            batchState.value.message = t('autoTranslateWorkflow.recognizingRegion', { page: pageProgress, current: regionIndex, total: regionTotal })
         } else if (stage === 'translating') {
-            batchState.value.message = `正在翻译${pageProgress}的第 ${regionIndex} / ${regionTotal} 个文字框`
+            batchState.value.message = t('autoTranslateWorkflow.translatingRegion', { page: pageProgress, current: regionIndex, total: regionTotal })
         } else {
             batchState.value.message = message
         }
@@ -340,7 +342,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         resetPageState(imageId)
 
         try {
-            updateProcessingProgress(imageId, token, 'detecting', 8, '正在分析整页文字区域')
+            updateProcessingProgress(imageId, token, 'detecting', 8, t('autoTranslateWorkflow.analyzingFullPage'))
             log('submitted full-page detection request', imageId)
             const heartbeat = window.setInterval(() => log('detector is still processing page', imageId), 10000)
             let detection
@@ -350,7 +352,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 window.clearInterval(heartbeat)
             }
             throwIfCancelled(token)
-            if (!detection.success) throw new Error(detection.error || '文字区域检测失败')
+            if (!detection.success) throw new Error(detection.error || t('autoTranslateWorkflow.regionDetectionFailed'))
 
             const detectedRegions = (detection.regions || []).map(region => addRegionPadding(
                 region,
@@ -366,7 +368,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 ignoredRegionCount: detectedRegions.length - regions.length
             })
             if (regions.length === 0) {
-                updateProcessingProgress(imageId, token, 'complete', 100, '当前页面未检测到文字区域')
+                updateProcessingProgress(imageId, token, 'complete', 100, t('autoTranslateWorkflow.noRegionsOnPage'))
                 markPageProcessed(imageId)
                 return 'complete' as const
             }
@@ -385,7 +387,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                     token,
                     'recognizing',
                     15 + Math.round(((index + 0.35) / regions.length) * 83),
-                    `正在识别第 ${index + 1} / ${regions.length} 个区域`,
+                    t('autoTranslateWorkflow.recognizingRegionShort', { current: index + 1, total: regions.length }),
                     index + 1,
                     regions.length
                 )
@@ -404,7 +406,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                     token,
                     'translating',
                     15 + Math.round(((index + 0.75) / regions.length) * 83),
-                    `正在翻译第 ${index + 1} / ${regions.length} 个区域`,
+                    t('autoTranslateWorkflow.translatingRegionShort', { current: index + 1, total: regions.length }),
                     index + 1,
                     regions.length
                 )
@@ -428,7 +430,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 token,
                 'complete',
                 100,
-                `已完成 ${completedCount} / ${regions.length} 个文字区域`,
+                t('autoTranslateWorkflow.regionsCompleted', { completed: completedCount, total: regions.length }),
                 regions.length,
                 regions.length
             )
@@ -448,7 +450,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
     const canStartProcessing = async () => {
         if (!window.electronAPI?.detectTextRegions) {
-            showToast('文字检测模块不可用，请先在设置中安装')
+            showToast(t('autoTranslateWorkflow.detectorInstallRequired'))
             return false
         }
         if (!(await checkTranslationReady())) {
@@ -475,7 +477,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         const imageId = currentImageId.value
         if (!imageId || isProcessing.value) return
         if (hasManualBlocks(imageId)) {
-            const message = '当前页面存在手动添加的文字框，请先清除后再进行自动处理'
+            const message = t('autoTranslateWorkflow.manualRegionsWarning')
             updateState(imageId, 'idle', 0, message)
             showToast(message, 4000)
             return
@@ -497,15 +499,15 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
         try {
             const image = images.value.find(item => item.id === imageId)
-            if (!image) throw new Error('当前页面图片不存在')
+            if (!image) throw new Error(t('autoTranslateWorkflow.currentPageImageMissing'))
             const imageElement = await loadImageElement(image.url)
             const result = await processPage(imageId, imageElement, token)
-            if (result === 'error') showToast('当前页面自动处理失败，请查看处理状态', 5000)
+            if (result === 'error') showToast(t('autoTranslateWorkflow.currentPageFailed'), 5000)
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             updateState(imageId, 'error', 0, message)
             console.error('[AutoTranslate] page processing failed', error)
-            showToast(`自动处理失败：${message}`, 5000)
+            showToast(`${t('autoTranslateWorkflow.processingFailedPrefix')}: ${message}`, 5000)
         } finally {
             if (activeToken === token) {
                 activeToken = null
@@ -524,7 +526,9 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
     })
 
     const getPageLabel = (image: ImageItem, index: number) => image.file?.name
-        || (image.type === 'pdf-page' && image.pageNumber ? `PDF 第 ${image.pageNumber} 页` : `第 ${index + 1} 页`)
+        || (image.type === 'pdf-page' && image.pageNumber
+            ? t('autoTranslateWorkflow.pdfPage', { page: image.pageNumber })
+            : t('autoTranslateWorkflow.page', { page: index + 1 }))
 
     const processAllPages = async () => {
         if (!images.value.length || isProcessing.value) return
@@ -544,7 +548,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             regionIndex: 0,
             regionTotal: 0,
             progress: 0,
-            message: '正在准备批量处理',
+            message: t('autoTranslateWorkflow.preparingBatch'),
             pageLabel: '',
             completedPages: 0,
             failedPages: 0,
@@ -568,7 +572,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
                 if (hasManualBlocks(image.id)) {
                     batchState.value.skippedPages++
-                    batchState.value.message = `第 ${index + 1} / ${images.value.length} 页存在手动画框，已跳过`
+                    batchState.value.message = t('autoTranslateWorkflow.batchManualRegionSkipped', { current: index + 1, total: images.value.length })
                     batchState.value.progress = Math.round(((index + 1) / images.value.length) * 100)
                     log('skipped page with manual blocks', image.id)
                     continue
@@ -576,7 +580,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
 
                 if (processedPageIds.value[image.id]) {
                     batchState.value.skippedPages++
-                    batchState.value.message = '该页面已经完整处理，已跳过'
+                    batchState.value.message = t('autoTranslateWorkflow.batchAlreadyProcessedSkipped', { current: index + 1, total: images.value.length })
                     batchState.value.progress = Math.round(((index + 1) / images.value.length) * 100)
                     log('skipped completed page', image.id)
                     continue
@@ -599,23 +603,23 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             if (activeToken !== token) return
             if (token.cancelled) {
                 batchState.value.status = 'stopped'
-                batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
+                batchState.value.message = t('autoTranslateWorkflow.batchStoppedKeepRegions')
             } else {
                 batchState.value.status = 'complete'
                 batchState.value.stage = 'complete'
                 batchState.value.progress = 100
-                batchState.value.message = '全部页面处理完成'
+                batchState.value.message = t('autoTranslateWorkflow.batchAllComplete')
             }
         } catch (error) {
             if (activeToken !== token) return
             if (isAbortError(error)) {
                 batchState.value.status = 'stopped'
-                batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
+                batchState.value.message = t('autoTranslateWorkflow.batchStoppedKeepRegions')
             } else {
                 batchState.value.status = 'complete'
                 batchState.value.stage = 'error'
                 batchState.value.failedPages++
-                batchState.value.message = '批量处理提前结束，请检查失败页面'
+                batchState.value.message = t('autoTranslateWorkflow.batchEndedWithFailures')
                 console.error('[AutoTranslate] batch processing failed', error)
             }
         } finally {
@@ -645,7 +649,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             batchState.value.status = 'stopped'
             batchState.value.stage = 'stopped'
             batchState.value.progress = 0
-            batchState.value.message = '批量处理已停止，仅保留完整处理的文字区域'
+            batchState.value.message = t('autoTranslateWorkflow.batchStoppedKeepRegions')
             taskContext.value.stage = 'stopped'
         } else if (activeToken.imageId) {
             isCurrentPageProcessing.value = false
@@ -653,7 +657,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
                 activeToken.imageId,
                 'stopped',
                 0,
-                `已停止，保留 ${allPageBlocks.value[activeToken.imageId]?.length || 0} 个完整区域`
+                t('autoTranslateWorkflow.stoppedKeepRegions', { count: allPageBlocks.value[activeToken.imageId]?.length || 0 })
             )
             taskContext.value.stage = 'stopped'
         }
@@ -680,7 +684,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
         const y = Math.max(0, rawY)
         const right = Math.min(imageElement.naturalWidth, rawX + selection.width / ratio)
         const bottom = Math.min(imageElement.naturalHeight, rawY + selection.height / ratio)
-        if (right <= x || bottom <= y) throw new Error('选区未包含有效图片内容')
+        if (right <= x || bottom <= y) throw new Error(t('autoTranslateWorkflow.invalidSelection'))
         return { x, y, width: right - x, height: bottom - y, confidence: 1, direction: 'unknown' }
     }
 
@@ -718,7 +722,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             log('manual OCR started for region', ocrBlocks.value.length)
             const ocrStartedAt = performance.now()
             const result = await window.electronAPI.recognizeText(cropRegion(imageElement, region))
-            if (!result.success) throw new Error(result.error || 'OCR 识别失败')
+            if (!result.success) throw new Error(result.error || t('readerWorkflow.ocrFailed'))
             block.original = result.text || ''
             log('manual OCR completed', { elapsedMs: Math.round(performance.now() - ocrStartedAt) })
             if (settings.value.enableTranslation && block.original) {
@@ -754,7 +758,7 @@ export function useAutoTranslateProcessing(options: AutoTranslateProcessingOptio
             log('re-OCR started')
             const imageElement = getCurrentImageElement()
             const result = await window.electronAPI.recognizeText(cropRegion(imageElement, block.rect))
-            if (!result.success) throw new Error(result.error || '重新识别失败')
+            if (!result.success) throw new Error(result.error || t('readerWorkflow.reRecognizeFailed'))
             block.original = result.text || ''
             await translateBlock(block)
             block.status = 'done'

@@ -1,5 +1,6 @@
 import type { OcrBlock } from '~/types/interface'
 import type { AutoTranslateBatchState, AutoTranslatePageState } from '~/composables/useAutoTranslateProcessing'
+import { useI18n } from 'vue-i18n'
 
 const createBatchState = (): AutoTranslateBatchState => ({
     show: false,
@@ -10,7 +11,7 @@ const createBatchState = (): AutoTranslateBatchState => ({
     regionIndex: 0,
     regionTotal: 0,
     progress: 0,
-    message: '等待开始处理',
+    message: useI18n().t('autoTranslateWorkflow.initialWaiting'),
     pageLabel: '',
     completedPages: 0,
     failedPages: 0,

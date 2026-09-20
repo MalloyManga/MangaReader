@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 const route = useRoute()
 const { images, currentImageIndex, clearImages } = useMangaImages()
 const {
@@ -26,29 +29,29 @@ const progress = computed(() => isBatchTask.value
     ? batchState.value.progress
     : (currentPageState.value?.progress || 0))
 const stageLabels = {
-    detecting: '正在分析文字区域',
-    recognizing: '正在识别文字',
-    translating: '正在翻译文字',
-    complete: '处理完成',
-    stopped: '处理已停止',
-    error: '处理失败',
-    idle: '正在准备'
+    detecting: t('autoTranslateWorkflow.analyzing'),
+    recognizing: t('autoTranslateWorkflow.recognizingText'),
+    translating: t('autoTranslateWorkflow.translatingText'),
+    complete: t('autoTranslateWorkflow.completed'),
+    stopped: t('autoTranslateWorkflow.stopped'),
+    error: t('autoTranslateWorkflow.failed'),
+    idle: t('autoTranslateWorkflow.preparing')
 } as const
 const message = computed(() => {
     if (!isProcessing.value) {
-        return isBatchTask.value ? batchState.value.message : (currentPageState.value?.message || '处理已结束')
+        return isBatchTask.value ? batchState.value.message : (currentPageState.value?.message || t('autoTranslateWorkflow.ended'))
     }
     const context = taskContext.value
-    const page = context.pageTotal ? `第 ${context.pageIndex} / ${context.pageTotal} 页` : ''
-    const region = context.regionTotal ? `第 ${context.regionIndex} / ${context.regionTotal} 个框` : ''
+    const page = context.pageTotal ? t('autoTranslateWorkflow.pageProgress', { current: context.pageIndex, total: context.pageTotal }) : ''
+    const region = context.regionTotal ? t('autoTranslateWorkflow.regionBoxProgress', { current: context.regionIndex, total: context.regionTotal }) : ''
     return [page, region, stageLabels[context.stage]].filter(Boolean).join(' · ')
 })
 const title = computed(() => {
-    const bookName = taskContext.value.bookName || '当前书籍'
-    if (isBatchProcessing.value || isCurrentPageProcessing.value) return `正在处理：${bookName}`
-    if (batchState.value.status === 'complete' || currentPageState.value?.stage === 'complete') return '自动识别处理完成'
-    if (currentPageState.value?.stage === 'error') return '自动识别处理失败'
-    return '自动识别已停止'
+    const bookName = taskContext.value.bookName || t('autoTranslateWorkflow.currentBook')
+    if (isBatchProcessing.value || isCurrentPageProcessing.value) return t('autoTranslateWorkflow.processingBook', { name: bookName })
+    if (batchState.value.status === 'complete' || currentPageState.value?.stage === 'complete') return t('autoTranslateWorkflow.processingComplete')
+    if (currentPageState.value?.stage === 'error') return t('autoTranslateWorkflow.processingFailed')
+    return t('autoTranslateWorkflow.processingStopped')
 })
 
 const returnToTask = () => navigateTo('/auto-translate')
@@ -87,15 +90,15 @@ const dismiss = () => {
             <div class="mt-3 grid grid-cols-2 gap-2">
                 <button v-if="isProcessing" type="button" @click="stopTask"
                     class="h-9 rounded-lg border border-red-200 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
-                    停止处理
+                    {{ t('autoTranslateWorkflow.stop') }}
                 </button>
                 <button v-else type="button" @click="dismiss"
                     class="h-9 rounded-lg border border-manga-200 text-xs font-medium text-manga-600 transition-colors hover:bg-manga-50 dark:border-manga-600 dark:text-manga-300 dark:hover:bg-manga-700">
-                    关闭
+                    {{ t('common.close') }}
                 </button>
                 <button type="button" @click="returnToTask"
                     class="h-9 rounded-lg bg-primary text-xs font-bold text-white transition-opacity hover:opacity-90">
-                    返回查看
+                    {{ t('autoTranslateWorkflow.returnToTask') }}
                 </button>
             </div>
         </aside>

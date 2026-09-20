@@ -1,5 +1,9 @@
 <!-- app/components/ImageThumbnail.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 interface ImageItem {
     id: string
     url: string
@@ -23,7 +27,7 @@ defineEmits<{
 <template>
     <div class="relative flex justify-center group cursor-pointer transition-all duration-200" @click="$emit('select')">
         <!-- 缩略图 -->
-        <img :src="image.url" :alt="`图片 ${index + 1}`" draggable="false"
+        <img :src="image.url" :alt="t('common.imageAlt', { index: index + 1 })" draggable="false"
             class="w-20 h-20 object-cover rounded border-3 transition-all select-none"
             :class="isActive ? 'border-blue-600 dark:border-blue-400' : 'border-manga-300 dark:border-manga-600'" />
 

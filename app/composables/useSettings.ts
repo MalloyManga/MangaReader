@@ -6,6 +6,7 @@ export type DownloadSource = 'mirror' | 'official'
 
 export const useSettings = () => {
     const { locale } = useI18n()
+    const isLanguageConfigured = useState('language-configured', () => false)
     
     // 这里存放具体的设置数据
     const settings = useState('app-settings', () => ({
@@ -97,6 +98,7 @@ export const useSettings = () => {
             }
             try {
                 const storedSettings = await window.electronAPI.getSettings()
+                isLanguageConfigured.value = Object.prototype.hasOwnProperty.call(storedSettings, 'targetLanguage')
                 // 合并配置：用 store 里的覆盖默认值
                 Object.assign(settings.value, storedSettings)
                 // 初始化完成后立即应用一次主题 storedSettings 会立刻覆盖 settings 完成存储设置的应用
@@ -123,6 +125,7 @@ export const useSettings = () => {
 
     return {
         settings,
+        isLanguageConfigured,
         applyTheme,
         openModelFolder,
         saveSettings,

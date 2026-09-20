@@ -2,10 +2,10 @@ import type { Book, OcrBlock } from '~/types/interface'
 
 export type ExportScope = 'current' | 'all'
 
-const loadImageElement = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+const loadImageElement = (url: string, errorMessage: string) => new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('原始图片加载失败'))
+    image.onerror = () => reject(new Error(errorMessage))
     image.src = url
 })
 
@@ -52,13 +52,14 @@ const drawVerticalText = (context: CanvasRenderingContext2D, block: OcrBlock) =>
     context.restore()
 }
 
-const renderTranslatedPage = async (imageUrl: string, blocks: OcrBlock[]) => {
-    const image = await loadImageElement(imageUrl)
+const renderTranslatedPage = async (imageUrl: string, blocks: OcrBlock[], imageLoadError: string) => {
+    const { t } = useI18n()
+    const image = await loadImageElement(imageUrl, imageLoadError)
     const canvas = document.createElement('canvas')
     canvas.width = image.naturalWidth
     canvas.height = image.naturalHeight
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('无法创建图片画布')
+    if (!context) throw new Error(t('fileWorkflow.canvasCreateFailed'))
     context.drawImage(image, 0, 0)
 
     blocks
@@ -73,6 +74,7 @@ const renderTranslatedPage = async (imageUrl: string, blocks: OcrBlock[]) => {
 }
 
 export const useTranslatedImageExport = () => {
+    const { t } = useI18n()
     const { loadBookImages, releaseBookImages } = useBookSource()
 
     const getBookName = (book: Book) => {
@@ -99,7 +101,9 @@ export const useTranslatedImageExport = () => {
         onProgress: (current: number, total: number, message: string) => void
     ) => {
         const pageIndices = getExportablePageIndices(book, scope)
-        if (!pageIndices.length) throw new Error(scope === 'current' ? '当前页没有可导出的译文框' : '这本书还没有可导出的页面')
+        if (!pageIndices.length) throw new Error(scope === 'current'
+            ? t('autoTranslateWorkflow.noCurrentExportableRegions')
+            : t('autoTranslateWorkflow.noExportablePages'))
 
         const destination = await window.electronAPI.selectExportDirectory(getBookName(book))
         if (destination.canceled || !destination.directoryPath) return { canceled: true, exported: 0 }
@@ -111,17 +115,17 @@ export const useTranslatedImageExport = () => {
                 const pageIndex = pageIndices[index]!
                 const image = images[pageIndex]
                 if (!image) continue
-                onProgress(index, pageIndices.length, `正在生成第 ${pageIndex + 1} 页`)
-                const imageDataUrl = await renderTranslatedPage(image.url, book.autoTranslatePages?.[String(pageIndex)] || [])
+                onProgress(index, pageIndices.length, t('autoTranslateWorkflow.generatingPage', { page: pageIndex + 1 }))
+                const imageDataUrl = await renderTranslatedPage(image.url, book.autoTranslatePages?.[String(pageIndex)] || [], t('autoTranslateWorkflow.originalImageLoadFailed'))
                 const filename = `page-${String(pageIndex + 1).padStart(3, '0')}.png`
                 const result = await window.electronAPI.saveExportedImage({
                     directoryPath: destination.directoryPath,
                     filename,
                     imageDataUrl
                 })
-                if (!result.success) throw new Error(result.error || `第 ${pageIndex + 1} 页保存失败`)
+                if (!result.success) throw new Error(result.error || t('autoTranslateWorkflow.savePageFailed', { page: pageIndex + 1 }))
                 exported++
-                onProgress(index + 1, pageIndices.length, `已完成第 ${pageIndex + 1} 页`)
+                onProgress(index + 1, pageIndices.length, t('autoTranslateWorkflow.pageCompleted', { page: pageIndex + 1 }))
             }
         } finally {
             releaseBookImages(images)

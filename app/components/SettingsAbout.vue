@@ -1,11 +1,13 @@
 <!-- components/settings/SettingsAbout.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import packageJson from '../../package.json'
+
+const { t } = useI18n()
 
 const config = {
     appName: 'Manga Reader',
     appVersion: `v${packageJson.version}`,
-    appDescription: '专为日语学习者打造的离线漫画阅读与翻译工具。',
     projectGithub: 'https://github.com/MalloyManga/MangaReader',
     developerName: 'Malloy',
     personalGithub: 'https://github.com/MalloyManga',
@@ -51,10 +53,10 @@ const openLink = (url: string) => {
                     <span class="px-2 py-0.5 rounded text-xs font-mono bg-manga-100 dark:bg-manga-800 text-manga-500">
                         {{ config.appVersion }}
                     </span>
-                    <button @click="openLink(config.projectGithub)" title="View Source Code"
+                    <button @click="openLink(config.projectGithub)" :title="t('about.viewSource')"
                         class="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium text-manga-500 hover:text-blue-600 dark:text-manga-400 dark:hover:text-white bg-transparent hover:bg-blue-50 dark:hover:bg-manga-700 transition-all cursor-pointer border border-transparent hover:border-blue-100 dark:hover:border-manga-600">
                         <IconGithub class="size-3.5" />
-                        <span>GPL v3 Release</span>
+                        <span>{{ t('about.licenseBadge') }}</span>
                     </button>
                 </div>
             </div>
@@ -69,7 +71,7 @@ const openLink = (url: string) => {
                     👨‍💻
                 </div>
                 <div>
-                    <div class="text-[10px] text-manga-400 uppercase font-bold">Developed by</div>
+                    <div class="text-[10px] text-manga-400 uppercase font-bold">{{ t('about.developedBy') }}</div>
                     <div class="font-bold text-sm text-manga-900 dark:text-white">
                         {{ config.developerName }}
                     </div>
@@ -78,11 +80,11 @@ const openLink = (url: string) => {
 
             <!-- 个人网站 + 个人 GitHub -->
             <div class="flex gap-1">
-                <button @click="openLink(config.portfolioWebsite)" title="Personal Website"
+                <button @click="openLink(config.portfolioWebsite)" :title="t('about.personalWebsite')"
                     class="p-1.5 rounded-lg text-manga-400 hover:text-blue-500 hover:bg-white dark:hover:bg-manga-700 transition-all cursor-pointer">
                     <IconWebsite class="size-4" />
                 </button>
-                <button @click="openLink(config.personalGithub)" title="Personal GitHub"
+                <button @click="openLink(config.personalGithub)" :title="t('about.personalGithub')"
                     class="p-1.5 rounded-lg text-manga-400 hover:text-black dark:hover:text-white hover:bg-white dark:hover:bg-manga-700 transition-all cursor-pointer">
                     <IconGithub class="size-4" />
                 </button>
@@ -92,7 +94,7 @@ const openLink = (url: string) => {
         <!-- 技术致谢 (Tech Stack) -->
         <div class="w-full pt-6 border-t border-manga-100 dark:border-manga-700">
             <h3 class="text-xs font-semibold text-manga-400 uppercase tracking-widest mb-4">
-                Powered By
+                {{ t('about.poweredBy') }}
             </h3>
 
             <div class="grid grid-cols-2 gap-3">
@@ -114,10 +116,10 @@ const openLink = (url: string) => {
         <!-- 底部版权 -->
         <div class="mt-auto pb-4 text-xs text-manga-400 flex flex-col gap-1">
             <p>Copyright © {{ config.currentYear }} {{ config.developerName }}.</p>
-            <button @click="openLink(config.projectGithub)" title="View Source Code"
+            <button @click="openLink(config.projectGithub)" :title="t('about.viewSource')"
                 class="inline-flex items-center justify-center gap-1 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer underline decoration-dotted underline-offset-2">
                 <IconGithub class="size-3" />
-                <span>Released under the GPL-3.0 License</span>
+                <span>{{ t('about.licenseLine') }}</span>
             </button>
         </div>
     </div>

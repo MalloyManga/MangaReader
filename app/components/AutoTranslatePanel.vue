@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { AutoTranslatePageState } from '~/composables/useAutoTranslateProcessing'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
     state: AutoTranslatePageState
@@ -22,13 +25,13 @@ const emit = defineEmits<{
 }>()
 
 const stageLabel = computed(() => ({
-    idle: '等待处理',
-    detecting: '检测文字区域',
-    recognizing: '识别原文',
-    translating: '翻译文本',
-    complete: '处理完成',
-    stopped: '处理已停止',
-    error: '处理失败'
+    idle: t('autoTranslateWorkflow.waiting'),
+    detecting: t('autoTranslateWorkflow.detecting'),
+    recognizing: t('autoTranslateWorkflow.recognizing'),
+    translating: t('autoTranslateWorkflow.translating'),
+    complete: t('autoTranslateWorkflow.completed'),
+    stopped: t('autoTranslateWorkflow.stopped'),
+    error: t('autoTranslateWorkflow.failed')
 }[props.state.stage]))
 </script>
 
@@ -37,13 +40,13 @@ const stageLabel = computed(() => ({
         <div class="flex items-center justify-between gap-4 mb-4">
             <div class="flex items-center gap-2 text-manga-900 dark:text-manga-100">
                 <IconAutoDetect class="size-6 text-primary" />
-                <h1 class="font-bold text-lg">自动识别翻译</h1>
+                <h1 class="font-bold text-lg">{{ t('autoTranslateWorkflow.title') }}</h1>
             </div>
             <span class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium"
                 :class="detectorAvailable
                     ? 'bg-green-50 text-green-700 dark:bg-green-900/25 dark:text-green-300'
                     : 'bg-amber-50 text-amber-700 dark:bg-amber-900/25 dark:text-amber-300'">
-                {{ detectorAvailable ? '检测器可用' : '检测模块未安装' }}
+                {{ detectorAvailable ? t('autoTranslateWorkflow.detectorAvailable') : t('autoTranslateWorkflow.detectorNotInstalled') }}
             </span>
         </div>
 
@@ -71,7 +74,7 @@ const stageLabel = computed(() => ({
                 @click="emit('process')">
                 <IconAutoDetect class="size-5 shrink-0" />
                 <span class="leading-tight">
-                    {{ isCurrentPageProcessing ? '停止处理当前页面' : '处理当前页面' }}
+                    {{ isCurrentPageProcessing ? t('autoTranslateWorkflow.stopCurrent') : t('autoTranslateWorkflow.processCurrent') }}
                 </span>
             </button>
 
@@ -80,7 +83,7 @@ const stageLabel = computed(() => ({
                 class="w-full min-h-12 px-2 rounded-primary border border-primary text-sm text-primary dark:text-blue-300 font-bold flex items-center justify-center gap-2 transition-all enabled:hover:bg-primary/5 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
                 @click="emit('processAll')">
                 <IconAutoDetect class="size-5 shrink-0" />
-                <span class="leading-tight">处理全部页面</span>
+                <span class="leading-tight">{{ t('autoTranslateWorkflow.processAll') }}</span>
             </button>
         </div>
 

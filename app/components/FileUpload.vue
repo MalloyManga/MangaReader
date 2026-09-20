@@ -2,6 +2,8 @@
 <script setup lang="ts">
 import Sortable from 'sortablejs'
 import type { ImageItem } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 const { showToast } = useToast()
 const { images, currentImageIndex, addImagesToStore, setImage, removeImage: removeImageFromStore, tempBookPath } = useMangaImages()
 const { processImages, processZip, convertPdfToImages } = useFileProcessor()
@@ -92,7 +94,7 @@ const handleOpenFile = async () => {
         const { canceled, filePaths } = await window.electronAPI.openFileDialog()
 
         if (canceled || filePaths.length === 0) return
-        showToast('正在加载文件...', 2000)
+        showToast(t('fileWorkflow.loading'), 2000)
 
         const res = await window.electronAPI.readImageFiles(filePaths)
         if (res.success && res.imagePaths) {
@@ -116,13 +118,13 @@ const handleOpenFile = async () => {
             if (files.length > 0) {
                 addImagesToStore(files)
             }
-            showToast(`✅ 加载成功`)
+            showToast(t('fileWorkflow.loaded'))
         } else {
-            showToast('加载失败: ' + res.error)
+            showToast(`${t('fileWorkflow.loadFailed')}: ${res.error}`)
         }
     } catch (e) {
         console.error(e)
-        showToast('打开文件出错')
+        showToast(t('fileWorkflow.openError'))
     }
 }
 
@@ -138,15 +140,15 @@ const addImages = async (files: File[]) => {
             const fileExt = filePath.split('.').pop()?.toLowerCase() || ''
             // pdf
             if (fileExt.endsWith('pdf') && file.type == 'application/pdf') {
-                showToast(`正在处理PDF: ${file.name}`, 2000)
+                showToast(t('fileWorkflow.processingPdf', { name: file.name }), 2000)
                 // const arrayBuffer = await file.arrayBuffer()
                 const pdfToImages = await convertPdfToImages(filePath)
-                showToast(`PDF转换完成 ${pdfToImages.length} 页`, 2000)
+                showToast(t('fileWorkflow.pdfConverted', { count: pdfToImages.length }), 2000)
                 tempImages.push(...pdfToImages)
             }
             // zip包
             else if (fileExt.endsWith('zip') && file.type == 'application/zip') {
-                showToast(`正在解压 ${file.name}`, 3000)
+                showToast(t('fileWorkflow.extracting', { name: file.name }), 3000)
                 tempImages.push(...(await processZip(file)))
             }
             // 图片
@@ -165,7 +167,7 @@ const addImages = async (files: File[]) => {
             return tempImages
         } catch (error) {
             console.error(`文件处理失败: ${file.name}`, error)
-            showToast(`导入中断！ 文件 ${file.name} 损坏 请修复之后再次尝试导入！`, 5000)
+            showToast(t('fileWorkflow.importInterrupted', { name: file.name }), 5000)
             throw error
         }
     }
@@ -305,7 +307,8 @@ const handleDrop = (event: DragEvent) => {
             <!-- 有图片时显示 -->
             <div v-if="images.length > 0" ref="imageContainer"
                 class="size-full flex items-center justify-center relative">
-                <img :src="images[currentImageIndex]?.url" :alt="`当前图片 ${currentImageIndex + 1}`" draggable="false"
+                <img :src="images[currentImageIndex]?.url" :alt="t('common.imageAlt', { index: currentImageIndex + 1 })"
+                    data-current-image draggable="false"
                     @load="onImageLoad" class="object-contain size-full pointer-events-none select-none" :style="{
                         maxWidth: containerSize.width + 'px',
                         maxHeight: containerSize.height + 'px'
@@ -321,7 +324,7 @@ const handleDrop = (event: DragEvent) => {
                         {{ currentImageIndex + 1 }} / {{ images.length }}
                     </div>
                     <div v-if="images[currentImageIndex]?.type === 'pdf-page'" class="text-xs opacity-75">
-                        PDF 第 {{ images[currentImageIndex]?.pageNumber }} 页
+                        {{ t('fileWorkflow.pdfPageLabel', { page: images[currentImageIndex]?.pageNumber }) }}
                     </div>
                 </div>
 
@@ -335,20 +338,19 @@ const handleDrop = (event: DragEvent) => {
                         <span v-else>📤</span>
                     </div>
                     <p class="text-lg mb-2 text-manga-900 dark:text-manga-100">
-                        {{ isDragging ? '松开鼠标上传' : '文件预览区域' }}
+                        {{ isDragging ? t('fileWorkflow.dropToUpload') : t('fileWorkflow.previewArea') }}
                     </p>
                     <p class="text-sm mb-6 text-manga-600 dark:text-manga-400">
-                        支持拖拽
+                        {{ t('fileWorkflow.dragHintPrefix') }}
                         <span class="font-bold">
-                            图片 / PDF / ZIP
+                            {{ t('fileWorkflow.dragHintTypes') }}
                         </span>
-                        文件到此处<br>
-                        或点击下方按钮导入
+                        {{ t('fileWorkflow.dragHintSuffix') }}
                     </p>
 
                     <div class="flex gap-3 justify-center">
                         <Button @btn-click="handleOpenFile">
-                            导入 / 打开文件 📁
+                            {{ t('fileWorkflow.importFile') }}
                         </Button>
                     </div>
                 </div>

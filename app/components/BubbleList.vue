@@ -1,18 +1,17 @@
 <!-- components/BubbleList.vue -->
 <script setup lang="ts">
 import type { OcrBlock } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
 
-withDefaults(defineProps<{
+const { t } = useI18n()
+
+const props = defineProps<{
     blocks: OcrBlock[]
     activeId?: string
     title?: string
     emptyText?: string
     emptyHint?: string
-}>(), {
-    title: '气泡列表',
-    emptyText: '暂无识别内容',
-    emptyHint: '框选气泡开始识别'
-})
+}>()
 
 const emit = defineEmits<{
     updateBlock: [block: OcrBlock]
@@ -32,15 +31,15 @@ const updateText = (block: OcrBlock, val: string) => {
             <h3 class="font-bold text-gray-700 dark:text-gray-200">
                 <span class="flex items-center gap-2">
                     💬
-                    {{ title }} ({{ blocks.length }})
+                    {{ props.title || t('bubbleList.title') }} ({{ props.blocks.length }})
                 </span>
             </h3>
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-4">
-            <div v-for="(block, index) in blocks" :key="block.id"
+            <div v-for="(block, index) in props.blocks" :key="block.id"
                 class="bg-gray-50 dark:bg-manga-900 rounded-lg p-2 border-2 transition-all group flex items-center gap-3"
-                :class="activeId === block.id ? 'border-primary' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'"
+                :class="props.activeId === block.id ? 'border-primary' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'"
                 @click="emit('selectBlock', block.id)">
 
                 <!-- 序号 -->
@@ -53,7 +52,7 @@ const updateText = (block: OcrBlock, val: string) => {
                 <input type="text" :value="block.original"
                     @input="event => updateText(block, (event.target as HTMLInputElement).value)"
                     class="flex-1 min-w-0 bg-white dark:bg-manga-800 rounded border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none text-gray-800 dark:text-gray-200"
-                    placeholder="等待识别..." />
+                    :placeholder="t('bubbleList.waitingRecognition')" />
 
                 <!-- 删除按钮 (hover 显示) -->
                 <button @click.stop="emit('deleteBlock', block.id)"
@@ -62,10 +61,10 @@ const updateText = (block: OcrBlock, val: string) => {
                 </button>
             </div>
 
-            <div v-if="blocks.length === 0" class="text-center py-10 text-gray-400">
-                <p>{{ emptyText }}</p>
+            <div v-if="props.blocks.length === 0" class="text-center py-10 text-gray-400">
+                <p>{{ props.emptyText || t('bubbleList.emptyText') }}</p>
                 <p class="text-sm mt-2">
-                    {{ emptyHint }}
+                    {{ props.emptyHint || t('bubbleList.emptyHint') }}
                 </p>
             </div>
         </div>

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 const props = withDefaults(defineProps<{
     defaultLeftPercent?: number
     minLeftPercent?: number
@@ -64,7 +68,7 @@ onUnmounted(stopDragging)
         :style="{ '--split-left': `${leftPercent}%`, height }">
         <slot name="left" />
 
-        <div v-if="!disabled" role="separator" aria-label="调整图片与功能区域宽度" aria-orientation="vertical"
+        <div v-if="!disabled" role="separator" :aria-label="t('common.resizePane')" aria-orientation="vertical"
             :aria-valuemin="minLeftPercent" :aria-valuemax="maxLeftPercent" :aria-valuenow="Math.round(leftPercent)"
             tabindex="0" class="split-handle group" @pointerdown="startDragging" @keydown="handleKeydown">
             <span class="split-handle-line group-hover:bg-primary group-focus:bg-primary" />

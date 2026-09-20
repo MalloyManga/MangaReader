@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { AutoTranslateBatchState } from '~/composables/useAutoTranslateProcessing'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineProps<{
     state: AutoTranslateBatchState
@@ -25,14 +28,14 @@ const emit = defineEmits<{
                     <div class="flex items-center gap-3">
                         <IconAutoDetect class="size-7 shrink-0 text-primary" />
                         <div class="min-w-0">
-                            <h2 class="text-lg font-bold text-manga-900 dark:text-manga-100">批量识别翻译</h2>
-                            <p class="truncate text-sm text-manga-500 dark:text-manga-400">{{ state.pageLabel || '正在准备页面' }}</p>
+                            <h2 class="text-lg font-bold text-manga-900 dark:text-manga-100">{{ t('autoTranslateWorkflow.batchTitle') }}</h2>
+                            <p class="truncate text-sm text-manga-500 dark:text-manga-400">{{ state.pageLabel || t('autoTranslateWorkflow.preparingPage') }}</p>
                         </div>
                     </div>
 
                     <div class="mt-6 flex items-center justify-between gap-4 text-sm">
                         <span class="font-medium text-manga-700 dark:text-manga-300">
-                            第 {{ state.pageIndex }} / {{ state.pageTotal }} 页
+                            {{ t('autoTranslateWorkflow.pageProgress', { current: state.pageIndex, total: state.pageTotal }) }}
                         </span>
                         <span class="tabular-nums text-manga-500">{{ state.progress }}%</span>
                     </div>
@@ -44,30 +47,30 @@ const emit = defineEmits<{
                     <div class="mt-5 min-h-16 border-y border-manga-100 dark:border-manga-700 py-4">
                         <p class="text-sm font-medium text-manga-800 dark:text-manga-200">{{ state.message }}</p>
                         <p v-if="state.regionTotal" class="mt-1 text-xs text-manga-500 dark:text-manga-400">
-                            当前区域 {{ state.regionIndex }} / {{ state.regionTotal }}
+                            {{ t('autoTranslateWorkflow.regionProgress', { current: state.regionIndex, total: state.regionTotal }) }}
                         </p>
                     </div>
 
                     <div class="mt-4 grid grid-cols-3 gap-3 text-center text-xs">
                         <div>
                             <strong class="block text-lg tabular-nums text-green-600 dark:text-green-400">{{ state.completedPages }}</strong>
-                            <span class="text-manga-500">已完成</span>
+                            <span class="text-manga-500">{{ t('autoTranslateWorkflow.completed') }}</span>
                         </div>
                         <div>
                             <strong class="block text-lg tabular-nums text-red-600 dark:text-red-400">{{ state.failedPages }}</strong>
-                            <span class="text-manga-500">失败</span>
+                            <span class="text-manga-500">{{ t('autoTranslateWorkflow.failed') }}</span>
                         </div>
                         <div>
                             <strong class="block text-lg tabular-nums text-manga-600 dark:text-manga-300">{{ state.skippedPages }}</strong>
-                            <span class="text-manga-500">已跳过</span>
+                            <span class="text-manga-500">{{ t('autoTranslateWorkflow.skipped') }}</span>
                         </div>
                     </div>
 
                     <div class="mt-6 flex justify-end">
                         <Button v-if="isProcessing" variant="danger" :disabled="isStopping" @btn-click="emit('stop')">
-                            停止处理
+                            {{ t('autoTranslateWorkflow.stop') }}
                         </Button>
-                        <Button v-else @btn-click="emit('close')">完成</Button>
+                        <Button v-else @btn-click="emit('close')">{{ t('autoTranslateWorkflow.done') }}</Button>
                     </div>
                 </section>
             </div>

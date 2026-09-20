@@ -1,5 +1,8 @@
 <!-- app/components/Translation.vue -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 const { showToast } = useToast()
 const { settings } = useSettings()
 
@@ -25,7 +28,7 @@ const fetchTranslation = async (text: string) => {
 
     try {
         if (!window.electronAPI || !window.electronAPI.translate) {
-            throw new Error('Electron API 不可用')
+            throw new Error(t('common.electronApiUnavailable'))
         }
         console.log('[Frontend] [Translation.vue] Initiating translation request for:', text, 'Calling window.electronAPI.translate...')
 
@@ -35,7 +38,7 @@ const fetchTranslation = async (text: string) => {
             translatedText.value = response.translation // 核心: 替换接收到的翻译文本
             console.log('[Frontend] [Translation.vue] Translation success:', translatedText.value)
         } else {
-            const errMsg = response.error || '未知错误'
+            const errMsg = response.error || t('common.unknownError')
             console.error('[Frontend] [Translation.vue] Translation failed with error:', errMsg)
 
             // 检测特定的错误代码
@@ -50,14 +53,14 @@ const fetchTranslation = async (text: string) => {
                 if (isFirstLoad.value) {
                     console.log('首次加载失败，已抑制 Toast 提示')
                 } else {
-                    showToast(`翻译失败: ${errMsg}`)
+                    showToast(`${t('readerWorkflow.translationFailed')}: ${errMsg}`)
                 }
             }
         }
     } catch (error) {
         console.error('[Frontend] [Translation.vue] Communication error:', error)
         if (!isFirstLoad.value) {
-            showToast(`翻译失败，请重试 ${error}`)
+            showToast(`${t('readerWorkflow.translationRetry')} ${error}`)
         }
     } finally {
         isTranslationLoading.value = false
@@ -117,7 +120,7 @@ onUnmounted(() => {
     <div class="card">
         <div class="flex items-center justify-between mb-3">
             <div class="text-xs font-semibold text-manga-600 dark:text-manga-200">
-                🌐 翻译
+                {{ t('readerWorkflow.translation') }}
             </div>
             <!-- 只有在显示且有翻译结果时才显示复制按钮 -->
             <CopyButton v-if="showTranslation && translatedText && !isTranslationLoading"
@@ -132,7 +135,7 @@ onUnmounted(() => {
                     class="flex items-center gap-2 text-manga-600 dark:text-manga-400 min-h-6">
                     <div class="animate-spin h-4 w-4 border-2 rounded-full border-primary border-t-transparent"></div>
                     <span class="text-sm">
-                        翻译中...
+                        {{ t('readerWorkflow.translating') }}
                     </span>
                 </div>
 
@@ -142,11 +145,11 @@ onUnmounted(() => {
                     <div class="flex items-center gap-2 mb-1">
                         <IconWarn class="size-4" />
                         <span class="font-bold">
-                            模型未就绪
+                            {{ t('readerWorkflow.modelNotReady') }}
                         </span>
                     </div>
                     <p class="text-xs opacity-90 pl-6">
-                        请前往 <span class="font-bold underline">设置 > 翻译模型</span> 下载并安装模型。
+                        {{ t('readerWorkflow.downloadModelHint') }}
                     </p>
                 </div>
 
@@ -158,7 +161,7 @@ onUnmounted(() => {
 
                 <!-- 空状态 -->
                 <p v-else class="text-sm text-manga-600 dark:text-manga-400">
-                    等待原文输入...
+                    {{ t('readerWorkflow.waitingOriginal') }}
                 </p>
             </div>
         </Transition>
@@ -167,14 +170,14 @@ onUnmounted(() => {
         <div class="mt-3 flex gap-2">
 
             <Button size="sm" @btn-click="toggleTranslation">
-                {{ showTranslation ? "隐藏" : "显示" }}翻译
+                {{ showTranslation ? t('readerWorkflow.hide') : t('readerWorkflow.show') }}{{ t('readerWorkflow.translation') }}
             </Button>
 
             <!-- 重新翻译按钮：始终显示 -->
             <!-- 只有当有原文时才允许点击 -->
             <Button v-if="showTranslation" variant="secondary" size="sm"
                 :disabled="isTranslationLoading || !originalText" @btn-click="handleRetranslate">
-                重新翻译
+                {{ t('readerWorkflow.retranslate') }}
             </Button>
         </div>
     </div>

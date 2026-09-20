@@ -5,6 +5,7 @@ type PDFJS = typeof import('pdfjs-dist')
 const { showToast } = useToast()
 
 export const useFileProcessor = () => {
+    const { t } = useI18n()
     const isPdfJsLoaded = ref(false)
     const pdfjsLib = ref<PDFJS | null>(null)
 
@@ -53,7 +54,7 @@ export const useFileProcessor = () => {
             console.log('✅ PDF.js loaded successfully')
         } catch (error) {
             console.error('❌ Failed to load PDF.js:', error)
-            showToast('PDF.js 加载失败，请重试', 2000)
+            showToast(t('fileWorkflow.pdfJsLoadFailed'), 2000)
         }
     }
     // PDF 转图片
@@ -62,7 +63,7 @@ export const useFileProcessor = () => {
             await initPdfJs()
         }
         if (!pdfjsLib.value) {
-            throw new Error('PDF.js 加载失败')
+            throw new Error(t('fileWorkflow.pdfJsLoadFailed'))
         }
 
         const pdfData = typeof source === 'string'

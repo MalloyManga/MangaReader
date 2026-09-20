@@ -1,6 +1,7 @@
 <!-- app/pages/index.vue -->
 <script setup lang="ts">
 import type { ImageItem, OcrBlock } from '~/types/interface'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,6 +14,7 @@ const { nextImage, prevImage, addImagesToStore, setImage, currentImageIndex, cle
 const { processImages, processZip, convertPdfToImages } = useFileProcessor()
 const { initSettings, settings } = useSettings()
 const { showToast } = useToast()
+const { t } = useI18n()
 
 const showSettingsModal = ref(false)
 
@@ -51,15 +53,15 @@ const goBackToLibrary = async () => {
                         lastReadTime: Date.now()
                     })
                 }
-                showToast('✅ 已自动加入书架', 1000)
+                showToast(t('readerWorkflow.addedToLibrary'), 1000)
             }
             else {
-                showToast('❌ 加入书架失败！', 1000)
+                showToast(t('readerWorkflow.addToLibraryFailed'), 1000)
             }
         }
         // 情况 B: 纯内存数据 -> 仅提示
         else {
-            showToast('👋 临时阅读结束', 1500)
+            showToast(t('readerWorkflow.temporarySessionEnded'), 1500)
         }
 
         // 无论哪种情况，退出时都清空内存
@@ -83,7 +85,7 @@ const goBackToLibrary = async () => {
 const hasShownOcrHint = ref(false)
 const handleOcr = () => {
     if (!hasShownOcrHint.value) {
-        showToast('🖱️ 拖动鼠标框选识别区域 · 按 ESC 取消', 3000)
+        showToast(t('readerWorkflow.ocrSelectionHint'), 3000)
         hasShownOcrHint.value = true
     }
     isOcrMode.value = true
@@ -153,13 +155,13 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         console.log('OCR 框选区域:', selectionData)
 
         // 查找 ImageUpload 组件内的图片元素
-        const imgElement = document.querySelector('img[alt^="当前图片"]') as HTMLImageElement
+        const imgElement = document.querySelector('img[data-current-image]') as HTMLImageElement
 
         if (!imgElement) {
-            throw new Error('未找到图片元素,请先上传图片')
+            throw new Error(t('readerWorkflow.imageElementNotFound'))
         }
         if (!imgElement.complete || !imgElement.naturalWidth) {
-            throw new Error('图片未加载完成')
+            throw new Error(t('readerWorkflow.imageNotLoaded'))
         }
 
         // 1. 获取图片元素在屏幕上的位置和尺寸 (Client Dimensions)
@@ -216,7 +218,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
 
         // 如果选区完全在图片外，报错或返回
         if (sourceW <= 0 || sourceH <= 0) {
-            throw new Error('选区未包含有效图片内容')
+            throw new Error(t('autoTranslateWorkflow.invalidSelection'))
         }
 
         const newBlock: OcrBlock = {
@@ -251,7 +253,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
 
         console.log('发送 OCR 识别请求...')
         if (!window.electronAPI || !window.electronAPI.recognizeText) {
-            throw new Error('Electron API 不可用')
+            throw new Error(t('common.electronApiUnavailable'))
         }
 
         // 调用 OCR 识别
@@ -278,7 +280,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
                 ocrBlocks.value[blockIndex].status = 'error'
             }
             console.error('❌ OCR 识别失败:', result.error)
-            showToast(`OCR 识别失败: ${result.error}`)
+            showToast(`${t('readerWorkflow.ocrFailed')}: ${result.error}`)
         }
 
     } catch (error) {
@@ -289,7 +291,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
             }
         }
         console.error('OCR 处理错误:', error)
-        showToast(`OCR 处理错误: ${error}`, 5000)
+        showToast(`${t('readerWorkflow.ocrError')}: ${error}`, 5000)
     } finally {
         isOcrRecognizing.value = false
     }
@@ -355,9 +357,9 @@ const handleReOcr = async (id: string) => {
     if (!block) return
 
     try {
-        const imgElement = document.querySelector('img[alt^="当前图片"]') as HTMLImageElement
+        const imgElement = document.querySelector('img[data-current-image]') as HTMLImageElement
         if (!imgElement || !imgElement.complete || !imgElement.naturalWidth) {
-            showToast('未找到图片')
+            showToast(t('readerWorkflow.imageNotFound'))
             return
         }
 
@@ -374,7 +376,7 @@ const handleReOcr = async (id: string) => {
 
         const imageBase64 = canvas.toDataURL('image/png')
 
-        showToast('🔁 重新识别中...')
+        showToast(t('readerWorkflow.reRecognizing'))
         block.status = 'loading'
 
         if (!window.electronAPI || !window.electronAPI.recognizeText) throw new Error('API Unavailable')
@@ -388,15 +390,15 @@ const handleReOcr = async (id: string) => {
                 status: 'done',
                 showOriginal: true
             })
-            showToast('✅ 重新识别成功')
+            showToast(t('readerWorkflow.reRecognized'))
         } else {
             block.status = 'error'
-            showToast(`重新识别失败: ${result.error}`)
+            showToast(`${t('readerWorkflow.reRecognizeFailed')}: ${result.error}`)
         }
 
     } catch (e) {
         console.error('Re-OCR Error', e)
-        showToast('重新识别出错')
+        showToast(t('readerWorkflow.reRecognizeError'))
     }
 }
 
@@ -436,9 +438,9 @@ const handlePaste = (event: ClipboardEvent) => {
         }
         addImagesToStore([newImageItem])
         originalText.value = ''
-        showToast('✅ 已从剪贴板加载图片')
+        showToast(t('readerWorkflow.clipboardLoaded'))
     } else {
-        showToast('⚠️ 剪贴板中没有图片')
+        showToast(t('readerWorkflow.clipboardEmpty'))
     }
 }
 
@@ -453,7 +455,7 @@ onMounted(async () => {
     const page = route.query.current ? parseInt(route.query.current as string) : 0
 
     if (path && window.electronAPI) {
-        showToast('正在打开书籍，请稍候...', 2000)
+        showToast(t('readerWorkflow.openingBook'), 2000)
 
         currentBookId.value = id
         try {
@@ -489,7 +491,7 @@ onMounted(async () => {
             }
         } catch (e) {
             console.error('Load book error:', e)
-            showToast('加载书籍失败')
+            showToast(t('readerWorkflow.bookLoadFailed'))
         }
     }
 
