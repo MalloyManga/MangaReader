@@ -37,8 +37,28 @@
   - 注意：`library.deleteBook` 的 tooltip 只做了静态验证——浏览器环境下 `window.electronAPI` 不可用、无法往书架添加书籍，故未能亲眼看到该按钮渲染。
   - 提交：`11f48dc` `refactor: prune 42 unused locale keys and add window control labels`、`6b49ee8` `fix: add missing accessible labels to icon-only window and delete buttons`。
 
-## 2026-09-01（Malloy + AI）
+### 17:50–18:56 语言与模型目录联动（Malloy 提 5 点，问答对齐后实施）
 
+Malloy 的 5 点：①首进书架要弹语言选择、且要写进 settings json；②"返回书架"仍是中文（bug）；③语言设置缺图标；④语言设置里每个语言显示了两遍名字；⑤翻译模型应只显示目标语言对应的模型，模型信息也要是该语言。
+
+决策（AskUserQuestion）：弹窗 ✕ = **不写入、下次仍弹**；语言行**只用自称**（中文 / English）；图标**AI 自绘 globe**；切语言后已选模型**自动切到该语言的默认**。
+
+- **18:05** — ⑤的根因不在 Python，而在 **Electron IPC 三跳把 `targetLanguage` 丢了**：`useModelStatus` 传了参、`interface.d.ts` 类型也声明了参数，但 `preload.js:64` 无参、`backend-api.cjs:102` 不接、`backend-service.cjs:327` 不发 → 后端恒按 `"zh"` 过滤。另发现 `default_model_id` 取的是**全局**体积最小（`opus-mt-ja-zh`），即便语言传对了英文默认仍指向中文模型 → 新增 `get_default_translator_id_for_language()`。记录为 B-2026-008。
+- **18:20** — 前端 `modelsLoaded` 改为按语言缓存（`modelsLoadedLang`）；拉取后把目录裁剪为"仅当前语言"；已选模型不属该语言时自动切默认；`TranslationModel` 增 `target_languages`，fallback 目录补该字段。
+- **18:30** — 落实①②③④：弹窗 ✕ 改 emit `dismiss`（不写 `targetLanguage`，下次仍弹）；`reader.vue:540` 的硬编码 `📚 返回书架` 改 `t('common.backToLibrary')`——**这是上轮扫描的漏检**，原因是我的 `grep -vF 't('` 会把含 `emit(` / `get(` 的行整行排除；`SettingsLanguage` 主/副标题重复改为单行自称，删除 `settings.languageNameZh/En`；新建 `Icon/Language.vue`（globe）接入侧栏并删掉 `menuItems` 中从未使用的 `icon` 死字段。
+- **18:45** — `check-i18n.cjs` 增**硬编码 CJK 检测**（剥离 HTML/JS 注释与 `console.*` 后扫描），把这类漏检变成机器可查。复跑：en/zh 各 334 键、无重复、零差集、零缺失、未使用 0。剩余 2 类告警为可接受项：`useModelStatus` 的 fallback 目录文案属后端所有；`reader.vue:21` 是日语示例内容而非 UI 文案。
+- **18:56** — 提交 `de2fade`（IPC + 后端按语言取默认）、`cd50b62`（语言驱动模型目录）、`fb83702`（globe 图标）、`aca6de2`（补漏改文案 + 校验加固）。
+- **验证到什么程度**：Python 侧直接调注册表确认 `zh → 3 个模型 / en → 仅 opus-mt-ja-en（英文描述）`，默认值分别为 `opus-mt-ja-zh` / `opus-mt-ja-en`；浏览器确认侧栏 5 个图标各不相同（语言项已是 globe）、`SettingsLanguage` 编译产物只剩 `languageZh/languageEn` 两个 key 且接上 `loadTranslationModels`、弹窗编译产物含 `dismiss`、`reader.vue` 编译产物为 `common.backToLibrary`；控制台无 error。**未能验证**：整条 Electron IPC 与模型列表实际渲染（需 `npm start` 起 Electron + Python 后端，纯浏览器无 `window.electronAPI`）；Settings 各 tab 切换在 in-app browser 里点不动——`Transition mode="out-in"` 在 0×0 视口内过渡永不结束，语言弹窗关闭后 DOM 残留也是同一原因，非应用缺陷。
+- **环境坑一枚**：改完 `app/plugins/i18n.ts` 后 dev server 出现 `503` 与 `Failed to load module script ... MIME "text/html"`，清 `node_modules/.vite` + 重启后消失，属 Vite 脏模块图，非代码问题。
+
+### 截至 18:56 仍未了结
+1. **Electron 全链路未实机跑过**（模型列表按语言过滤、下载、切换后默认模型），需 `npm start` 验一次。
+2. `nuxt typecheck` 仍不可用：vue-tsc 未进 devDependencies（B-2026-003）。
+3. `useFileProcessor.ts:5` 在模块顶层调用 `useToast()`，仅因 `useToast` 不依赖 inject 才安全（隐患）。
+4. `useModelStatus` 的 fallback 目录仍只有中文模型与中文文案，后端不可用且界面为英文时列表会空。
+5. `library.deleteBook` tooltip 与语言弹窗残留 DOM 属未亲眼所见/环境所致，需在 Electron 里确认一次。
+
+## 2026-09-01（Malloy + AI）
 - 00:01–00:28 — 前端 i18n 基础搭建与分批改造（`ff1e09c` → `ff9d79e`）：vue-i18n、语言选择弹窗、SettingsLanguage、library/Settings 国际化。
 
 ## 2026-08-31（Malloy + AI）

@@ -36,11 +36,13 @@
 - **解决方式**：暂以"Vite 编译 + dev server 路由冒烟"替代类型检查。**未彻底解决**——后续应把 `vue-tsc` 加为 devDependency 并固化 Node 版本。
 
 
-## B-2026-004（待办）后端翻译模型元信息无英文
+## B-2026-004 后端翻译模型元信息无英文（已解决，见 B-2026-008）
 
 - **发现时间**：2026-09-20
-- **现象**：`services/modules/translator` registry 下发的模型 name/description/size 为中文，英文界面下 SettingsTranslate 卡片显示中文。
-- **建议方案**：registry 增加 locale 字段或 key 化文案，由前端按当前语言解析。
+- **现象**：英文界面下 Settings > 翻译 卡片显示中文模型与中文描述。
+- **实际根因**：不是"registry 缺 locale 字段"——registry 早已给每个模型带 `target_languages`，且 `opus-mt-ja-en` 的 name/description/size 本就是英文；真正的问题是参数在 Electron IPC 链上被丢弃、默认模型又不按语言取（B-2026-008）。
+- **结论**：语言作用域打通后，英文界面只会拿到 `opus-mt-ja-en`（英文信息），中文界面拿到 3 个中文模型（中文信息），**无需再做文案 key 化**。保留此条是为记下我最初的误判。
+- **遗留**：`app/composables/useModelStatus.ts` 的 fallback 目录（Electron/后端不可用时的兜底）仍是中文文案，且只含 `zh` 模型；若要它也有英文，需要补一份英文 fallback。
 
 ## B-2026-005 en/zh.json 存在重复 key：`autoTranslateWorkflow.pageProgress`
 
@@ -76,3 +78,24 @@
 - **最终处置（2026-09-20 16:05–16:28，Malloy 决策）**：42 个从未使用的 key 全部删除（含 `settings.token`/`removeToken`、`library.editBook`、`about.description` 等），locale 总数 377 → 335；`library.deleteBook` 与窗口最小化/最大化/关闭三键补上 `aria-label` + `title`（新增 `common.minimize`/`maximize`/`restore`，`MaximizeButton` 随 `isMaximized` 在最大化/还原间切换）。复跑校验：无重复、零差集、零缺失、未使用 = 0；浏览器控制台无 error，中英文下三键分别读出 `最小化/最大化/关闭` 与 `Minimize/Maximize/Close`。
 - **验证留手**：`library.deleteBook` 的 tooltip 仅静态验证——纯浏览器环境下 `window.electronAPI` 不可用，无法向书架添加书籍，未能亲眼见到该按钮渲染。
 - **教训**：未使用 key 要先分辨"误报 / 冗余别名 / 该接未接"，不得直接打成脚手架残留；纯图标按钮缺可访问名本身就是 bug。
+- **补充（2026-09-20 18:30，Malloy 复查后发现新的漏检）**：`reader.vue:540` 的 `📚 返回书架` 当时未被扫出。原因是我的过滤用了 `grep -vF 't('`，本意是排除"已走 i18n 的行"，但它同时把含 `emit(`、`get(` 的行整行排除了。已改为在 `scripts/check-i18n.cjs` 里做**剥离注释与 `console.*` 后的 CJK 扫描**，不再依赖这类脆弱过滤。
+
+## B-2026-008 模型列表不随目标语言变化：Electron IPC 三跳丢弃了参数
+
+- **发现时间**：2026-09-20 17:55（Malloy 提出第 5 点：翻译模型应只显示对应语言的模型，且模型信息也要是该语言）
+- **现象**：英文界面下 Settings > 翻译 仍是 3 个日译中模型，描述为中文。
+- **根因（两层）**：
+  1. **参数在 IPC 链上被丢掉**：`useModelStatus` 调的是 `window.electronAPI.listTranslationModels(settings.value.targetLanguage)`，且 `app/types/interface.d.ts:174` 已声明 `targetLanguage?: string`；但实现侧 `electron/preload.js:64` 是无参 `() => invoke('model:list')`、`electron/ipc/backend-api.cjs:102` 的 handler 不接该参数、`electron/backend-service.cjs:327` 的 payload 也没有 `target_language`。后端 `handlers_translate.py:75` 取不到就恒按 `"zh"` 过滤。类型声明与实现不一致，使前端"看起来已经传了"。
+  2. **默认模型不按语言取**：`handle_list_translation_models` 返回全局 `DEFAULT_TRANSLATOR_ID`（全体模型中体积最小 = `opus-mt-ja-zh`），即使语言传对，英文默认仍指向中文模型。
+- **解决方式**：三跳逐层透传参数；新增 `get_default_translator_id_for_language()`；前端 `modelsLoaded` 改为按语言缓存（`modelsLoadedLang`，否则切语言不会重拉），拉取后把目录裁剪为当前语言，已选模型不属该语言时自动切到该语言默认。
+- **验证**：Python 直调注册表 → `zh: [opus-mt-ja-zh, sakura-1.5b, qwen3…] / default=opus-mt-ja-zh`，`en: [opus-mt-ja-en] / default=opus-mt-ja-en`（英文描述）。**Electron 全链路（preload → ipc → backend）与模型卡片实际渲染尚未实机验证**，需 `npm start` 跑一轮。
+- **Commit**：`de2fade`、`cd50b62`
+- **教训**：跨进程 API 的参数要每一跳都核对实现，`interface.d.ts` 的声明不是证据；缓存标志位若隐含语义维度（此处为语言），必须把该维度纳入缓存 key。
+
+## B-2026-009 dev server 503 与 "MIME type text/html" 报错（环境，非代码缺陷）
+
+- **发现时间**：2026-09-20 18:40
+- **现象**：重写 `app/plugins/i18n.ts` 并新增 `app/locales/instance.ts` 后，首页返回 503，控制台报 `Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"`（URL 为 `/assets/plugins/i18n.ts`）。
+- **根因**：Vite 模块图/依赖缓存脏了（新增被插件引用的模块后 dev server 未重建映射），请求落到 SPA HTML 兜底路由。
+- **解决方式**：杀掉 dev server，删除 `node_modules/.vite` 与 `.nuxt/cache` 后重启 → 首页 200、控制台仅剩 `Electron API not available` 一类预期告警。代码未作改动。
+- **教训**：改动 Nuxt 插件或其新依赖后若出现模块 MIME/503，先清缓存重启，再怀疑代码。
