@@ -324,8 +324,8 @@ class BackendService extends EventEmitter {
         return this._sendRequest({ command: 'translate', text: text, model_id: modelId }, 600000)
     }
 
-    async listTranslationModels() {
-        return this._sendRequest({ command: 'list_translation_models' }, 10000)
+    async listTranslationModels(targetLanguage) {
+        return this._sendRequest({ command: 'list_translation_models', target_language: targetLanguage }, 10000)
     }
 
     async checkModel(modelId) {

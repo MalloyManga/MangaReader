@@ -4,6 +4,7 @@ import traceback
 
 from .translator import (
     DEFAULT_TRANSLATOR_ID,
+    get_default_translator_id_for_language,
     list_translator_models,
     list_translator_models_by_language,
     normalize_translator_id,
@@ -77,7 +78,7 @@ def handle_list_translation_models(session, request):
     return {
         "success": True,
         "models": models,
-        "default_model_id": DEFAULT_TRANSLATOR_ID,
+        "default_model_id": get_default_translator_id_for_language(target_language),
         "current_model_id": session.current_translator_id,
         "target_language": target_language,
     }

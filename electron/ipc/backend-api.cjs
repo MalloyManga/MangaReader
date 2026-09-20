@@ -98,8 +98,8 @@ module.exports = function registerBackendApi(ctx) {
     }))
 
     // 模型相关
-    ipcMain.handle('model:list', withBackend(ctx, async (backend) => {
-        const result = await backend.listTranslationModels()
+    ipcMain.handle('model:list', withBackend(ctx, async (backend, targetLanguage) => {
+        const result = await backend.listTranslationModels(targetLanguage)
         return { success: true, ...result }
     }))
 

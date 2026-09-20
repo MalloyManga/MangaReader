@@ -61,7 +61,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // 模型API管理
-    listTranslationModels: () => ipcRenderer.invoke('model:list'),
+    listTranslationModels: (targetLanguage) => ipcRenderer.invoke('model:list', targetLanguage),
     checkModel: (modelId) => ipcRenderer.invoke('model:check', modelId),
     downloadModel: (modelId) => ipcRenderer.invoke('model:download', modelId),
     deleteModel: (modelId) => ipcRenderer.invoke('model:delete', modelId),
