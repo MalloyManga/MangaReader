@@ -1,5 +1,6 @@
 import type { Book, OcrBlock } from '~/types/interface'
 import { useI18n } from 'vue-i18n'
+import { usesLatinScript, wrapLines } from '~/composables/textLayout'
 
 export type ExportScope = 'current' | 'all'
 
@@ -9,6 +10,42 @@ const loadImageElement = (url: string, errorMessage: string) => new Promise<HTML
     image.onerror = () => reject(new Error(errorMessage))
     image.src = url
 })
+
+export const drawHorizontalText = (context: CanvasRenderingContext2D, block: OcrBlock) => {
+    const text = block.translation.trim()
+    if (!text) return
+
+    const { x, y, width, height } = block.rect
+    const padding = Math.max(2, Math.min(width, height) * 0.04)
+    const contentWidth = Math.max(1, width - padding * 2)
+    const contentHeight = Math.max(1, height - padding * 2)
+
+    context.save()
+    context.beginPath()
+    context.rect(x, y, width, height)
+    context.clip()
+    context.fillStyle = '#111827'
+    context.textAlign = 'left'
+    context.textBaseline = 'middle'
+
+    let fontSize = Math.max(6, Math.min(contentWidth, contentHeight,
+        Math.sqrt((contentWidth * contentHeight * 0.85) / Math.max(1, text.length))))
+    let lines: string[] = []
+    let lineHeight = fontSize * 1.25
+    for (let attempt = 0; attempt < 40; attempt++) {
+        context.font = `500 ${fontSize}px "Segoe UI", "Microsoft YaHei", "Yu Gothic", sans-serif`
+        lines = wrapLines(candidate => context.measureText(candidate).width, text, contentWidth)
+        lineHeight = fontSize * 1.25
+        if (lines.length * lineHeight <= contentHeight) break
+        fontSize *= 0.92
+    }
+
+    const startY = y + padding + Math.max(0, (contentHeight - lines.length * lineHeight) / 2) + lineHeight / 2
+    lines.forEach((line, index) => {
+        context.fillText(line, x + padding, startY + lineHeight * index)
+    })
+    context.restore()
+}
 
 const drawVerticalText = (context: CanvasRenderingContext2D, block: OcrBlock) => {
     const text = Array.from(block.translation.trim())
@@ -68,7 +105,11 @@ const renderTranslatedPage = async (imageUrl: string, blocks: OcrBlock[], imageL
         .forEach((block) => {
             context.fillStyle = '#ffffff'
             context.fillRect(block.rect.x, block.rect.y, block.rect.width, block.rect.height)
-            drawVerticalText(context, block)
+            if (usesLatinScript(block.translation)) {
+                drawHorizontalText(context, block)
+            } else {
+                drawVerticalText(context, block)
+            }
         })
 
     return canvas.toDataURL('image/png')

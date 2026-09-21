@@ -1,6 +1,8 @@
 <!-- components/BubbleLayer.vue -->
 <script setup lang="ts">
+import type { Directive } from 'vue'
 import type { OcrBlock } from '~/types/interface'
+import { usesLatinScript } from '~/composables/textLayout'
 interface Props {
     blocks: OcrBlock[]
     imageNaturalSize: { width: number, height: number }
@@ -30,6 +32,8 @@ const renderedRect = computed(() => {
     return { x, y, width: actualW, height: actualH, scale }
 })
 
+const isLatinBlock = (block: OcrBlock) => usesLatinScript(block.translation || '')
+
 const getBlockStyle = (block: OcrBlock) => {
     // 拿到容器里的图片四周的留白宽高 以及 图片的缩放比例
     const { x, y, scale } = renderedRect.value
@@ -42,7 +46,9 @@ const getBlockStyle = (block: OcrBlock) => {
     // block.rect.x 是这块文字在原图里的坐标
     const area = w * h
 
-    let fontSize = Math.sqrt((area * 0.60) / len)
+    // 拉丁文字横排时字形窄于全角 CJK，同样的面积能容纳更多字符
+    const fitRatio = isLatinBlock(block) ? 0.72 : 0.60
+    let fontSize = Math.sqrt((area * fitRatio) / len)
 
     return {
         left: `${x + block.rect.x * scale}px`,
@@ -77,6 +83,22 @@ const emit = defineEmits<{
     selectBlock: [id: string]
     reOcr: [id: string]
 }>()
+
+// 译文常长于气泡：按真实溢出循环缩字号，横排/竖排通用
+const fitElement = (el: HTMLElement) => {
+    el.style.fontSize = ''
+    let size = parseFloat(getComputedStyle(el).fontSize) || 12
+    const overflow = () => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1
+    while (size > 6 && overflow()) {
+        size = Math.max(6, size * 0.88)
+        el.style.fontSize = `${size}px`
+    }
+}
+
+const vFitText: Directive = {
+    mounted: el => fitElement(el),
+    updated: el => fitElement(el)
+}
 </script>
 
 <template>
@@ -90,10 +112,12 @@ const emit = defineEmits<{
                         : 'bg-white shadow-sm border border-gray-200 z-20'
                 ]" :style="getBlockStyle(block)" @click.stop="handleSingleClick(block)"
                 @dblclick.stop="handleDoubleClick(block)" @contextmenu.prevent.stop="handleRightClick(block)">
-                <!-- 垂直排版容器 -->
-                <!-- 仅在非原文模式(showOriginal=false)下显示文本 -->
-                <div v-if="!block.showOriginal"
-                    class="flex-1 w-full h-full p-[2%] writing-vertical-rl break-all leading-tight tracking-tighter flex flex-wrap items-center justify-start content-center text-left">
+                <!-- 译文排版：拉丁文字横排按词换行，CJK 保持竖排 -->
+                <div v-if="!block.showOriginal" v-fit-text
+                    class="flex-1 w-full h-full p-[2%] text-left"
+                    :class="isLatinBlock(block)
+                        ? 'bubble-horizontal leading-snug'
+                        : 'writing-vertical-rl break-all leading-tight tracking-tighter flex flex-wrap items-center justify-start content-center'">
                     <span v-if="block.status === 'loading'" class="text-xs text-gray-400">...</span>
                     <!-- 译文 -->
                     <span v-else class="font-medium text-gray-900">
@@ -109,6 +133,12 @@ const emit = defineEmits<{
 .writing-vertical-rl {
     writing-mode: vertical-rl;
     text-orientation: upright;
+}
+
+.bubble-horizontal {
+    writing-mode: horizontal-tb;
+    overflow-wrap: break-word;
+    white-space: normal;
 }
 
 .bubble-enter-active,
