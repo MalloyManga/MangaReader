@@ -122,3 +122,23 @@
   2. 三个引擎的 `_download_file` 加 **416 自愈**：`except urllib.error.HTTPError` 命中 416 且 `resume_from>0` 时，删除 `.tmp`、清 `Range` 头、整体重下（而非带非法断点空转）。
 - **验证**：venv 直调 `OpusEnglishEngine._download_file`——case1 用现场那个 1381B 的 `config.json.tmp` + expected=1381，直接转正返回、不重复下载；case2 构造 1500B 越界 tmp + expected=2000，触发 `[WARN] OPUS English got 416 ... discarding .tmp` 自愈分支、tmp 被清除重下；case3 干净全量下载 config.json 得 1381B。`py_compile` 三文件通过。磁盘上 `models/translation/opus-mt-ja-en/config.json.tmp`(1381B) 未手删——新逻辑下点击下载会自动被转正。**Electron 实机完整下载（约 300MB）仍未跑**。→ **2026-09-21 闭环**：Malloy 实机复测，选官方源完整下载 opus-mt-ja-en 成功、日志无 416，条目关闭。
 - **教训**：硬编码的"期望文件大小"必须对齐远端真实值，否则"下完了却永远判 incomplete"，且续传逻辑会把这个矛盾放大成 416 死循环。校验语义要分清"最小值"与"精确值"：`check_model_exists` 用 `>=`（最小值语义）能容忍，但 `download_model` 的完成判定用 `< expected`（近似精确值语义）就不容忍偏大——两处对同一 dict 的隐含假设不一致是本次英文独有的诱因。给手写 HTTP 客户端加 Range 续传时，必须处理 416。
+
+## B-2026-012 英文嵌字逐字母拆分：嵌字管线只有日语竖排一条路
+
+- **发现时间**：2026-09-21 13:50 前后（Malloy 报告：英文翻译模型已跑通，但嵌字把译文一个字母一个字母拆开；且英文译文常比日文明显更长）
+- **现象**：目标语言选英文后，实时叠层与 PNG 导出中的英文译文全部竖排、逐字母堆叠，单词被打散、无法阅读。
+- **根因**：整套嵌字管线是为日语竖排写的，且**没有任何按语言的分支**——
+  1. `useTranslatedImageExport.ts` 的 `drawVerticalText` 用 `Array.from(translation)` 把字符串拆成码点，逐字符画进 `fontSize*1.08` 宽的固定竖排单元格；
+  2. `BubbleLayer.vue` 无条件套 `writing-mode: vertical-rl` + `text-orientation: upright` + `break-all`，拉丁字母被迫逐字竖排直立即逐字母断行；
+  3. 翻译数据链路（`translateBlock → ipc ocr:translate → handle_translate`）只回传 `{ translation, model_id }`，渲染端拿不到语言信息；`DetectedTextRegion.direction` 存在但渲染端从不读。
+- **解决方式**：按**译文文字系统**分支（不依赖设置项，历史书页换语言后也能正确渲染）：
+  1. 新增 `app/composables/textLayout.ts`：`usesLatinScript()`（非空白字符中拉丁占比 > 50% 判为横排，数字/标点为主仍走竖排）与 `wrapLines(measure, text, maxWidth)`（按词 greedy 换行、超宽长词按字符硬切的纯函数，measure 注入以便脱离 canvas 测试）；
+  2. `useTranslatedImageExport.ts` 新增 `drawHorizontalText`：canvas `measureText` 真实量宽逐行排布，字号从面积启发式起步、最多收缩 40 轮直至装下，绘制仍 clip 在气泡矩形内；`renderTranslatedPage` 按 `usesLatinScript` 分派横/竖两条路；
+  3. `BubbleLayer.vue`：容器类按 `isLatinBlock` 切换——拉丁走 `bubble-horizontal`（horizontal-tb + 正常按词换行），CJK 保留原竖排；字号启发式对拉丁用 0.72 面积系数（拉丁字形窄于全角）；另加 `v-fit-text` 局部指令，挂载/更新后按 `scrollWidth/scrollHeight` 实测溢出、以 0.88 步进缩到 ≥6px，兜住"译文过长"。
+- **验证**：
+  1. `wrapLines`/`usesLatinScript` 经 esbuild 转译后在 Node 跑断言：按词换行结果与逐词宽度约束、长词硬切不丢字符、多空格/换行输入归一、空文本、单字符超宽不死循环——全过；
+  2. `@vue/compiler-sfc` 编译 `BubbleLayer.vue` 通过，模板正确引用 `vFitText` 绑定；
+  3. 真实浏览器（dev server :3002）：动态 import 真实模块，`drawHorizontalText` 在 canvas 上画出按单词换行的英文（截图确认，含 24 字符长词）；挂载真实 `BubbleLayer` 组件渲染 4 个混合气泡——英文横排断词正确、日文竖排不变、超长英文句自动缩到 9px 仍在框内；逐 span `getBoundingClientRect` 对比气泡盒：四块 overflow 均为负（无溢出）；控制台无新增错误（仅浏览器环境固有的 Electron API 缺失告警）。
+  **Electron 实机（真图 + 真译文）未跑**。
+- **教训**：为单一文字系统写的排版管线（逐字符竖排）在复用前先问"另一种文字系统怎么办"；嵌字/换行必须区分"按字符"与"按词"两种模型。渲染分支优先看**内容本身**而非设置项：设置会变，已入库的译文不会重译。
+- **时间/commit**：2026-09-21 14:35，`fd12c2a`（Malloy 实机验证通过后仅提交前端 3 文件）。

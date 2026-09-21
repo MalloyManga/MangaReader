@@ -6,11 +6,27 @@
 
 ## 2026-09-21（AI 结对：Qoder 主写）
 
+### 13:50–14:30 — 修复英文嵌字逐字母拆分（B-2026-012）
+
+- **问题**：Malloy 报告英文翻译已跑通，但嵌字把英文译文一个字母一个字母拆开竖排；且英文常比日文明显更长。根因：嵌字管线（`BubbleLayer.vue` 叠层 + `useTranslatedImageExport.ts` 导出）只有日语竖排一条路，导出侧还 `Array.from()` 逐码点画进固定竖排单元格，全程无语言分支。
+- **修法**：新增 `app/composables/textLayout.ts`（`usesLatinScript` 按译文文字系统判横/竖排；`wrapLines` 按词 greedy 换行 + 长词硬切的纯函数）；导出侧新增 `drawHorizontalText`（canvas `measureText` 真实量宽、字号收缩至装下、clip 在气泡内）；叠层侧按 `isLatinBlock` 切 `bubble-horizontal`（横排按词换行），CJK 保留竖排，拉丁字号系数 0.60→0.72，另加 `v-fit-text` 指令按实测溢出缩字号（≥6px）兜"译文过长"。
+- **验证**：Node 断言测 `wrapLines`/`usesLatinScript`（esbuild 转译真实模块）全过；`@vue/compiler-sfc` 编译 `BubbleLayer.vue` 过；真实浏览器（dev :3002）里 import 真实模块——canvas 画出按词换行的英文（含 24 字母长词）、挂载真实 `BubbleLayer` 渲染英/日/超长混合气泡，逐 span 几何比对四块均无溢出，截图确认，控制台无新增错误。**Electron 实机真图真译文未跑**。
+- **提交**：`fd12c2a` `fix: place English translations as word-wrapped horizontal text in bubbles`（仅 3 个前端文件；Malloy 已实机验证通过。doc/ 与 services/ 里其他会话的未提交内容按指示未随本次提交）。
+
+### 14:12 前后 — 语言设置页 UI 重设计（Malloy：两个原生 radio 太丑）
+
+- **做法**：`SettingsLanguage.vue` 两个语言改为**卡片式按钮**，风格对齐 `SettingsGeneral` 阅读模式卡片——globe 图标容器 + 语言自称；选中态蓝色卡片 + 图标蓝底 + 右上角蓝色勾选徽章，未选中灰底 hover 反馈；底部提示改为 `IconTip` 蓝色信息框（对齐 `SettingsTranslate` 风格）；去掉根部 `p-6`（SettingsModal 已有 `p-8`）。
+- **细节**：保留 `role="radiogroup"/"radio"` + `aria-checked` 无障碍语义（沿用下载源分段控件的模式）；新增 `settings.languageDesc` 副标题 key（en/zh 各 335 键）；切语言后 toast 复用已有 `messages.languageChanged*`。
+- **验证**：`npm run check:i18n` 通过（335/335、未使用 0）；真实浏览器（Qoder Browser Connector）实测深/浅两主题——选中态随点击迁移、整界面即时切换语言、控制台无新增错误（仅剩浏览器环境固有的 Electron API 缺失告警）。
+- **提交**：`02d006b` `feat: redesign language settings tab with card-style selectors`。
+- **注意**：工作树里仍留有上一会话未提交的 B-2026-010/011 Python 修复与 doc 更新（Electron 实机复验仍未跑），本次未动、未提交；本条目也随其留在工作树，待一起处理。
+
 ### 14:35–14:55 — 下载链路修复：实机验证闭环 + journal 结构修复（B-2026-010/011 关闭）
 
 - Malloy 实机复测确认：英文 opus-mt-ja-en 选官方源**完整下载成功**、416 不再复现，B-2026-010/011 两条关闭。
 - 修 journal 结构：我上一轮插入 22:15/23:15 条目时，把「### 截至 18:56 仍未了结」从其所属的 17:50–18:56 段落中截断、错排到了 09-20 段尾。已移回原位（"环境坑一枚"之后、22:15 条目之前）。
 - 提交范围：仅 B-2026-010/011 的 Python 修复（`services/modules/translator/*`、`session.py`）与对应文档条目。Malloy 的嵌字改动（B-2026-012：`BubbleLayer.vue`、`useTranslatedImageExport.ts`、`textLayout.ts`）与其 journal/bug 条目**保持未提交**。
+- **commit**：`1eb462f` `fix: honor download source in translation model downloads`。
 
 ## 2026-09-20（AI 结对：Qoder 主写，Malloy 审阅）
 
