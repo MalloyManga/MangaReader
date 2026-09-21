@@ -134,6 +134,7 @@
     "translation": "Translation",
     "detection": "Detection",
     "language": "Language Settings",
+    "languageDesc": "Choose the language used across the entire interface.",
     "languageZh": "中文",
     "languageEn": "English",
     "languageHint": "The interface language applies to all UI text and takes effect immediately."

@@ -134,6 +134,7 @@
     "translation": "翻译",
     "detection": "检测",
     "language": "语言设置",
+    "languageDesc": "选择整个应用界面使用的语言。",
     "languageZh": "中文",
     "languageEn": "English",
     "languageHint": "界面语言会影响所有 UI 文本的显示。更改将立即生效。"
