@@ -2,7 +2,11 @@
   <img src="public/MangaReader_Header.png" alt="MangaReader Banner" width="100%">
 </div>
 
-# 📚 MangaReader - 日漫生肉阅读助手
+# 📚 MangaReader - 日漫生肉阅读助手 / Read raw Japanese manga, offline
+
+<p align="center">
+🇨🇳 <a href="README.md">简体中文</a> · 🇬🇧 <a href="README.en.md">English</a>
+</p>
 
 <p align="center">
 专为日语学习者打造的本地化 OCR 工具，助你轻松啃下日文生肉漫画。
