@@ -39,7 +39,7 @@ watch(currentImageIndex, (newIndex) => {
 })
 
 const goBackToLibrary = async () => {
-    // 新建图书（没有图书 ID）
+    // 新建图书 (没有图书 ID) 
     if (isGuestMode.value) {
         // 情况 A: 有源文件路径 -> 自动加入书架
         if (tempBookPath.value) {
@@ -64,7 +64,7 @@ const goBackToLibrary = async () => {
             showToast(t('readerWorkflow.temporarySessionEnded'), 1500)
         }
 
-        // 无论哪种情况，退出时都清空内存
+        // 无论哪种情况 退出时都清空内存
         clearImages()
     }
     // 书架模式 (有 ID)
@@ -94,7 +94,7 @@ const handleOcr = () => {
 const ocrBlocks = ref<OcrBlock[]>([]) // 当前页面的翻译框
 const activeBlockId = ref<string | undefined>(undefined)
 
-// 如果有选中 Block，则读写 Block；否则读写静态文本
+// 如果有选中 Block 则读写 Block ; 否则读写静态文本
 const originalText = computed({
     get: () => {
         const block = ocrBlocks.value.find(b => b.id === activeBlockId.value)
@@ -173,7 +173,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         const rw = rect.width / naturalWidth
         const rh = rect.height / naturalHeight
 
-        // 真实缩放比例 (取较小值，因为是 contain)
+        // 真实缩放比例 (取较小值 因为是 contain)
         const ratio = Math.min(rw, rh)
 
         // 图片实际渲染的宽高
@@ -184,13 +184,13 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
         const gapX = (rect.width - realW) / 2
         const gapY = (rect.height - realH) / 2
 
-        // 3. 将屏幕上的 框选 坐标，逆向推导回高清原图中的真实坐标
+        // 3. 将屏幕上的 框选 坐标 逆向推导回高清原图中的真实坐标
         // - selectionData.left/top: 鼠标在屏幕上画框的绝对坐标 (包含浏览器边距)
         // - rect.left/top: 图片容器在屏幕上的起始坐标
-        // 两者相减，得出：鼠标框选相对于图片容器左上角的偏移量。
-        // - gapX/gapY: Object-contain 居中产生的黑边留白。
-        // 再减去留白，得出：鼠标框选相对于“真实图片内容区域”的偏移量。
-        // 最后除以 ratio (缩放比例)，将屏幕上的小尺寸，放大还原为原图里的大尺寸。
+        // 两者相减 得出: 鼠标框选相对于图片容器左上角的偏移量 
+        // - gapX/gapY: Object-contain 居中产生的黑边留白 
+        // 再减去留白 得出: 鼠标框选相对于"真实图片内容区域"的偏移量 
+        // 最后除以 ratio (缩放比例) 将屏幕上的小尺寸 放大还原为原图里的大尺寸 
         let sourceX = (selectionData.left - rect.left - gapX) / ratio
         let sourceY = (selectionData.top - rect.top - gapY) / ratio
         // 将框选的 屏幕宽高 映射到原图片物理级别的宽高
@@ -216,7 +216,7 @@ const handleOcrCapture = async (selectionData: { left: number, top: number, widt
             sourceH = naturalHeight - sourceY
         }
 
-        // 如果选区完全在图片外，报错或返回
+        // 如果选区完全在图片外 报错或返回
         if (sourceW <= 0 || sourceH <= 0) {
             throw new Error(t('autoTranslateWorkflow.invalidSelection'))
         }
@@ -342,9 +342,9 @@ const handleDeleteBlock = (id: string) => {
 const handleUpdateBlock = (updatedBlock: OcrBlock) => {
     const idx = ocrBlocks.value.findIndex(b => b.id === updatedBlock.id)
     if (idx !== -1) {
-        // 如果原文改变了，重新翻译
+        // 如果原文改变了 重新翻译
         if (ocrBlocks.value[idx]!.original !== updatedBlock.original && settings.value.enableTranslation) {
-            // 防止双向绑定循环触发，简单判断一下
+            // 防止双向绑定循环触发 简单判断一下
             if (updatedBlock.original) translateBlock(updatedBlock.id, updatedBlock.original)
         }
         ocrBlocks.value[idx] = updatedBlock
@@ -411,7 +411,7 @@ const handlePaste = (event: ClipboardEvent) => {
     // 检查是否有输入框聚焦 如果说焦点在ipt上面则不进行操作
     const activeElement = document.activeElement as HTMLElement
     if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
-        return // 如果用户在输入文字，则不拦截，让浏览器默认处理
+        return // 如果用户在输入文字 则不拦截 让浏览器默认处理
     }
 
     // 检查剪贴板数据
@@ -509,7 +509,7 @@ onMounted(async () => {
         console.log('Vue 收到快捷键信号:', action)
 
         if (action === 'ocr') {
-            // 只有当前不在 OCR 模式，且不在识别中才启动
+            // 只有当前不在 OCR 模式 且不在识别中才启动
             if (!isOcrMode.value && !isOcrRecognizing.value) {
                 handleOcr()
             }

@@ -45,7 +45,7 @@ export const useSettings = () => {
     }
 
     if (import.meta.client) {
-        // 监听 settings 变化，自动同步到 Electron Store
+        // 监听 settings 变化 自动同步到 Electron Store
         watch(settings, (newVal) => {
             try {
                 applyTheme()
@@ -88,7 +88,7 @@ export const useSettings = () => {
         console.log('设置已通过 Watch 自动保存')
     }
 
-    // 初始化：从 Electron 读取配置
+    // 初始化: 从 Electron 读取配置
     const initSettings = async () => {
         if (import.meta.client) {
             if (!window.electronAPI) {
@@ -99,7 +99,7 @@ export const useSettings = () => {
             try {
                 const storedSettings = await window.electronAPI.getSettings()
                 isLanguageConfigured.value = Object.prototype.hasOwnProperty.call(storedSettings, 'targetLanguage')
-                // 合并配置：用 store 里的覆盖默认值
+                // 合并配置: 用 store 里的覆盖默认值
                 Object.assign(settings.value, storedSettings)
                 // 初始化完成后立即应用一次主题 storedSettings 会立刻覆盖 settings 完成存储设置的应用
                 applyTheme()

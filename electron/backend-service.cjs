@@ -118,7 +118,7 @@ class BackendService extends EventEmitter {
             const msg = data.toString().trim() // toString() 将buffer编码之后转换
             // 这里考虑到简洁性不做粘包半包处理 同时trim()处理掉py的print打印之后自带的/n避免与console的重复
             console.log('[OCR Core]', msg)
-            // 发送日志事件，以便 main.js 可以转发给前端
+            // 发送日志事件 以便 main.js 可以转发给前端
             this.emit('log', msg)
         })
 
@@ -259,7 +259,7 @@ class BackendService extends EventEmitter {
             console.log(`[Backend Service] [DEBUG] Sending request ID: ${id}, Command: ${payload.command}`)
 
             try {
-                // 用 Base64 传输，避免 Windows 管道编码问题
+                // 用 Base64 传输 避免 Windows 管道编码问题
                 const jsonStr = JSON.stringify(request)
                 const base64Str = Buffer.from(jsonStr, 'utf-8').toString('base64') // 这里是对request序列化之后得到的json字符串先utf8编码为二进制的字节 之后再base64编码 py端收到之后再进行反向操作
 
@@ -320,7 +320,7 @@ class BackendService extends EventEmitter {
      */
     async translate(text, modelId) {
         console.log(`[Backend Service] [DEBUG] translate() called with text length: ${text.length}`)
-        // 超时时间较长，第一次要下载模型 (比如 10分钟 = 600000ms)
+        // 超时时间较长 第一次要下载模型 (比如 10分钟 = 600000ms)
         return this._sendRequest({ command: 'translate', text: text, model_id: modelId }, 600000)
     }
 
@@ -333,7 +333,7 @@ class BackendService extends EventEmitter {
     }
 
     async downloadModel(modelId) {
-        // 下载 1.2GB 可能很慢，给 30 分钟超时
+        // 下载 1.2GB 可能很慢 给 30 分钟超时
         return this._sendRequest({ command: 'download_model', model_id: modelId }, 21600000)
     }
 

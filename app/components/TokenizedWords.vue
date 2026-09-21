@@ -61,14 +61,14 @@ const tokenizeText = async (text: string) => {
     }
 }
 
-// 监听 originText 变化，使用防抖策略
+// 监听 originText 变化 使用防抖策略
 watch(() => originText, (newText) => {
     // 清除之前的定时器
     if (debounceTimer) {
         clearTimeout(debounceTimer)
     }
 
-    // 如果文本为空，立即清空分词结果
+    // 如果文本为空 立即清空分词结果
     if (!newText.trim()) {
         tokens.value = []
         errorMessage.value = ''

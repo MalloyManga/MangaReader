@@ -46,7 +46,7 @@ const getBlockStyle = (block: OcrBlock) => {
     // block.rect.x 是这块文字在原图里的坐标
     const area = w * h
 
-    // 拉丁文字横排时字形窄于全角 CJK，同样的面积能容纳更多字符
+    // 拉丁文字横排时字形窄于全角 CJK 同样的面积能容纳更多字符
     const fitRatio = isLatinBlock(block) ? 0.72 : 0.60
     let fontSize = Math.sqrt((area * fitRatio) / len)
 
@@ -84,7 +84,7 @@ const emit = defineEmits<{
     reOcr: [id: string]
 }>()
 
-// 译文常长于气泡：按真实溢出循环缩字号，横排/竖排通用
+// 译文常长于气泡: 按真实溢出循环缩字号 横排/竖排通用
 const fitElement = (el: HTMLElement) => {
     el.style.fontSize = ''
     let size = parseFloat(getComputedStyle(el).fontSize) || 12
@@ -112,7 +112,7 @@ const vFitText: Directive = {
                         : 'bg-white shadow-sm border border-gray-200 z-20'
                 ]" :style="getBlockStyle(block)" @click.stop="handleSingleClick(block)"
                 @dblclick.stop="handleDoubleClick(block)" @contextmenu.prevent.stop="handleRightClick(block)">
-                <!-- 译文排版：拉丁文字横排按词换行，CJK 保持竖排 -->
+                <!-- 译文排版: 拉丁文字横排按词换行 CJK 保持竖排 -->
                 <div v-if="!block.showOriginal" v-fit-text
                     class="flex-1 w-full h-full p-[2%] text-left"
                     :class="isLatinBlock(block)

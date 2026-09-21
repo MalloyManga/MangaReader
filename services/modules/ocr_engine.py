@@ -15,7 +15,7 @@ class OCRDownloadError(RuntimeError):
 class OCREngine:
     def __init__(self, model_dir=None, download_source="mirror"):
         self.mocr = None
-        # 如果没有传入路径，抛出错误，因为我们现在的策略是必须指定路径
+        # 如果没有传入路径 抛出错误 因为我们现在的策略是必须指定路径
         if not model_dir:
             raise ValueError("Model directory is required for cleaner deployment.")
 
@@ -24,8 +24,8 @@ class OCREngine:
             "official" if download_source == "official" else "mirror"
         )
 
-        # 强制使用 CPU，避免 CUDA 初始化带来的不确定性 (除非用户明确有 CUDA 环境)
-        # 对于 MangaOCR 这种轻量级模型，CPU 足够快且更稳定
+        # 强制使用 CPU 避免 CUDA 初始化带来的不确定性 (除非用户明确有 CUDA 环境)
+        # 对于 MangaOCR 这种轻量级模型 CPU 足够快且更稳定
         # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
         self._load_model()
@@ -53,7 +53,7 @@ class OCREngine:
                 return False
 
         # 2. 检查词表文件 (兼容 vocab.txt 和 sentencepiece.bpe.model)
-        # 修正：如果存在 tokenizer.json，则不需要 vocab.txt 或 sentencepiece.bpe.model
+        # 修正: 如果存在 tokenizer.json 则不需要 vocab.txt 或 sentencepiece.bpe.model
         # 因为我们将强制使用 use_fast=True
         has_tokenizer_json = os.path.exists(
             os.path.join(self.model_dir, "tokenizer.json")
@@ -69,7 +69,7 @@ class OCREngine:
             )
             return False
 
-        # 3. 检查大权重文件 (safetensors 是新标准，bin 是旧标准，兼容一下)
+        # 3. 检查大权重文件 (safetensors 是新标准 bin 是旧标准 兼容一下)
         has_safetensors = os.path.exists(
             os.path.join(self.model_dir, "model.safetensors")
         )
@@ -89,7 +89,7 @@ class OCREngine:
         if self._check_integrity():
             log_message(f"[INFO] Found valid model at: {self.model_dir}")
         else:
-            # 2. 本地不完整，执行定向下载
+            # 2. 本地不完整 执行定向下载
             log_message(
                 f"[INFO] Model missing or incomplete. Downloading to {self.model_dir}..."
             )
@@ -141,7 +141,7 @@ class OCREngine:
                 msg_key="message",
                 default_msg="正在加载 OCR 引擎...",
             ):
-                # 强制指定 local_files_only=True，因为我们刚才已经确认下载了
+                # 强制指定 local_files_only=True 因为我们刚才已经确认下载了
                 self.mocr = MangaOcr(pretrained_model_name_or_path=abs_model_path)
             log_message("MangaOCR Initialized Successfully.")
         except Exception as e:

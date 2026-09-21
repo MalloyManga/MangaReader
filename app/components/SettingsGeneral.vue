@@ -135,7 +135,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 const stopRecording = () => {
     isRecording.value = false
     recordingTarget.value = null
-    // 移除 ref 操作，依赖原生 focus/blur 行为即可
+    // 移除 ref 操作 依赖原生 focus/blur 行为即可
 }
 
 const handleDownloadDictionary = async () => {

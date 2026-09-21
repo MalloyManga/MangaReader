@@ -46,10 +46,10 @@ const fetchTranslation = async (text: string) => {
                 translatedText.value = null
                 errorType.value = 'MODEL_MISSING' // 标记为模型丢失
             } else {
-                // 2. 普通错误 (网络、超时等)
+                // 2. 普通错误 (网络 超时等)
                 console.error('翻译失败:', errMsg)
 
-                // 如果是首次加载，抑制 Toast；否则正常弹出
+                // 如果是首次加载 抑制 Toast ; 否则正常弹出
                 if (isFirstLoad.value) {
                     console.log('首次加载失败，已抑制 Toast 提示')
                 } else {
@@ -70,7 +70,7 @@ const fetchTranslation = async (text: string) => {
 
 // 监听原文变化 (自动翻译 + 防抖)
 watch([() => originalText, () => settings.value.translationModelId], ([newText]) => {
-    // 1. 如果文本被清空，清空翻译
+    // 1. 如果文本被清空 清空翻译
     if (!newText.trim()) {
         translatedText.value = null
         errorType.value = null
@@ -79,7 +79,7 @@ watch([() => originalText, () => settings.value.translationModelId], ([newText])
         return
     }
 
-    // 2. 只要文本变了，立即显示“翻译中”状态
+    // 2. 只要文本变了 立即显示"翻译中"状态
     isTranslationLoading.value = true
     errorType.value = null
     // 3. 清除上一次的定时器 (防抖核心)
@@ -94,11 +94,11 @@ watch([() => originalText, () => settings.value.translationModelId], ([newText])
 
 }, { immediate: true })
 
-// 手动重新翻译 (不走防抖，立即触发)
+// 手动重新翻译 (不走防抖 立即触发)
 const handleRetranslate = () => {
     if (!originalText) return
     translatedText.value = null
-    // 立即清除可能存在的防抖定时器，避免冲突
+    // 立即清除可能存在的防抖定时器 避免冲突
     if (debounceTimer) clearTimeout(debounceTimer)
     // 用户手动点击肯定不是首次加载
     isFirstLoad.value = false
@@ -173,7 +173,7 @@ onUnmounted(() => {
                 {{ showTranslation ? t('readerWorkflow.hide') : t('readerWorkflow.show') }}{{ t('readerWorkflow.translation') }}
             </Button>
 
-            <!-- 重新翻译按钮：始终显示 -->
+            <!-- 重新翻译按钮: 始终显示 -->
             <!-- 只有当有原文时才允许点击 -->
             <Button v-if="showTranslation" variant="secondary" size="sm"
                 :disabled="isTranslationLoading || !originalText" @btn-click="handleRetranslate">

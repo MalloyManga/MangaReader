@@ -5,7 +5,7 @@ import type { I18n } from 'vue-i18n'
 
 export type AppLocale = 'zh' | 'en'
 
-// 只做 zh/en 二分：非中文系统语言一律给英文，避免首启强制中文
+// 只做 zh/en 二分: 非中文系统语言一律给英文 避免首启强制中文
 export const resolveInitialLocale = (navLanguage?: string): AppLocale =>
   navLanguage?.toLowerCase().startsWith('zh') ? 'zh' : 'en'
 

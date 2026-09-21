@@ -6,7 +6,7 @@ module.exports = {
     icon: './public/MangaReaderLogo',
     asar: true,
     // 1. 将打包好的 Python 后端作为额外资源复制到 resources 目录
-    // 注意：PyInstaller 生成的是 backend 文件夹 (onedir 模式)，所以这里必须复制整个文件夹
+    // 注意: PyInstaller 生成的是 backend 文件夹 (onedir 模式) 所以这里必须复制整个文件夹
     extraResource: [
       './dist/backend',
     ],
@@ -19,7 +19,7 @@ module.exports = {
       /^\/forge\.config\.js$/,
       /^\/tsconfig\.json$/,
       /^\/nuxt\.config\.ts$/,
-      // 优化忽略规则：兼容 Windows 反斜杠，确保 models 文件夹被正确忽略
+      // 优化忽略规则: 兼容 Windows 反斜杠 确保 models 文件夹被正确忽略
       /[\\/]models[\\/]/,
       /[\\/]models$/,
       /[\\/]dist[\\/]/,

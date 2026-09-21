@@ -8,7 +8,7 @@ const { toasts } = useToast()
         <!-- 始终挂载body上方同时不触发任何鼠标事件 -->
         <div class="fixed top-4 left-0 right-0 z-9999 pointer-events-none flex justify-center">
             <TransitionGroup name="list" tag="div" class="relative flex flex-col items-center w-full">
-                <!-- 注意：这里我们给 ToolTip 加了一个 wrapper 或者直接加样式 -->
+                <!-- 注意: 这里我们给 ToolTip 加了一个 wrapper 或者直接加样式 -->
                 <div v-for="toast in toasts" :key="toast.id" class="transition-all duration-500 ease-in-out mb-3">
                     <ToolTip :text="toast.text" />
                 </div>

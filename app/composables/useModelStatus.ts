@@ -60,7 +60,7 @@ const fallbackModels: TranslationModelState[] = [
 ]
 
 const modelStates = reactive<TranslationModelState[]>([...fallbackModels])
-// 记录目录当前对应哪种目标语言，语言变化时必须重新拉取
+// 记录目录当前对应哪种目标语言 语言变化时必须重新拉取
 let modelsLoadedLang: string | null = null
 let modelsLoadPromise: Promise<TranslationModelState[]> | null = null
 const modelCheckPromises = new Map<string, Promise<TranslationModelState | undefined>>()
@@ -125,13 +125,13 @@ export function useModelStatus() {
             if (!res.success) throw new Error(res.error || t('fileWorkflow.modelListLoadFailed'))
             if (models.length > 0) {
                 models.forEach(ensureModel)
-                // 目录只保留目标语言的模型，切换语言后另一种语言的模型不再出现
+                // 目录只保留目标语言的模型 切换语言后另一种语言的模型不再出现
                 const visible = new Set(models.map(model => model.id))
                 for (let index = modelStates.length - 1; index >= 0; index--) {
                     if (!visible.has(modelStates[index].id)) modelStates.splice(index, 1)
                 }
 
-                // 已选模型不属于新语言时，自动切到该语言的默认（体积最小）模型
+                // 已选模型不属于新语言时 自动切到该语言的默认 (体积最小) 模型
                 if (!models.some(model => model.id === settings.value.translationModelId)) {
                     settings.value.translationModelId = res.defaultModelId || pickDefaultModelId(lang)
                 }

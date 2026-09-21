@@ -150,7 +150,7 @@ class OpusEnglishEngine(BaseTranslator):
         except urllib.error.HTTPError as exc:
             if exc.code != 416 or resume_from == 0:
                 raise
-            # 416 = 断点已不小于远端真实大小，续传必败：丢弃 .tmp 整体重下
+            # 416 = 断点已不小于远端真实大小 续传必败: 丢弃 .tmp 整体重下
             log_message(f"[WARN] OPUS English got 416 for {filename}, discarding .tmp and re-downloading")
             os.remove(tmp_path)
             resume_from = 0

@@ -20,14 +20,14 @@ export default defineNuxtConfig({
     }
   },
 
-  // 关键点 4: 禁用 Payload 提取，这对 file:// 协议支持不好
+  // 关键点 4: 禁用 Payload 提取 这对 file:// 协议支持不好
   experimental: {
     payloadExtraction: false,
     appManifest: false
   },
-  // 移除 router 配置，统一在 app/router.options.ts 中管理
+  // 移除 router 配置 统一在 app/router.options.ts 中管理
   vite: {
-    base: './', // 强制 Vite 使用相对路径，解决 Electron 白屏问题
+    base: './', // 强制 Vite 使用相对路径 解决 Electron 白屏问题
     plugins: [
       tailwindcss()
     ],

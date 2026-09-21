@@ -94,7 +94,7 @@ const removeBook = async (e: Event, id: string) => {
 const handleLanguageSelect = async (language: 'zh' | 'en') => {
     settings.value.targetLanguage = language
     showLanguageModal.value = false
-    // 目录与已选模型要跟着目标语言走，否则仍是另一种语言的模型
+    // 目录与已选模型要跟着目标语言走 否则仍是另一种语言的模型
     await loadTranslationModels()
     showToast(t(language === 'zh' ? 'messages.languageChanged' : 'messages.languageChangedEn'), 2000)
 }

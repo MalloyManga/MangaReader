@@ -80,7 +80,7 @@ onMounted(() => {
     -webkit-app-region: no-drag;
 }
 
-/* 排除按钮内部元素的拖拽属性，防止点击不灵敏 */
+/* 排除按钮内部元素的拖拽属性 防止点击不灵敏 */
 .non-draggable * {
     -webkit-app-region: no-drag;
 }

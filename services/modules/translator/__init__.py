@@ -89,7 +89,7 @@ def list_translator_models_by_language(target_language):
 
 
 def get_default_translator_id_for_language(target_language):
-    """默认模型必须取自该语言可用的模型，否则会选中另一种语言的模型"""
+    """默认模型必须取自该语言可用的模型 否则会选中另一种语言的模型"""
     models = list_translator_models_by_language(target_language)
     return models[0]["id"] if models else DEFAULT_TRANSLATOR_ID
 

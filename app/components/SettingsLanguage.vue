@@ -7,7 +7,7 @@ const { settings } = useSettings()
 const { loadTranslationModels } = useModelStatus()
 const { showToast } = useToast()
 
-// 语言名一律用自称，两种界面语言下都显示「中文 / English」
+// 语言名一律用自称 两种界面语言下都显示"中文 / English"
 const languages = [
   { code: 'zh', nameKey: 'settings.languageZh' },
   { code: 'en', nameKey: 'settings.languageEn' }

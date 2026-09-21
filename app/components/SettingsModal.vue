@@ -23,7 +23,7 @@ interface MenuItem {
 }
 const currentTab = ref<TabType>('general')
 
-// 侧边栏菜单配置（使用 computed 保证响应式）
+// 侧边栏菜单配置 (使用 computed 保证响应式) 
 const menuItems = computed(() => [
     { id: 'general', label: t('settings.general') },
     { id: 'translate', label: t('settings.translation') },

@@ -33,7 +33,7 @@ const detectionModuleState = reactive<DetectionModuleState>({
 export function useDetectionModuleStatus() {
     const { t } = useI18n()
 
-    // 静态元信息随当前语言刷新（设置面板每次打开会重新调用本 composable）
+    // 静态元信息随当前语言刷新 (设置面板每次打开会重新调用本 composable) 
     detectionModuleState.name = t('detectionManagement.moduleName')
     detectionModuleState.description = t('detectionManagement.moduleDescription')
     detectionModuleState.downloadSize = t('detectionManagement.moduleDownloadSize')

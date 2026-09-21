@@ -28,6 +28,12 @@
 - 提交范围：仅 B-2026-010/011 的 Python 修复（`services/modules/translator/*`、`session.py`）与对应文档条目。Malloy 的嵌字改动（B-2026-012：`BubbleLayer.vue`、`useTranslatedImageExport.ts`、`textLayout.ts`）与其 journal/bug 条目**保持未提交**。
 - **commit**：`1eb462f` `fix: honor download source in translation model downloads`。
 
+### 16:05–16:20 — 全仓中文注释去标点清理（Malloy 指令）
+
+- **规则**（Malloy 确认）：`，。、` → 空格；`：`→`: `、`；`→`; `、`（）`→` ( ) `、`“”` 与 `「」`→ `"`；范围=代码注释（`//`、`/* */`、`<!-- -->`、`#`）+ Python docstring，字符串与文档不动。
+- **做法**：临时脚本两件套——JS/TS/Vue 走字符串/注释状态机只重写注释区间；Python 用 `tokenize` 精确取 COMMENT 与语句首位置 STRING（docstring）token 原位替换。共改 **33 文件 / 107 处注释段**。
+- **验证**：复扫注释含中文标点 0 处；`python -m compileall services` 通过；改动的 8 个 ts/cjs 经 esbuild 解析通过、12 个 .vue 经 `@vue/compiler-sfc` 解析通过；`npm run check:i18n` 与改动前基线输出一致（exit 0）。验收示例 `SettingsLanguage.vue:10` 逐字符匹配目标格式。临时脚本已删除，未入库。
+
 ## 2026-09-20（AI 结对：Qoder 主写，Malloy 审阅）
 
 - **13:20 前后** — 对齐分支上下文：确认 `feat/japanese-to-english-adaptation` 上 26 个未提交文件为 i18n 扫尾批次；盘点出约 20 个组件/composables 仍残留硬编码文案。

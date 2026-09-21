@@ -18,7 +18,7 @@ const selectLanguage = (language: 'zh' | 'en') => {
     emit('select', language)
 }
 
-// 关闭不算做出选择：不写入 targetLanguage，下次启动仍会弹出
+// 关闭不算做出选择: 不写入 targetLanguage 下次启动仍会弹出
 const close = () => emit('dismiss')
 </script>
 

@@ -4,7 +4,7 @@ from .utils import log_message
 
 
 class JapaneseTokenizer:
-    # 静态配置：词性映射
+    # 静态配置: 词性映射
     POS_MAPPING = {
         "名詞": "noun",
         "代名詞": "noun",
@@ -35,8 +35,8 @@ class JapaneseTokenizer:
 
     def _katakana_to_hiragana(self, text):
         """
-        辅助函数：将片假名转换为平假名
-        利用 Unicode 偏移量：片假名 = 平假名 + 0x60
+        辅助函数: 将片假名转换为平假名
+        利用 Unicode 偏移量: 片假名 = 平假名 + 0x60
         """
         result = []
         for char in text:
@@ -52,10 +52,10 @@ class JapaneseTokenizer:
         if not self.tokenizer:
             raise Exception(f"Tokenizer not ready")
 
-        # 调试日志：打印输入文本的 repr，查看是否有乱码
+        # 调试日志: 打印输入文本的 repr 查看是否有乱码
         log_message(f"Tokenizing text: {repr(text)}")
 
-        # 预处理：移除可能导致问题的特殊字符 (如 surrogates)
+        # 预处理: 移除可能导致问题的特殊字符 (如 surrogates)
         # 仅保留基本多文种平面 (BMP) 和常见的扩展平面字符
         # 或者简单地忽略无法编码的字符
         try:
@@ -67,17 +67,17 @@ class JapaneseTokenizer:
         tokens = []
 
         for t in results:
-            surface = t.surface()  # 原词，例如 "食べる" 或 "ながら"
+            surface = t.surface()  # 原词 例如 "食べる" 或 "ながら"
 
-            # 1. 获取读音 (Sudachi 默认返回片假名，如 "タベル" 或 "ナガラ")
+            # 1. 获取读音 (Sudachi 默认返回片假名 如 "タベル" 或 "ナガラ")
             reading_katakana = t.reading_form()
 
             # 2. 转换为平假名 (如 "たべる" 或 "ながら")
             reading_hiragana = self._katakana_to_hiragana(reading_katakana)
 
             # 3. 智能判断是否需要返回读音
-            # 如果原词和平假名读音一样（例如 "ながら" == "ながら"），就设为 None
-            # 或者原词就是片假名且读音也是片假名（例如 "ラーメン"），也设为 None
+            # 如果原词和平假名读音一样 (例如 "ながら" == "ながら")  就设为 None
+            # 或者原词就是片假名且读音也是片假名 (例如 "ラーメン")  也设为 None
             final_reading = None
             if surface != reading_hiragana and surface != reading_katakana:
                 final_reading = reading_hiragana
@@ -89,7 +89,7 @@ class JapaneseTokenizer:
             tokens.append(
                 {
                     "word": surface,
-                    "reading": final_reading,  # 新增字段：如果有值则显示，无值则不显示
+                    "reading": final_reading,  # 新增字段: 如果有值则显示 无值则不显示
                     "type": frontend_type,
                 }
             )

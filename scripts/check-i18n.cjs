@@ -5,7 +5,7 @@ const GROUPS = ['common', 'library', 'reader', 'readerWorkflow', 'bubbleList', '
   'settings', 'general', 'translationManagement', 'detectionManagement', 'autoTranslate',
   'autoTranslateWorkflow', 'messages', 'about'].join('|')
 
-// 任何引号内的点号路径都算“被引用”，覆盖 t('a.b') / 三元 / 变量 key / nameKey: 'a.b'
+// 任何引号内的点号路径都算"被引用" 覆盖 t('a.b') / 三元 / 变量 key / nameKey: 'a.b'
 const keyRe = new RegExp("['`\"](?:(" + GROUPS + ")(?:\\.[A-Za-z0-9_]+)+)['`\"]", 'g')
 
 const files = cp.execSync('git ls-files app').toString().trim().split('\n')
@@ -16,7 +16,7 @@ const dynamicSpots = []
 for (const f of files) {
   const s = fs.readFileSync(f, 'utf8')
   for (const m of s.matchAll(keyRe)) {
-    // 跳过 HTML 属性值（="settings.enableTokenization" 这类是对象属性访问，不是 i18n key）
+    // 跳过 HTML 属性值 (="settings.enableTokenization" 这类是对象属性访问 不是 i18n key) 
     if (s[m.index - 1] === '=') continue
     used.add(m[0].slice(1, -1))
   }
