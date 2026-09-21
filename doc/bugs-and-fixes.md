@@ -99,3 +99,26 @@
 - **根因**：Vite 模块图/依赖缓存脏了（新增被插件引用的模块后 dev server 未重建映射），请求落到 SPA HTML 兜底路由。
 - **解决方式**：杀掉 dev server，删除 `node_modules/.vite` 与 `.nuxt/cache` 后重启 → 首页 200、控制台仅剩 `Electron API not available` 一类预期告警。代码未作改动。
 - **教训**：改动 Nuxt 插件或其新依赖后若出现模块 MIME/503，先清缓存重启，再怀疑代码。
+
+## B-2026-010 下载源设置对翻译模型无效：选"官方"仍先走镜像
+
+- **发现时间**：2026-09-20 22:15（Malloy 报告：明确选了官方源，日志仍出现 `OPUS file download failed from https://hf-mirror.com (attempt 1/5): <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING]>`，中文/英文 target 均如此）
+- **现象**：Settings > 下载源 选"官方"后，翻译模型（opus-mt-ja-zh / opus-mt-ja-en / qwen3 GGUF）下载日志仍然先打镜像源、镜像 5 次重试失败后才回退官方。
+- **根因**：链路 `store.downloadSource → backend.restart(source) → --download-source → Session.download_source` 前半段完好（electron 侧还会同步设 `HF_ENDPOINT`），但 `Session.get_or_create_translator()` 调 `get_translator_engine()` 时**没把 `download_source` 传下去**，三个引擎的构造函数根本没有该参数，`download_bases` 硬编码 `[镜像, 官方]`。引擎用 `urllib` 直连拼 URL，`HF_ENDPOINT` 对它们无效。OCR（`OCREngine`）与文字检测（`DetectionModuleManager.install`）都按"所选源优先、另一源兜底"实现，唯独翻译引擎漏了。
+- **解决方式**：`translator/base.py` 新增 `ordered_download_bases(download_source)`（所选源排第一，另一源保留为 fallback，与 OCR 约定一致）；opus ja-zh / opus ja-en / qwen3 三个引擎构造函数接收 `download_source="mirror"`；`get_translator_engine()` 与 `Session.get_or_create_translator()` 逐层透传。sakura 引擎走 `hf_hub_download`，本就吃进程 env 的 `HF_ENDPOINT`，无需改；translate worker 只翻译不下载，维持默认值。
+- **验证**：venv 直调工厂 → `official` 时三引擎均为 `[huggingface.co, hf-mirror.com]`，`mirror`/不传时镜像在前；直调 `Session("models","modules","official").get_or_create_translator("opus-mt-ja-en")` 确认接线；两源小文件 HEAD 均 200（日志里的 SSL EOF 属 hf-mirror 瞬时网络问题，非代码缺陷）。**Electron 实机下载链路未跑**，需 `npm start` 复验。
+- **教训**：新增跨层设置时，要核对到**最终执行处**是否消费了该参数；"env 变量已设"不等于手写 HTTP 客户端会读它。同一职责（多源下载）在多处实现时，务必抽公共约定，否则新增实现会漏。
+- **后续**：本修复对中文 target 已验证生效（选官方后日志首条即打 `huggingface.co`）。英文 target 表面"仍走镜像"，实为另一处缺陷，见 B-2026-011。**2026-09-21 补**：Malloy 实机复验中英文均按所选源优先下载，条目关闭。
+
+## B-2026-011 英文 OPUS 模型永远下载失败：期望文件大小错误 + 416 续传死循环
+
+- **发现时间**：2026-09-20 23:20（Malloy 反馈：B-2026-010 修好后中文正常，英文仍失败，日志 `OPUS English file download failed from https://huggingface.co (attempt 1/5): HTTP Error 416: Range Not Satisfiable`）
+- **先纠正一个误判**：Malloy 推测"下载没真正用上新选的源"——**错了**。日志首条已是 `failed from https://huggingface.co`，证明 B-2026-010 的源顺序修复对英文同样生效。中英确实同一条链路，`download_bases` 排序一致；差别不在选源，而在英文引擎各自的 `required_files` 数值。
+- **根因（两层）**：
+  1. **期望大小 > 远端真实大小**：`OpusEnglishEngine.required_files` 多个值是错的（对照 HF API 实测）——`config.json` 记 1411 实际 **1381**、`pytorch_model.bin` 记 317638400 实际 **303294189**、`source.spm` 800768→**781853**、`target.spm` 821248→**801883**、`vocab.json` 1572864→**1501341**；且仓库根本没有 `special_tokens_map.json`（英文不需要，Marian tokenizer 用不到）。以 `config.json` 为例：文件其实已完整下完（1381B），但 `download_model` 判 `downloaded(1381) < expected(1411)` → 抛 incomplete → 外层 `for attempt` 用同一断点重发 `Range: bytes=1381-`。
+  2. **416 无自愈**：远端总量只有 1381B，`Range: bytes=1381-` 越界 → 服务器返回 **416 Range Not Satisfiable**。旧代码不处理 416，5 次重试 + 换源后 5 次全部带同一非法 Range，永远救不回来，最终 `MODEL_DOWNLOAD_FAILED`。中文恰好所有 expected ≤ 实际，所以不触发。
+- **解决方式**：
+  1. 用 HF API 实测值修正 `opus_english_engine.py` 的 `required_files`，删除英文仓库不存在的 `special_tokens_map.json`；同步修正 `opus_engine.py`（中文）里偏离实测的 `source.spm`/`target.spm`/`vocab.json`/`special_tokens_map.json`。qwen3 的 GGUF 实测 2497280736 与代码一致，未改。
+  2. 三个引擎的 `_download_file` 加 **416 自愈**：`except urllib.error.HTTPError` 命中 416 且 `resume_from>0` 时，删除 `.tmp`、清 `Range` 头、整体重下（而非带非法断点空转）。
+- **验证**：venv 直调 `OpusEnglishEngine._download_file`——case1 用现场那个 1381B 的 `config.json.tmp` + expected=1381，直接转正返回、不重复下载；case2 构造 1500B 越界 tmp + expected=2000，触发 `[WARN] OPUS English got 416 ... discarding .tmp` 自愈分支、tmp 被清除重下；case3 干净全量下载 config.json 得 1381B。`py_compile` 三文件通过。磁盘上 `models/translation/opus-mt-ja-en/config.json.tmp`(1381B) 未手删——新逻辑下点击下载会自动被转正。**Electron 实机完整下载（约 300MB）仍未跑**。→ **2026-09-21 闭环**：Malloy 实机复测，选官方源完整下载 opus-mt-ja-en 成功、日志无 416，条目关闭。
+- **教训**：硬编码的"期望文件大小"必须对齐远端真实值，否则"下完了却永远判 incomplete"，且续传逻辑会把这个矛盾放大成 416 死循环。校验语义要分清"最小值"与"精确值"：`check_model_exists` 用 `>=`（最小值语义）能容忍，但 `download_model` 的完成判定用 `< expected`（近似精确值语义）就不容忍偏大——两处对同一 dict 的隐含假设不一致是本次英文独有的诱因。给手写 HTTP 客户端加 Range 续传时，必须处理 416。

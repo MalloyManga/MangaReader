@@ -4,16 +4,17 @@ import shutil
 import subprocess
 import sys
 import threading
+import urllib.error
 import urllib.parse
 import urllib.request
 
-from .base import BaseTranslator
+from .base import BaseTranslator, ordered_download_bases
 from .llama_gguf import LlamaCppRuntime, get_llama_class
 from ..utils import log_message, send_response
 
 
 class Qwen3GgufEngine(BaseTranslator):
-    def __init__(self, model_root_dir):
+    def __init__(self, model_root_dir, download_source="mirror"):
         path = os.path.join(model_root_dir, "qwen3-4b-instruct-2507-q4-k-m")
         super().__init__(path)
 
@@ -27,10 +28,7 @@ class Qwen3GgufEngine(BaseTranslator):
             model_id="qwen3-4b-instruct-2507-q4-k-m",
             log_prefix="Qwen3",
         )
-        self.download_bases = [
-            "https://hf-mirror.com",
-            "https://huggingface.co",
-        ]
+        self.download_bases = ordered_download_bases(download_source)
 
         self.llm = None
         self.use_external_runtime = False
@@ -121,13 +119,25 @@ class Qwen3GgufEngine(BaseTranslator):
         }
         if resume_from > 0:
             headers["Range"] = f"bytes={resume_from}-"
-        request = urllib.request.Request(
-            url,
-            headers=headers,
-        )
         last_percent_step = -1
 
-        with urllib.request.urlopen(request, timeout=120) as response:
+        try:
+            response = urllib.request.urlopen(
+                urllib.request.Request(url, headers=dict(headers)), timeout=120
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code != 416 or resume_from == 0:
+                raise
+            # 416 = 断点已不小于远端真实大小，续传必败：丢弃 .tmp 整体重下
+            log_message("[WARN] Qwen3 got 416, discarding .tmp and re-downloading")
+            os.remove(tmp_path)
+            resume_from = 0
+            headers.pop("Range", None)
+            response = urllib.request.urlopen(
+                urllib.request.Request(url, headers=headers), timeout=120
+            )
+
+        with response:
             status = getattr(response, "status", None)
             if resume_from > 0 and status != 206:
                 resume_from = 0

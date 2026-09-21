@@ -39,7 +39,7 @@ class Session:
         normalized_id = normalize_translator_id(model_id)
         if normalized_id not in self.translators:
             self.translators[normalized_id] = get_translator_engine(
-                normalized_id, self.translation_root
+                normalized_id, self.translation_root, self.download_source
             )
         return normalized_id, self.translators[normalized_id]
 

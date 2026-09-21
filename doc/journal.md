@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-09-21（AI 结对：Qoder 主写）
+
+### 14:35–14:55 — 下载链路修复：实机验证闭环 + journal 结构修复（B-2026-010/011 关闭）
+
+- Malloy 实机复测确认：英文 opus-mt-ja-en 选官方源**完整下载成功**、416 不再复现，B-2026-010/011 两条关闭。
+- 修 journal 结构：我上一轮插入 22:15/23:15 条目时，把「### 截至 18:56 仍未了结」从其所属的 17:50–18:56 段落中截断、错排到了 09-20 段尾。已移回原位（"环境坑一枚"之后、22:15 条目之前）。
+- 提交范围：仅 B-2026-010/011 的 Python 修复（`services/modules/translator/*`、`session.py`）与对应文档条目。Malloy 的嵌字改动（B-2026-012：`BubbleLayer.vue`、`useTranslatedImageExport.ts`、`textLayout.ts`）与其 journal/bug 条目**保持未提交**。
+
 ## 2026-09-20（AI 结对：Qoder 主写，Malloy 审阅）
 
 - **13:20 前后** — 对齐分支上下文：确认 `feat/japanese-to-english-adaptation` 上 26 个未提交文件为 i18n 扫尾批次；盘点出约 20 个组件/composables 仍残留硬编码文案。
@@ -57,6 +65,30 @@ Malloy 的 5 点：①首进书架要弹语言选择、且要写进 settings jso
 3. `useFileProcessor.ts:5` 在模块顶层调用 `useToast()`，仅因 `useToast` 不依赖 inject 才安全（隐患）。
 4. `useModelStatus` 的 fallback 目录仍只有中文模型与中文文案，后端不可用且界面为英文时列表会空。
 5. `library.deleteBook` tooltip 与语言弹窗残留 DOM 属未亲眼所见/环境所致，需在 Electron 里确认一次。
+
+### 22:15–22:51 修复：下载源设置对翻译模型不生效（B-2026-010）
+
+Malloy 报告：已明确选"官方"下载源，日志仍先走 `hf-mirror.com`（5 次重试 SSL EOF 失败后才回退官方），中/英 target 均如此。
+
+- **排查**：链路上半段完好——Settings 保存 → `store.downloadSource` → `backend.restart(source)` → 子进程带 `--download-source` 与 `HF_ENDPOINT` → `Session.download_source`；OCR 与文字检测都消费了它。**断点在 Python 翻译引擎**：`Session.get_or_create_translator()` 没把 `download_source` 传给 `get_translator_engine()`，opus ja-zh / opus ja-en / qwen3 三引擎硬编码 `download_bases=[镜像, 官方]`，且用 `urllib` 直连，`HF_ENDPOINT` 对它们无效。
+- **修法**：`translator/base.py` 新增 `ordered_download_bases()`（所选源优先、另一源兜底，与 OCR 约定一致）；三个引擎构造函数接收 `download_source`；工厂与 Session 逐层透传。sakura 走 `hf_hub_download` 本就吃 `HF_ENDPOINT`，未改。
+- **验证**：venv 直调工厂与 `Session`，`official` → 三引擎均 `[huggingface.co, hf-mirror.com]`；`mirror`/缺省 → 镜像在前。两源小文件请求当前均 200（日志里的 SSL EOF 属 hf-mirror 瞬时网络问题）。改动文件 `py_compile` 通过。**Electron 实机下载未复验**（见下）。
+
+### 截至 22:51 仍未了结
+1. 本轮修复需在 Electron 里实机复验一次：选"官方"后下载 opus-mt-ja-en，首条日志应打 `https://huggingface.co`。
+2. （沿袭 19:05 交接）`npm start` 验语言→模型链路 / vue-tsc（B-2026-003）/ `useModelStatus` fallback 目录 / `useFileProcessor.ts:5` 顶层 `useToast()`。
+
+### 23:15–23:34 二次修复：英文 OPUS 下载 416 死循环（B-2026-011）
+
+Malloy 复测：中文已好，英文仍失败，但日志首条已变为 `failed from https://huggingface.co (attempt 1/5): HTTP Error 416` ——B-2026-010 的源顺序修复对英文其实已生效，他"没真的用新源"的猜测不成立；真正卡点是两个新问题：
+
+- **期望大小错**：HF API 实测后修正 `opus_english_engine.py` 五个值（`config.json` 1411→1381、`pytorch_model.bin` 317638400→303294189 等），并删除英文仓库不存在的 `special_tokens_map.json`；中文引擎四个偏离值一并对齐（中文当时未触发只因 expected 恰好都 ≤ 实际）。qwen3 实测一致，未改。
+- **416 无自愈**：`download_model` 判 incomplete 后带非法 `Range` 重试 → 416 ×（5 次 × 2 源）死循环。三个引擎的 `_download_file` 现捕获 416：删 `.tmp`、去 Range 全量重下。
+- **验证**：直调 `_download_file` 三例通过——现场 1381B 残留 tmp 被自动转正；越界 tmp 触发 416 自愈；干净下载 1381B。`py_compile` 通过。磁盘上那个 `config.json.tmp` 未手删（新逻辑自行处理）。**Electron 实机 300MB 完整下载仍未跑**。
+
+### 截至 23:34 仍未了结
+1. ~~Electron 实机复验英文 opus-mt-ja-en 完整下载~~ — **已于 2026-09-21 下午由 Malloy 实机验证闭环**：选官方源完整下载成功，416 不再复现（B-2026-010/011 关闭）。
+2. （沿袭上文）语言→模型链路实机验证、vue-tsc、`useModelStatus` fallback 目录、`useFileProcessor.ts:5`。
 
 ---
 

@@ -94,7 +94,7 @@ def get_default_translator_id_for_language(target_language):
     return models[0]["id"] if models else DEFAULT_TRANSLATOR_ID
 
 
-def get_translator_engine(model_id, model_root_dir):
+def get_translator_engine(model_id, model_root_dir, download_source="mirror"):
     normalized = normalize_translator_id(model_id)
     if normalized == "sakura-1.5b":
         from .sakura_engine import SakuraEngine
@@ -103,15 +103,15 @@ def get_translator_engine(model_id, model_root_dir):
     if normalized == "opus-mt-ja-zh":
         from .opus_engine import OpusMtJaZhEngine
 
-        return OpusMtJaZhEngine(model_root_dir)
+        return OpusMtJaZhEngine(model_root_dir, download_source)
     if normalized == "opus-mt-ja-en":
         from .opus_english_engine import OpusEnglishEngine
 
-        return OpusEnglishEngine(model_root_dir)
+        return OpusEnglishEngine(model_root_dir, download_source)
     if normalized == "qwen3-4b-instruct-2507-q4-k-m":
         from .qwen3_engine import Qwen3GgufEngine
 
-        return Qwen3GgufEngine(model_root_dir)
+        return Qwen3GgufEngine(model_root_dir, download_source)
     raise ValueError(f"Unknown translator model: {model_id}")
 
 
