@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-09-23（AI 结对：Qoder 主写）
+
+### 00:29–02:15 — 插件化/共享运行时方向讨论，落地为剥离 unidic-lite（B-2026-013）
+
+- **起因**：Malloy 提出把"模型适配代码 + 模型本身"做成下载单位，让安装包变小。**结论：这个方向在体积上榨不出收益，已当场推翻并记录**——三条实测依据：① 权重本来就不在安装包里（`forge.config.cjs` 忽略 `models/`，`electron-builder.json` 的 `files`/`extraResources` 均不含 `models`），OCR 424M、翻译模型 293M 早已是按需下载；② 适配代码是 KB 级（检测器 `plugin.json` 4K），真正的大头是权重与 Python 运行时；③ 共享 runtime **不会减少下载、只是避免重复**——torch 302M 只要用户装任何一个需要它的模型就得付，体感只是从安装期挪到使用期。插件化对 Malloy 的真实价值在"**能自由加新语言**"，不在体积。
+- **顺带纠正两处误判**：`installed/ctd-detector/1.0.0/vendor/` 的 114M **不是第二份 torch**，而是 cv2 107M + torchvision 7.1M，且 torchvision 0.17.2 正是宿主 torch 2.2.2 的配套版本——检测器其实已经在共享宿主 torch，`manager.py + registry.py + installed/<id>/<version>` 这套形态是现成可用的（cv2 也因此早就不在核心包里）。
+- **实际落地点**：安装包里最大的一块"没人需要的固定开销"是 `dist/backend/_internal/unidic_lite` **249M**。链路：`models/ocr/tokenizer_config.json` 声明 `word_tokenizer_type: mecab` → `manga_ocr/ocr.py:18` 硬编码 `AutoTokenizer.from_pretrained()` → `BertJapaneseTokenizer` 构造时即加载整个 MeCab 词典；而 `:49` 显示该 tokenizer 全程只用于 `decode()`，`:51` 的 `post_process` 第一行 `"".join(text.split())` 还会抹掉所有空白。
+- **修法（两处）**：`services/modules/ocr_engine.py` 新增 `basic_word_tokenizer()` 上下文管理器，仅在构造 `MangaOcr` 期间给 `AutoTokenizer.from_pretrained` 注入 `word_tokenizer_type='basic'`，`finally` 还原；`build_backend.spec` 把 `fugashi`/`unidic_lite` 加入 `excludes`、删除两段 `collect_all`，并把 `filter_sudachidict_artifacts` 扩名为 `filter_dict_artifacts`（与 `cv2`/`torchvision` 的既有处理姿势一致）。
+- **为什么是注入 kwarg 而不是改写 `tokenizer_config.json`**：中途我先实现了"下载后就地改写该 json"，随后发现生产环境模型目录是 `process.resourcesPath/backend/models`（`electron/main.cjs:60`，即安装目录内），写文件会带来 `PermissionError` 直接把 OCR 打死的新失败模式，且会篡改用户下载的模型文件。改为内存注入后无写盘：实测暂存目录的配置在冻结包跑完 OCR 后**仍是 mecab**。
+- **验证（逐层，均有可复核输出）**：
+  1. 屏蔽 `fugashi` 导入（注意：Python 3.12 已移除 `find_module`，须用 `find_spec`）后，原 mecab 配置构造即 `ImportError` —— 证明这 249M 今天确实是硬依赖，不能只删包；
+  2. 两种 tokenizer 对 300 个 token id 的 `decode()` 结果完全一致；
+  3. venv 走真实 `OCREngine`（屏蔽 unidic）与"确实使用 `MecabTokenizer` 的对照组"输出同 sha `ca11d242b0bae023`（72 字节）；
+  4. **同基线对照构建**：`build_backend.spec` 原版产出 763M（其中 `unidic_lite` 249M），改后 513M，**净 -250M**，新包内确认无 `unidic_lite`/`fugashi`；
+  5. **冻结 `backend.exe`**（英文分支基线）喂 mecab 配置：OCR 初始化成功、输出同 sha、模型文件未被改写。
+  **Electron 实机完整 App（真图 + 真 UI）未跑**，仅验证到冻结后端进程这一层。
+- **保留项（Malloy 拍板：以后必做，本轮不做）**：点词/Sudachi 分词确实小众，未来做成插件。当前遗留问题记录：`handlers_ocr.py:20-22` 让每次 OCR 都 lazy 构造 `JapaneseTokenizer`（读入上百 M 词典）只为那个小众功能，省的是内存与首字延迟而非磁盘；`sudachidict_core` 已按需下载，不占包体积。
+- **提交**：`build_backend.spec` + `services/modules/ocr_engine.py` + 本文件与 `doc/bugs-and-fixes.md`（B-2026-013）。
+
+### 00:30 前后 — 一次协作事故记录（分支基点搞错 + doc 短暂丢失，已无损恢复）
+
+- **事故**：Malloy 说"当前分支已完成，新建分支来写"，但执行 `git checkout -b` 时 HEAD 实际停在 `main`（`74d15ab`，2026-08-20），于是新分支 `feat/shared-runtime-plugin-architecture` 被从**八月旧代码**切出，缺九月 ja→en 全部工作（`main` 与 `feat/japanese-to-english-adaptation` 相差 75 文件 / +2714 −561）。
+- **连带现象**：`doc/journal.md`、`doc/bugs-and-fixes.md` 从工作树"消失"——`.gitignore:41` 虽写着 `doc/`（"Local design documents (never commit)"），但这两份在九月分支上**仍是被跟踪的**，15:32 切到 `main` 时被 git 删掉了。`git log --diff-filter=D` 查不到删除提交，因为它们只是随 checkout 离开跟踪集。
+- **恢复**：从 `91aa397:doc/journal.md`、`f97b105:doc/bugs-and-fixes.md` 取回，`git hash-object` 与 `rev-parse` 比对确认与九月分支 blob **逐字节一致**；随后 `git checkout -B feat/shared-runtime-plugin-architecture feat/japanese-to-english-adaptation` 把分支挪回 `998f9f5`，改动以 `/tmp/unidic.patch`（4051B）保存后干净重放，git 顺带原位恢复了两份 doc。本轮所有验证已在**正确基线**上重跑（见上条 4、5）。
+- **我自己的一步失误**：临时移开 doc 副本的命令末尾串了 `rm -rf "$T"`，在 checkout 失败的情况下仍执行，把副本删了；因事先校验过 blob 哈希，实际无损。**教训：清理动作不要和未验证的操作串在一条命令里。**
+- **给未来的自己**：新建分支前先 `git log -1` 确认基点，不要假设"当前就停在你说的那条分支上"。
+
 ## 2026-09-21（AI 结对：Qoder 主写）
 
 ### 13:50–14:30 — 修复英文嵌字逐字母拆分（B-2026-012）

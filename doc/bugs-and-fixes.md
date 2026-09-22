@@ -142,3 +142,28 @@
   **Electron 实机（真图 + 真译文）未跑**。
 - **教训**：为单一文字系统写的排版管线（逐字符竖排）在复用前先问"另一种文字系统怎么办"；嵌字/换行必须区分"按字符"与"按词"两种模型。渲染分支优先看**内容本身**而非设置项：设置会变，已入库的译文不会重译。
 - **时间/commit**：2026-09-21 14:35，`fd12c2a`（Malloy 实机验证通过后仅提交前端 3 文件）。
+
+## B-2026-013 每个安装包白带 249MB unidic-lite：OCR 的 mecab 分词器从不参与解码
+
+- **发现时间**：2026-09-23 00:40（讨论"插件化能否让安装包变小"时逐项量体积，发现 `dist/backend/_internal/unidic_lite` 占 249M，而它只为一个根本不被调用的分词器存在）
+- **现象**：安装包内 `_internal` 实测 `torch 302M`、`unidic_lite 249M`、`transformers 55M`、`numpy.libs 37M`。`unidic_lite` 里 249M 全在 `dicdir/`（MeCab 词典数据），Python 侧只有 2KB。我们自己代码 `grep fugashi|mecab|unidic` **零命中**——它不在任何业务路径上，却进了每一个用户的安装包。
+- **根因（三层）**：
+  1. `models/ocr/tokenizer_config.json` 由上游 HF 仓库声明 `"word_tokenizer_type": "mecab"`、`"mecab_kwargs": {"mecab_dic": "unidic_lite"}`；
+  2. `manga_ocr/ocr.py:18` 硬编码 `AutoTokenizer.from_pretrained(pretrained_model_name_or_path)`，`BertJapaneseTokenizer.__init__` **在构造阶段**就实例化 `MecabTokenizer` 并加载整个 `dicdir`；
+  3. 而这个 tokenizer 在整个 OCR 生命周期里只被用了一次——`ocr.py:49` 的 `tokenizer.decode(x, skip_special_tokens=True)`。`decode` 只走"生成 id → token → 字符串"，不调用 word tokenizer（只有 `encode`/`__call__` 才走，OCR 的输入是图像，从不编码文本）；紧随其后的 `post_process` 第一行 `"".join(text.split())` 还会把所有空白抹掉，所以分词器的任何切分差异都不可能被观察到。
+  4. 历史上为了让打包后的 `backend.exe` 不报 `ImportError`，`build_backend.spec` 加了 `collect_all('fugashi')` + `collect_all('unidic_lite')`（注释写着"BertJapaneseTokenizer 必须"）。**这句注释是对的、也是错的**：构造确实需要它，但前提（真需要 mecab）本身不成立。
+- **解决方式**：
+  1. `services/modules/ocr_engine.py` 新增模块级 `basic_word_tokenizer()` 上下文管理器，仅在构造 `MangaOcr` 期间给 `AutoTokenizer.from_pretrained` 注入 `word_tokenizer_type='basic'`（`kwargs.setdefault`），`finally` 还原 classmethod；
+  2. `build_backend.spec`：`excludes` 增加 `fugashi`/`unidic_lite`，删除对应的两段 `collect_all` 与 `hiddenimports`，并把 `filter_sudachidict_artifacts` 更名为 `filter_dict_artifacts`、token 列表扩展到 unidic/fugashi（与既有 `cv2`/`torchvision` 排除姿势一致）。
+  - **为什么不是改写下载下来的 `tokenizer_config.json`**：这是本轮先实现后回退的方案。生产环境模型目录是 `process.resourcesPath/backend/models`（`electron/main.cjs:60`，位于安装目录内），就地改写会新增一个 `PermissionError` → OCR 整体不可用的失败模式，且篡改了用户下载的第三方模型文件。内存注入无写盘。
+  - **为什么不"共享 runtime"**：与 Malloy 讨论后判定插件化/共享运行时**不减少用户下载量**（torch 只要用到就得下），只避免重复与缩小核心包；权重与 cv2 本来就已按需下载，故本轮不动架构，只砍确定无用的 249M。
+- **验证**：
+  1. 屏蔽 `fugashi`/`unidic_lite` 导入（用 `MetaPathFinder.find_spec`；`find_module` 在 Python 3.12 已移除，用它做的 blocker 会静默失效）后，原 mecab 配置构造即抛 `ImportError` → 证明 249M 是真实硬依赖、不能只删包；
+  2. 注入 `word_tokenizer_type='basic'` 后同一目录下构造成功，`tokenizer.word_tokenizer` 实为 `BasicTokenizer`，且 `tokenizer_config.json` 内容未被改动；
+  3. 两种 tokenizer 对 300 个 token id 的 `decode(skip_special_tokens=True)` 输出完全一致；
+  4. venv 走真实 `OCREngine`：屏蔽 unidic 的输出 sha 与"确认使用 `MecabTokenizer` 的对照组"**同为 `ca11d242b0bae023`（72 字节）**；
+  5. **同基线对照构建**（英文分支 `998f9f5`）：原 spec 产出 763M（`unidic_lite` 249M），新 spec 产出 513M，**净 -250M**，新包内确认无 `unidic_lite`/`fugashi`；
+  6. **冻结 `dist/backend/backend.exe`** 喂 mecab 配置的暂存模型目录：`MangaOCR Initialized Successfully`、`"success": true`、输出同 sha `ca11d242b0bae023`，且跑完后暂存的配置文件仍是 mecab（证明无写盘）。
+  **Electron 实机完整 App（真图 + 真 UI）未跑**，验证止于冻结后端进程。
+- **教训**：① 打包脚本里"关键修复：必须收集 X"这类注释只记录了"曾经报错"，没记录"为什么需要它"；追到底层调用点后，两行注释支撑的 249M 就可以被证伪。② 依赖体积的归属要按**实际调用的方法**判断，而不是按"这个对象被构造了"判断——一个只被 `decode()` 用到的 tokenizer 拖着 `encode()` 侧的全部词典。③ 任何"下载回来的模型文件就地改写"的方案都要先问"这个目录在用户机器上可写吗"，把修复放在内存里通常比落在盘上更安全。
+- **时间/commit**：2026-09-23 02:15，本轮改动（`build_backend.spec`、`services/modules/ocr_engine.py`）。
