@@ -29,6 +29,9 @@ excludes = [
     'torchvision',
     'sudachidict_core',
     'sudachidict_core.resources',
+    # OCR 的 BertJapaneseTokenizer 已在加载前改为 basic 分词, 不需要 MeCab 词典
+    'fugashi',
+    'unidic_lite',
     'transformers.commands',
     'transformers.onnx',
     'transformers.testing_utils',
@@ -67,11 +70,18 @@ def filter_hiddenimports(imports):
     return filtered
 
 
-def filter_sudachidict_artifacts(entries):
+def filter_dict_artifacts(entries):
+    excluded_tokens = (
+        'sudachidict_core',
+        'sudachidict-core',
+        'unidic_lite',
+        'unidic-lite',
+        'fugashi',
+    )
     filtered = []
     for entry in entries:
         entry_text = ' '.join(str(part).replace('\\', '/').lower() for part in entry)
-        if 'sudachidict_core' in entry_text or 'sudachidict-core' in entry_text:
+        if any(token in entry_text for token in excluded_tokens):
             continue
         filtered.append(entry)
     return filtered
@@ -114,8 +124,8 @@ else:
 
 # 收集所有必要的库 (防止漏掉)
 tmp_ret = collect_all('sudachipy')
-datas += filter_sudachidict_artifacts(tmp_ret[0])
-binaries += filter_sudachidict_artifacts(tmp_ret[1])
+datas += filter_dict_artifacts(tmp_ret[0])
+binaries += filter_dict_artifacts(tmp_ret[1])
 hiddenimports += filter_hiddenimports(tmp_ret[2])
 
 # SudachiDict-core is downloaded on demand into models/dictionary/sudachi.
@@ -145,15 +155,6 @@ hiddenimports += ['sentencepiece']
 tmp_ret = collect_all('tokenizers')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 hiddenimports += ['tokenizers']
-
-# 关键修复：收集 fugashi 和 unidic_lite (BertJapaneseTokenizer 必须)
-tmp_ret = collect_all('fugashi')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-hiddenimports += ['fugashi']
-
-tmp_ret = collect_all('unidic_lite')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-hiddenimports += ['unidic_lite']
 
 tmp_ret = collect_all('transformers')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
@@ -190,8 +191,8 @@ a = Analysis(
     noarchive=False,
 )
 
-a.datas = filter_sudachidict_artifacts(a.datas)
-a.binaries = filter_sudachidict_artifacts(a.binaries)
+a.datas = filter_dict_artifacts(a.datas)
+a.binaries = filter_dict_artifacts(a.binaries)
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 

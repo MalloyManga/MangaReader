@@ -1,11 +1,29 @@
 # services/modules/ocr_engine.py
 import os
 import base64
+from contextlib import contextmanager
 from io import BytesIO
 from PIL import Image
 from manga_ocr import MangaOcr
+from transformers import AutoTokenizer
 from huggingface_hub import snapshot_download
 from .utils import log_message, patch_tqdm
+
+
+@contextmanager
+def basic_word_tokenizer():
+    """上游配置要求 mecab 分词器, 会让 BertJapaneseTokenizer 加载约 249MB unidic-lite 词典; OCR 只用 decode(), 不经过它."""
+    original = AutoTokenizer.from_pretrained.__func__
+
+    def from_pretrained(cls, *args, **kwargs):
+        kwargs.setdefault("word_tokenizer_type", "basic")
+        return original(cls, *args, **kwargs)
+
+    AutoTokenizer.from_pretrained = classmethod(from_pretrained)
+    try:
+        yield
+    finally:
+        AutoTokenizer.from_pretrained = classmethod(original)
 
 
 class OCRDownloadError(RuntimeError):
@@ -142,7 +160,8 @@ class OCREngine:
                 default_msg="正在加载 OCR 引擎...",
             ):
                 # 强制指定 local_files_only=True 因为我们刚才已经确认下载了
-                self.mocr = MangaOcr(pretrained_model_name_or_path=abs_model_path)
+                with basic_word_tokenizer():
+                    self.mocr = MangaOcr(pretrained_model_name_or_path=abs_model_path)
             log_message("MangaOCR Initialized Successfully.")
         except Exception as e:
             log_message(f"[ERROR] MangaOCR Load Failed: {e}")
