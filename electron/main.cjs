@@ -221,7 +221,9 @@ app.whenReady().then(async () => {
 
         backendService.on('dictionary-download-progress', (percent) => sendToWindow('dictionary:download-progress', percent))
 
-        backendService.on('detection-module-download-progress', (data) => sendToWindow('detection-module-download-progress', data))
+        backendService.on('detection-module-download-progress', (data) => sendToWindow('detection-module:download-progress', data))
+
+        backendService.on('tokenization-runtime-progress', (percent) => sendToWindow('tokenization-runtime:download-progress', percent))
 
         // 转发后端日志到前端
         backendService.on('log', (msg) => sendToWindow('backend:log', msg))
