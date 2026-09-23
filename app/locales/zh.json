@@ -61,7 +61,7 @@
     "hide": "隐藏",
     "show": "显示",
     "retranslate": "重新翻译",
-    "dictionaryRequired": "需要先在设置 > 翻译模型中下载日语分词词典。",
+    "tokenizationSetupRequired": "分词组件尚未下载，请在「设置 > 通用」中点击「下载」。",
     "tokenizationFailed": "分词失败，请稍后重试。",
     "tokenizationResult": "🔤 分词结果",
     "tokenizing": "分词中...",
@@ -180,7 +180,7 @@
     "enableTokenizationDesc": "对识别结果进行日语分词处理",
     "checking": "检查中...",
     "ready": "已就绪",
-    "deleteDictionary": "删除词典",
+    "deleteCapability": "删除分词组件",
     "downloading": "下载中",
     "enableTranslation": "启用翻译",
     "enableTranslationDesc": "开启后将加载本地 LLM 模型",
@@ -192,10 +192,10 @@
     "previousImage": "上一张图片",
     "nextImage": "下一张图片",
     "appearance": "外观",
-    "deleteDictionaryConfirm": "删除分词词典？",
-    "deleteDictionaryContent": "确定要删除 {name} 吗？这将释放约 {size} 的磁盘空间。",
-    "dictionarySize": "约 207 MB",
-    "dictionaryDescription": "日语分词所需词典；下载后才能显示分词结果。"
+    "deleteCapabilityConfirm": "删除分词组件与词典？",
+    "deleteCapabilityContent": "确定要删除 {name} 吗？这将释放约 {size} 的磁盘空间。",
+    "capabilityName": "日语分词",
+    "capabilitySize": "约 210 MB"
   },
   "translationManagement": {
     "installingComponent": "安装组件...",

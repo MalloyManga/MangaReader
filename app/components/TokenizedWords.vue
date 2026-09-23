@@ -13,6 +13,9 @@ interface Props {
     originText: string
 }
 
+// 点词能力由运行环境与词典两部分组成 缺任意一侧都提示同一句话 一次下载补齐
+const SETUP_REQUIRED_ERRORS = ['DICTIONARY_NOT_FOUND', 'TOKENIZER_RUNTIME_NOT_INSTALLED']
+
 const { originText } = defineProps<Props>()
 
 // 分词结果状态
@@ -38,9 +41,9 @@ const tokenizeText = async (text: string) => {
             if (result && result.success && result.tokens) {
                 tokens.value = result.tokens
                 errorMessage.value = ''
-            } else if (result?.error === 'DICTIONARY_NOT_FOUND') {
+            } else if (SETUP_REQUIRED_ERRORS.includes(String(result?.error))) {
                 tokens.value = []
-                errorMessage.value = t('readerWorkflow.dictionaryRequired')
+                errorMessage.value = t('readerWorkflow.tokenizationSetupRequired')
             } else {
                 console.error('Backend error:', result.error)
                 errorMessage.value = t('readerWorkflow.tokenizationFailed')
@@ -53,8 +56,8 @@ const tokenizeText = async (text: string) => {
     } catch (error) {
         console.error('分词失败:', error)
         tokens.value = []
-        errorMessage.value = error instanceof Error && error.message === 'DICTIONARY_NOT_FOUND'
-            ? t('readerWorkflow.dictionaryRequired')
+        errorMessage.value = error instanceof Error && SETUP_REQUIRED_ERRORS.includes(error.message)
+            ? t('readerWorkflow.tokenizationSetupRequired')
             : t('readerWorkflow.tokenizationFailed')
     } finally {
         isTokenizing.value = false

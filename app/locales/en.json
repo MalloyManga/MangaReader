@@ -61,7 +61,7 @@
     "hide": "Hide",
     "show": "Show",
     "retranslate": "Translate again",
-    "dictionaryRequired": "Download the Japanese tokenization dictionary in Settings > Translation Models first.",
+    "tokenizationSetupRequired": "Tokenization is on, but its files are not downloaded yet. Download them under Settings > General.",
     "tokenizationFailed": "Tokenization failed. Please try again later.",
     "tokenizationResult": "🔤 Tokenization Results",
     "tokenizing": "Tokenizing...",
@@ -180,7 +180,7 @@
     "enableTokenizationDesc": "Apply Japanese tokenization to recognition results",
     "checking": "Checking...",
     "ready": "Ready",
-    "deleteDictionary": "Delete dictionary",
+    "deleteCapability": "Delete tokenization",
     "downloading": "Downloading",
     "enableTranslation": "Enable Translation",
     "enableTranslationDesc": "When enabled, the local LLM model will load",
@@ -192,10 +192,10 @@
     "previousImage": "Previous Image",
     "nextImage": "Next Image",
     "appearance": "Appearance",
-    "deleteDictionaryConfirm": "Delete tokenization dictionary?",
-    "deleteDictionaryContent": "Are you sure you want to delete {name}? This will free approximately {size} of disk space.",
-    "dictionarySize": "Approx. 207 MB",
-    "dictionaryDescription": "Required for Japanese tokenization. Tokenization results appear after it is downloaded."
+    "deleteCapabilityConfirm": "Delete the tokenization files?",
+    "deleteCapabilityContent": "Are you sure you want to delete {name}? This will free approximately {size} of disk space.",
+    "capabilityName": "Japanese tokenization",
+    "capabilitySize": "Approx. 210 MB"
   },
   "translationManagement": {
     "installingComponent": "Installing component...",

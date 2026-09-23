@@ -6,7 +6,10 @@ const { t } = useI18n()
 const { settings, saveSettings } = useSettings()
 const { showToast } = useToast()
 const { selectedModel, checkAllModelStatus } = useModelStatus()
-const { dictionary, checkDictionaryStatus } = useDictionaryStatus()
+const {
+    capability, checkCapabilityStatus, installCapability, deleteCapability,
+    applyRuntimeProgress, applyDictionaryProgress
+} = useTokenizationCapability()
 
 const themeOptions = computed<Record<ThemeOption, {
     icon: string,
@@ -18,9 +21,9 @@ const themeOptions = computed<Record<ThemeOption, {
 }))
 
 const isRecording = ref(false)
-const showDeleteDictionaryModal = ref(false)
-const isDeletingDictionary = ref(false)
-let cleanupDictionaryProgress: (() => void) | null = null
+const showDeleteCapabilityModal = ref(false)
+const isDeletingCapability = ref(false)
+const cleanupCapabilityProgress: (() => void)[] = []
 // 记录当前正在录制哪个快捷键
 const recordingTarget = ref<'ocrShortcut' | 'prevImageShortcut' | 'nextImageShortcut' | null>(null)
 
@@ -138,64 +141,49 @@ const stopRecording = () => {
     // 移除 ref 操作 依赖原生 focus/blur 行为即可
 }
 
-const handleDownloadDictionary = async () => {
-    if (dictionary.status === 'downloading') return
-    dictionary.status = 'downloading'
-    dictionary.progress = 0
-
+const handleInstallCapability = async () => {
     try {
-        const res = await window.electronAPI.downloadDictionary()
-
-        if (res.success) {
-            dictionary.progress = 100
-            dictionary.status = 'downloaded'
-        } else {
-            showToast(`${t('general.downloadFailed')}: ${res.error}`)
-            dictionary.status = 'not_downloaded'
-        }
+        if (!await installCapability()) showToast(`${t('general.downloadFailed')}`)
     } catch (e) {
-        dictionary.status = 'not_downloaded'
         showToast(t('general.downloadError'))
     }
 }
 
-const confirmDeleteDictionary = async () => {
-    isDeletingDictionary.value = true
+const confirmDeleteCapability = async () => {
+    isDeletingCapability.value = true
     try {
-        const res = await window.electronAPI.deleteDictionary()
-        if (res.success) {
-            dictionary.status = 'not_downloaded'
-            dictionary.progress = 0
-            showDeleteDictionaryModal.value = false
+        if (await deleteCapability()) {
+            showDeleteCapabilityModal.value = false
         } else {
             showToast(t('general.deleteFailed'))
         }
     } catch (e) {
         showToast(t('general.deleteError'))
     } finally {
-        isDeletingDictionary.value = false
+        isDeletingCapability.value = false
     }
 }
 
 onMounted(() => {
     checkAllModelStatus()
-    checkDictionaryStatus()
+    checkCapabilityStatus()
 
+    // 两段下载各自汇报 由 composable 合成一条进度
+    if (window.electronAPI?.onTokenizationRuntimeDownloadProgress) {
+        cleanupCapabilityProgress.push(
+            window.electronAPI.onTokenizationRuntimeDownloadProgress(applyRuntimeProgress)
+        )
+    }
     if (window.electronAPI?.onDictionaryDownloadProgress) {
-        cleanupDictionaryProgress = window.electronAPI.onDictionaryDownloadProgress((percent: number) => {
-            if (dictionary.status === 'downloading') {
-                dictionary.progress = percent
-
-                if (percent >= 100) {
-                    dictionary.status = 'downloaded'
-                }
-            }
-        })
+        cleanupCapabilityProgress.push(
+            window.electronAPI.onDictionaryDownloadProgress(applyDictionaryProgress)
+        )
     }
 })
 
 onUnmounted(() => {
-    cleanupDictionaryProgress?.()
+    cleanupCapabilityProgress.forEach((off) => off())
+    cleanupCapabilityProgress.length = 0
 })
 </script>
 
@@ -330,42 +318,42 @@ onUnmounted(() => {
                 class="flex items-center justify-between p-3 rounded-lg border border-manga-100 dark:border-manga-700 bg-white dark:bg-manga-900">
                 <div class="flex items-center gap-2 min-w-0">
                     <div class="font-medium text-sm text-manga-900 dark:text-manga-200 truncate">
-                        {{ dictionary.name }}
+                        {{ capability.name }}
                     </div>
                     <span
                         class="px-2 py-0.5 rounded text-[10px] font-bold bg-manga-100 dark:bg-manga-800 text-manga-600 dark:text-manga-400 shrink-0">
-                        {{ dictionary.size }}
+                        {{ capability.size }}
                     </span>
                 </div>
 
                 <div class="flex items-center gap-3 shrink-0">
-                    <div v-if="dictionary.status === 'checking'" class="text-xs text-manga-400">
+                    <div v-if="capability.status === 'checking'" class="text-xs text-manga-400">
                         {{ t('general.checking') }}
                     </div>
 
-                    <div v-else-if="dictionary.status === 'downloaded'" class="flex items-center gap-1">
+                    <div v-else-if="capability.status === 'ready'" class="flex items-center gap-1">
                         <span class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                             <IconSuccess class="size-4" />
                             {{ t('general.ready') }}
                         </span>
-                        <button @click="showDeleteDictionaryModal = true" :title="t('general.deleteDictionary')"
+                        <button @click="showDeleteCapabilityModal = true" :title="t('general.deleteCapability')"
                             class="flex items-center justify-center w-8 h-8 text-manga-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all cursor-pointer">
                             <IconTresh class="size-5" />
                         </button>
                     </div>
 
-                    <div v-else-if="dictionary.status === 'downloading'" class="w-28">
+                    <div v-else-if="capability.status === 'installing'" class="w-28">
                         <div class="flex justify-between text-xs text-manga-500 mb-1">
                             <span>{{ t('general.downloading') }}</span>
-                            <span>{{ Math.round(dictionary.progress) }}%</span>
+                            <span>{{ Math.round(capability.progress) }}%</span>
                         </div>
                         <div class="w-full bg-manga-100 dark:bg-manga-700 rounded-full h-1.5 overflow-hidden">
                             <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-                                :style="{ width: dictionary.progress + '%' }"></div>
+                                :style="{ width: capability.progress + '%' }"></div>
                         </div>
                     </div>
 
-                    <button v-else @click="handleDownloadDictionary"
+                    <button v-else @click="handleInstallCapability"
                         class="flex items-center gap-1.5 px-3 py-1.5 bg-manga-900 dark:bg-manga-700 hover:bg-blue-600 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all cursor-pointer whitespace-nowrap">
                         <IconDownload class="size-4" />
                         {{ t('common.download') }}
@@ -497,9 +485,9 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <ConfirmModal :show="showDeleteDictionaryModal" :title="t('general.deleteDictionaryConfirm')"
-            :content="t('general.deleteDictionaryContent', { name: dictionary.name, size: dictionary.size })" :confirm-text="t('common.confirmDelete')"
-            :is-danger="true" :loading="isDeletingDictionary" @cancel="showDeleteDictionaryModal = false"
-            @confirm="confirmDeleteDictionary" />
+        <ConfirmModal :show="showDeleteCapabilityModal" :title="t('general.deleteCapabilityConfirm')"
+            :content="t('general.deleteCapabilityContent', { name: capability.name, size: capability.size })" :confirm-text="t('common.confirmDelete')"
+            :is-danger="true" :loading="isDeletingCapability" @cancel="showDeleteCapabilityModal = false"
+            @confirm="confirmDeleteCapability" />
     </div>
 </template>
