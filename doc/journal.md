@@ -73,7 +73,7 @@
 - **修掉的矛盾（README 说反话）**：`README.md:91` 原文「分词：默认开启」、`README.en.md:107` 原文 "on by default" —— 与 11:05 那次改默认值冲突（README 写于 02:30 之前）。两份都改成"默认关闭 + 在 设置 > 通用 开启 + 该页下载 SudachiDict-core 约 207 MB"。措辞依据：`SettingsGeneral.vue:333-364` 确实是词典卡所在页，`general.dictionarySize` 值即"约 207 MB"。
 - **修掉的小瑕疵**：本文件第 29 行原先写"`.gitignore:41` 虽写着 `doc/`"，但 `.gitignore` 现状是 `doc/*` + 两份白名单（09-20 那次加的）。事故结论不变——`main`（`74d15ab`）上没有这两条白名单，所以切过去时文件离开跟踪集——但叙述里的文件状态已改写为准确版本。
 - **发现但按 Malloy 指示未动**：
-  1. `services/requirements.txt:4` 的 `sudachipy` **没有钉版本**，而 `tokenization/manager.py` 里 `VERSION = "0.6.10"` 写死；这正是第 74–76 行为 `manga-ocr` 论证过的同类漂移（本文件第 59 行自己提到"0.6.11 起 wheel 文件名改小写"）。Malloy：他之后处理。
+  1. `services/requirements.txt:4` 的 `sudachipy` **没有钉版本**，而 `tokenization/manager.py` 里 `VERSION = "0.6.10"` 写死；这正是第 74–76 行为 `manga-ocr` 论证过的同类漂移（本文件第 59 行自己提到"0.6.11 起 wheel 文件名改小写"）。**13:44 已收口（Malloy 追问后处理）**：`requirements.txt` 已钉 `sudachipy==0.6.10`，与 venv 实测的 `SudachiPy-0.6.10.dist-info` 一致（所以不需要重装依赖），并加注释指明它必须与 `manager.py` 的 `VERSION` 同步。
   2. `app/locales/zh.json` 的 `readerWorkflow.dictionaryRequired` 仍写"需要先在**设置 > 翻译模型**中下载日语分词词典"，而词典控制早已在「设置 > 通用」（`SettingsGeneral.vue`）。属 UI 文案与页面归属不一致，未在本次授权范围内，留作待确认。
 - **改动范围**：`README.md`、`README.en.md` 与本文件。
 
