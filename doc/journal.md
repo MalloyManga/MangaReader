@@ -82,8 +82,20 @@
 - **问 1「sudachipy 在 requirements 里没钉版本，处理了没有？」** —— 当时**没处理**。13:20 那次全量核查已把它记成「发现但按 Malloy 指示未动 · 他之后处理」（本文件第 76 行），所以我没有自作主张动。Malloy 追问后当场收口：`services/requirements.txt` 钉 `sudachipy==0.6.10`，与 venv 实测的 `SudachiPy-0.6.10.dist-info` 一致（**所以不必重装依赖**），并加注释要求它与 `tokenization/manager.py` 的 `VERSION` 同步。commit `49bf56c`。Malloy 这条提得对：我前一小时才为 `manga-ocr` 论证过"没钉版本＝重建 venv 就漂移"，同一个道理却没贯彻到 sudachipy，属于自己没贯彻自己的结论。
 - **问 2「三个接口下一轮的，我们不是都做了吗？」** —— **没有，我把"后端命令"和"Electron 接口"混成一句话说了，容易误读**。分层事实：Python 侧 `dispatch.py` 三条命令在 `43f53c3` 就有了且冻结包实测通过；但 `grep tokenization_runtime electron/ app/` 当时 **0 命中**（13:20 核查第 72 行也独立确认"electron/ 与前端确实还没有那一层"）。本轮补齐 Electron 四层：`backend-service.cjs` 三个请求方法、`ipc/backend-api.cjs` 三个 `ipcMain.handle`、`preload.js` 三个 API + 一个进度监听、`interface.d.ts` 类型，全部 `node --check` 通过 → commit `2170d3f`。
 - **顺手发现并修掉一个既有 bug（B-2026-014）**：`main.cjs:224` 发的频道名是 `detection-module-download-progress`（连字符），`preload.js:98` 订阅的是 `detection-module:download-progress`（冒号），**两侧对不上，检测器的下载进度事件从来到不了渲染进程**；词典那一对是一致的，所以只有检测器坏。改发送侧对齐 → commit `31f6df9`。**只做了静态验证（两侧字符串现已相同），实机未跑**：要复现得删掉已装检测器插件重新下载，还没做。
-- **仍未做**：设置页的分词插件卡（含未装/下载中带进度/已装/删除四态）、`useTokenizationRuntimeStatus` composable、`TokenizedWords.vue` 区分 `TOKENIZER_RUNTIME_NOT_INSTALLED` 与 `DICTIONARY_NOT_FOUND` 两种提示、i18n 中英文案、`npm run build:win` 复测体积。
+- **~~仍未做~~ 已在 13:52–14:40 段完成**：设置页改为一张"点词能力"卡（一个按钮两步下载）、`useTokenizationCapability` composable、阅读器两种未就绪合并成一句提示、i18n 中英文案都已落地。**只剩 `npm run build:win` 复测体积 + Electron 实机验证**（见下段的"没做到的验证"）。
 - **另一条待你确认的文案 bug**（13:20 核查第 77 行记录的）：`app/locales/zh.json` 的 `readerWorkflow.dictionaryRequired` 写「需要先在**设置 > 翻译模型**中下载日语分词词典」，但词典卡其实在「设置 > 通用」。我下一步做分词插件卡时正好要碰这块文案，**要不要一起改**？
+
+### 13:52–14:40 — 点词能力做成"一个按钮、两步下载"（Malloy：本来就要做成一个）
+
+- **产品决定**：适配代码与词典**一次点完**，不新增第二个按钮、不给用户看两个东西。实现放在前端编排：`installCapability()` 依次调 运行环境 → 词典，两步各自的成功/失败都能重试；两段进度按字节权重合成一条（运行环境 3.5MB / 词典 207MB，`RUNTIME_WEIGHT = 3.5 / 210.5`）。用户视角与改动前完全一致：同一张卡、同一个按钮、一条进度。
+- **新增 `app/composables/useTokenizationCapability.ts`**：一个状态机（`checking / missing / installing / ready`）+ `checkCapabilityStatus` / `installCapability` / `deleteCapability` / 两个进度换算函数。删除时**两块一起收回**（留着运行环境就违背了这次拆分的初衷）。
+- **`SettingsGeneral.vue`**：原词典卡改由能力状态机驱动（`dictionary.*` → `capability.*`，四态与进度条沿用原来的视觉），按钮走 `handleInstallCapability`，删除确认弹窗标题/文案换成 `deleteCapability*` 三个键。
+- **`TokenizedWords.vue`**：`DICTIONARY_NOT_FOUND` 与 `TOKENIZER_RUNTIME_NOT_INSTALLED` 合并成同一句提示（`readerWorkflow.tokenizationSetupRequired`）。顺带修掉 13:20 核查记录的文案 bug：旧文案写"设置 > **翻译模型**"，而卡片其实在"设置 > **通用**"。
+- **删掉 `app/composables/useDictionaryStatus.ts`**：切换后无任何引用（grep 确认），按"未用即删"处理；连带删除 `general.dictionarySize/dictionaryDescription/deleteDictionary/deleteDictionaryConfirm/deleteDictionaryContent` 与 `readerWorkflow.dictionaryRequired` 六个键，新增 `capabilityName/capabilitySize/deleteCapability/deleteCapabilityConfirm/deleteCapabilityContent/tokenizationSetupRequired` 六个。中英各 335 键，英文按母语级写。
+- **一个工具坑（记下来免得再踩）**：`scripts/check-i18n.cjs:11` 用 **`git ls-files app`** 枚举文件，所以 `rm` 删除文件后它仍会去读那个路径并 ENOENT 崩掉——删除必须落到索引（`git rm --cached` 或 `git add -A`）检查器才认。同理，新建的 composable 在 `git add` 之前会被判成"键未使用"。
+- **验证做到哪**：`npm run check:i18n` → `en keys 335 | zh keys 335`、`set diff []`、`referenced-but-missing []`、**`unused count: 0`**；`SettingsGeneral.vue` 与 `TokenizedWords.vue` 经 `@vue/compiler-sfc` 编译通过。
+- **没做到的验证（必须知道）**：起过 dev server（:3001，用完已停；:3000 是别的会话起的，没动），想用浏览器注入假 `electronAPI` 跑状态机，但本机 browser-use 连接器有已知限制（`evaluate_script` 不执行），这条路不通，遂放弃。**所以这套 UI 一行都没在浏览器或 Electron 里跑过**：状态迁移、进度合成、删除后回到未下载、以及运行环境成功而词典失败时的重试，全部待 Malloy 实机确认。
+- **本轮 commits**：`49bf56c` 钉 sudachipy · `31f6df9` 修检测器进度频道（B-2026-014）· `2170d3f` Electron 三层接口 · `c2e3458` 一次点完的能力卡。
 
 ### 截至 11:25 仍未了结
 
