@@ -20,7 +20,7 @@
   4. **同基线对照构建**：`build_backend.spec` 原版产出 763M（其中 `unidic_lite` 249M），改后 513M，**净 -250M**，新包内确认无 `unidic_lite`/`fugashi`；
   5. **冻结 `backend.exe`**（英文分支基线）喂 mecab 配置：OCR 初始化成功、输出同 sha、模型文件未被改写。
   **Electron 实机完整 App（真图 + 真 UI）未跑**，仅验证到冻结后端进程这一层。
-- **保留项（Malloy 拍板：以后必做，本轮不做）**：点词/Sudachi 分词确实小众，未来做成插件。当前遗留问题记录：`handlers_ocr.py:20-22` 让每次 OCR 都 lazy 构造 `JapaneseTokenizer`（读入上百 M 词典）只为那个小众功能，省的是内存与首字延迟而非磁盘；`sudachidict_core` 已按需下载，不占包体积。
+- **保留项（Malloy 拍板：以后必做，本轮不做）**：点词/Sudachi 分词确实小众，未来做成插件。**注意：我先前写"每次 OCR 都会 lazy 构造 `JapaneseTokenizer`"是错的，已在 02:35 更正**——`handle_recognize`（`handlers_ocr.py:10-12`）根本不碰分词器，构造只发生在 `handle_tokenize`（`:20-21`），且前端有 `v-if="settings.enableTokenization"` 门（`reader.vue:585`）。真实情况是：该功能**已按需、已被设置项门控**，只是 `useSettings.ts:17` 默认 `true`；`sudachidict_core` 也已按需下载，不占包体积；核心包里属于它的代码仅 `sudachipy` 3.5M。
 - **提交**：`build_backend.spec` + `services/modules/ocr_engine.py` + 本文件与 `doc/bugs-and-fixes.md`（B-2026-013）。
 
 ### 00:30 前后 — 一次协作事故记录（分支基点搞错 + doc 短暂丢失，已无损恢复）
@@ -38,7 +38,7 @@
 3. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
 4. **英文分支仍未审查、未合并**，因此本分支的两个提交（`d0f75b6`、`b33a714`）是悬在未合并基点上的；合并顺序由 Malloy 定。
 5. **`basic_word_tokenizer()` 与 `manga_ocr/ocr.py:18` 的调用点耦合，且无回归测试。** 若上游改为不经 `AutoTokenizer.from_pretrained` 构造 tokenizer，配合 spec 的 `excludes` 会让 OCR 初始化直接 `ImportError`（失败是响亮的、不会静默出错字），但升级 `manga_ocr` 时必须重跑一次 OCR 冒烟。
-6. **点词/Sudachi 分词做成插件** —— Malloy 定 2026-09-24 处理，见上文"保留项"。
+6. **点词/Sudachi 分词做成插件** —— Malloy 定 2026-09-24 处理。**02:35 更正后的实际缺口**（比原判断小得多）：功能已按需构造、已被 `enableTokenization` 设置项门控、词典已按需下载，剩下的只是 `useSettings.ts:17` 默认值为 `true`。所以"做成插件"在体积上只值 `sudachipy` 3.5M，真正的收益是**新增语言时无需重发核心**；若要立刻减小众用户负担，一行改默认值为 `false` 即可，不必等插件系统。
 
 ## 2026-09-21（AI 结对：Qoder 主写）
 
