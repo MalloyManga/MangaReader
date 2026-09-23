@@ -31,20 +31,39 @@
 - **我自己的一步失误**：临时移开 doc 副本的命令末尾串了 `rm -rf "$T"`，在 checkout 失败的情况下仍执行，把副本删了；因事先校验过 blob 哈希，实际无损。**教训：清理动作不要和未验证的操作串在一条命令里。**
 - **给未来的自己**：新建分支前先 `git log -1` 确认基点，不要假设"当前就停在你说的那条分支上"。
 
-### 截至 02:25 仍未了结
+### 02:22–10:11 — 完整打包与体积实测（Malloy 批准）
 
-1. **`npm run build:win` 已跑（02:22 启动，10:11 出产物，Malloy 批准后）**：`MangaReader Setup 1.5.2.exe` = **241.1 MiB**，对比上一个已发布构建 `1.5.1` 的 270.8 MiB，**净 -29.6 MiB**；同次构建的 `MangaReader-1.5.2-win.zip` 314.1 MiB vs `1.5.1` 358.1 MiB（-44.0 MiB，zip 压缩率低于 NSIS，故两个口径差属正常）。注意口径：`1.5.1` 是 7-30 从更早代码构建的，**不是同基线对照**，所以这 -29.6 MiB 里混着九月其他改动的加减；同基线的后端目录对照才是纯净的（763M → 513M，-250M，其中 unidic 249M）。产物已落在 `dist_electron/`，Electron 实机由 Malloy 自测。
-2. ~~`dist/backend.bak-unidic`（763M）~~ **已删（02:22，Malloy 批准）**。
-3. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。（10:55 Malloy 定：推迟，等真正启动第三种语言时再处理——插件化的收益本来就是"加语言不发版"，不是省体积。）** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
-4. **英文分支仍未审查、未合并**，因此本分支的两个提交（`d0f75b6`、`b33a714`）是悬在未合并基点上的；合并顺序由 Malloy 定。
-5. **`basic_word_tokenizer()` 与 `manga_ocr/ocr.py:18` 的调用点耦合 —— 已按 Malloy 定的"低成本方案"收口（10:55）**：把 `services/requirements.txt:3` 的 `manga-ocr` 钉成 `==0.1.14`（与当前 venv 实测版本一致）。
+- `npm run build:win` 已跑：`MangaReader Setup 1.5.2.exe` = **241.1 MiB**，对比上一个已发布构建 `1.5.1` 的 270.8 MiB，**净 -29.6 MiB**；同次构建的 `MangaReader-1.5.2-win.zip` 314.1 MiB vs `1.5.1` 358.1 MiB（-44.0 MiB，zip 压缩率低于 NSIS，两个口径差属正常）。
+- **口径提醒**：`1.5.1` 是 7-30 从更早代码构建的，**不是同基线对照**，所以这 -29.6 MiB 里混着九月其他改动的加减；纯净的同基线对照是后端目录（763M → 513M，-250M，其中 unidic 249M）。
+- 产物已落在 `dist_electron/`，Electron 实机由 Malloy 自测。为对比而挪出的旧构建 `dist/backend.bak-unidic`（763M）已删。
+
+### 11:05–11:25 — 点词默认改为关闭（Malloy 批准）
+
+- **改了什么**：`app/composables/useSettings.ts:17` 的 `enableTokenization` 由 `true` 改为 `false`。
+- **为什么**：`TokenizedWords.vue:86` 的 watcher 带 `immediate: true`，而 `reader.vue:585` 用 `v-if="settings.enableTokenization"` 决定挂载——默认开着意味着**每个用户一进阅读器就立刻发一次 tokenize 请求**；词典没下时后端抛 `DICTIONARY_NOT_FOUND`，前端就在卡片里渲染琥珀色提示 `readerWorkflow.dictionaryRequired`＝"需要先在设置 > 翻译模型中下载日语分词词典。"（`app/locales/zh.json:64`，词典自报"约 207 MB"`general.dictionarySize`）。等于**纯阅读用户在默认状态被反复引导去下一个他完全用不到的小众功能的大词典**。想用的人在"设置 > 通用"那个既有 checkbox（`SettingsGeneral.vue:316`）开即可，开了仍走既有词典下载流程。零新代码，只是把开关拨到默认位置。
+- **生效范围（重要，Malloy 需知）**：`useSettings.ts:100-103` 是 `Object.assign(settings.value, storedSettings)`，而 `:47-60` 的 watch 会把每个 key 全量写回 electron-store。**所以老用户 store 里已经存着 `enableTokenization: true`，本次改动不会翻转存量用户，只影响全新安装。** 若要让存量用户也默认关闭，需要一次性迁移（如 `settingsVersion` 字段）——但那之后也无法区分"用户主动开"与"默认被写入"，这是个未决的产品岔路，暂不动。
+- **验证**：`npm run check:i18n` → `en keys 335 | zh keys 335` 对齐；输出的 5 条 hardcoded CJK 均在本次未触碰的文件里（`useModelStatus.ts` 的模型描述与 `reader.vue:21` 的演示串），属既有告警。改的是布尔字面量默认值，无新增文案、无 i18n key 变动。**Electron 实机未跑**（要看的效果是：新装或清 store 后，阅读器右侧不再出现分词卡片与"需要下载词典"提示；设置里勾选后卡片恢复且能触发词典下载）。
+
+### 11:25 关于"词典已按需下载 ≠ 插件化"的澄清（Malloy 拍板要做拆分）
+
+- Malloy 问"词典不是已经做了下载选项吗？"——**对，两件事不是一回事**：已做的是**数据层按需下载**（`sudachidict_core` 不进包，spec 里被排除，设置里点下载）；未做的是**代码层可独立装卸与独立更新**。分词器代码 `services/modules/tokenizer.py` 与 `sudachipy` 运行时（实测 `dist/backend/_internal/sudachipy` 3.5M）现在**焊在核心包里**，改一行也要重发整个 App。
+- Malloy 结论："那我们就拆分成插件呗"。**下一步的增量是代码可拆 + 独立版本，不是下载选项**（体积收益只有 3.5M，先前已量化）。可复用的模板是检测器那套已验证形态：`manager.py + registry.py + plugin.json + integrity.json + installed/<id>/<version>` 与 `sys.path`/DLL 目录注入。
+
+
+
+### 截至 11:25 仍未了结
+
+1. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。（10:55 Malloy 定：推迟，等真正启动第三种语言时再处理——插件化的收益本来就是"加语言不发版"，不是省体积。）** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
+2. **英文分支仍未审查、未合并**，因此本分支的两个提交（`d0f75b6`、`b33a714`）是悬在未合并基点上的；合并顺序由 Malloy 定。
+3. **`basic_word_tokenizer()` 与 `manga_ocr/ocr.py:18` 的调用点耦合 —— 已按 Malloy 定的"低成本方案"收口（10:55）**：把 `services/requirements.txt:3` 的 `manga-ocr` 钉成 `==0.1.14`（与当前 venv 实测版本一致）。
    - **为什么这条是必要的而不是"等上游哪天改"**：`requirements.txt` 原本没有版本约束，所以**重建 venv（换机器、重装依赖）本身就会拿到当时的最新版**，不需要任何人主动升级。钉住之后，升级才变成一次有意识的动作。
    - **依赖来源已核实**（`manga_ocr-0.1.14.dist-info/METADATA` 的 `Requires-Dist`）：`manga-ocr` 自己就把 `fugashi`、`unidic_lite`、`torch>=1.0`、`transformers>=4.25.0` 声明为依赖 —— 这正是当年 spec 里那句"BertJapaneseTokenizer 必须"的出处。`requirements.txt` 也确实没有单独声明 torch/transformers，它们全靠这一层传递。
    - **钉版本没有解决的部分**：`torch>=1.0` 与 `transformers>=4.25.0` 是开区间，钉住 `manga-ocr` 只固定了它的传递集成员，不固定这两个的实际解析结果。
    - **配套纪律**：升 `manga-ocr` 时必须重跑一次 OCR 冒烟（判据：后端日志出现 `MangaOCR Initialized Successfully`；若变成 `No module named 'fugashi'` 即说明上游不再经 `AutoTokenizer.from_pretrained` 构造分词器，`basic_word_tokenizer()` 失效）。失败模式是响亮的，不会静默出错字。
    - **不做的事**：不 vendor 那 70 行（`basic_word_tokenizer()` 已经是"二次封装"，没有动第三方源码；venv 被 gitignore，改源码会被下次重装抹掉）；不为本条新建 pytest 基建（`doc/unit-testing-strategy.md` 明确测试落地时机是"第一个新功能通道加入时"，届时可把 OCR 冒烟列为首批用例）。
    - **顺带发现的更大可复现性缺口（未处理，留给 Malloy 审查时定）**：`requirements.txt` 里**没有显式声明 `torch` / `transformers` / `sentencepiece` / `tokenizers`**，它们靠 `manga-ocr` 的开区间传递依赖解析进来，打包用的 torch 版本会在不同机器上漂移——影响面比 manga_ocr 那 70 行大得多。
-6. **点词/Sudachi 分词做成插件** —— Malloy 10:55 确认**可以做**，定 2026-09-24 处理。**10:08 更正后的实际缺口**（比原判断小得多）：功能已按需构造、已被 `enableTokenization` 设置项门控、词典已按需下载，剩下的只是 `useSettings.ts:17` 默认值为 `true`。所以"做成插件"在体积上只值 `sudachipy` 3.5M，真正的收益是**新增语言时无需重发核心**；若要立刻减小众用户负担，一行改默认值为 `false` 即可，不必等插件系统。
+4. **点词/Sudachi 分词做成插件 —— 本轮唯一要做的项，尚未开工**（Malloy 11:2x 拍板"那就拆分成插件"）。默认值已在本轮改为 `false`（见 11:05 段），所以这条的剩余内容就是**把分词器代码与 `sudachipy` 运行时从核心包里拆成可独立装卸/独立更新的插件**，体积收益 3.5M，真正收益是"加语言不发版"。实现路径见 11:25 澄清段（复用检测器已验证的 `manager + registry + plugin.json + integrity + installed/<id>/<version>` 形态）。
+   - **时间口径注意**：Malloy 说"现在已经是第二天了"，但本机 `date` 实测仍是 **2026-09-23 11:17**（会话从 00:29 起，Malloy 中途睡了一觉，10:12 醒）。原定"09-24 处理"的这件事按对话语义已提前开始，journal 里的日期以本机时间为准。
 
 ## 2026-09-21（AI 结对：Qoder 主写）
 

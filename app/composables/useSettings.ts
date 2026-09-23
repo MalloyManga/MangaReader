@@ -14,7 +14,7 @@ export const useSettings = () => {
         enableTranslation: true, // 启用翻译
         translationModelId: '',
         targetLanguage: 'zh' as 'zh' | 'en',
-        enableTokenization: true, // 启用分词
+        enableTokenization: false, // 分词默认关: 开着就会向纯阅读用户提示下载词典 需要的人在 设置>通用 里开启
         translationApiKey: '', // 翻译APIkey
         // 目前还没有开发该部分功能 后续需要添加防抖
         theme: 'system' as ThemeOption, // 默认为跟随系统
