@@ -135,6 +135,10 @@ export interface IElectronAPI {
         error?: string
     }>
     cancelTextDetection: () => Promise<{ success: boolean, error?: string }>
+    checkTokenizationRuntime: () => Promise<{ success: boolean; installed?: boolean; version?: string; error?: string }>
+    downloadTokenizationRuntime: () => Promise<{ success: boolean; version?: string; error?: string }>
+    deleteTokenizationRuntime: () => Promise<{ success: boolean; error?: string }>
+    onTokenizationRuntimeDownloadProgress: (callback: (percent: number) => void) => () => void
     checkDetectionModule: () => Promise<{
         success: boolean
         installed?: boolean

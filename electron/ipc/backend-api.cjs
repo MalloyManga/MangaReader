@@ -151,6 +151,25 @@ module.exports = function registerBackendApi(ctx) {
         return { success: true }
     }))
 
+    ipcMain.handle('tokenization-runtime:check', withBackend(ctx, async (backend) => {
+        const result = await backend.checkTokenizationRuntime()
+        return {
+            success: true,
+            installed: Boolean(result.installed),
+            version: result.version
+        }
+    }))
+
+    ipcMain.handle('tokenization-runtime:download', withBackend(ctx, async (backend) => {
+        const result = await backend.downloadTokenizationRuntime()
+        return { success: Boolean(result.success), version: result.version }
+    }))
+
+    ipcMain.handle('tokenization-runtime:delete', withBackend(ctx, async (backend) => {
+        await backend.deleteTokenizationRuntime()
+        return { success: true }
+    }))
+
     ipcMain.handle('backend:check-ready', () => {
         const backend = ctx.getBackend()
         return backend ? backend.isReady : false

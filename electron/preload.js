@@ -68,6 +68,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkDictionary: () => ipcRenderer.invoke('dictionary:check'),
     downloadDictionary: () => ipcRenderer.invoke('dictionary:download'),
     deleteDictionary: () => ipcRenderer.invoke('dictionary:delete'),
+    checkTokenizationRuntime: () => ipcRenderer.invoke('tokenization-runtime:check'),
+    downloadTokenizationRuntime: () => ipcRenderer.invoke('tokenization-runtime:download'),
+    deleteTokenizationRuntime: () => ipcRenderer.invoke('tokenization-runtime:delete'),
     checkDetectionModule: () => ipcRenderer.invoke('detection-module:check'),
     downloadDetectionModule: () => ipcRenderer.invoke('detection-module:download'),
     deleteDetectionModule: () => ipcRenderer.invoke('detection-module:delete'),
@@ -92,6 +95,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (_event, percent) => callback(percent)
         ipcRenderer.on('dictionary:download-progress', handler)
         return () => ipcRenderer.removeListener('dictionary:download-progress', handler)
+    },
+    onTokenizationRuntimeDownloadProgress: (callback) => {
+        const handler = (_event, percent) => callback(percent)
+        ipcRenderer.on('tokenization-runtime:download-progress', handler)
+        return () => ipcRenderer.removeListener('tokenization-runtime:download-progress', handler)
     },
     onDetectionModuleDownloadProgress: (callback) => {
         const handler = (_event, data) => callback(data)

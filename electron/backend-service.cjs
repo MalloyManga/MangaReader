@@ -202,6 +202,11 @@ class BackendService extends EventEmitter {
             return
         }
 
+        if (response.type === 'tokenization_progress') {
+            this.emit('tokenization-runtime-progress', response.percent)
+            return
+        }
+
         if (response.type === 'detection_module_download_progress') {
             this.emit('detection-module-download-progress', response)
             return
@@ -351,6 +356,19 @@ class BackendService extends EventEmitter {
 
     async deleteDictionary() {
         return this._sendRequest({ command: 'delete_dictionary' }, 20000)
+    }
+
+    async checkTokenizationRuntime() {
+        return this._sendRequest({ command: 'check_tokenization_runtime' }, 10000)
+    }
+
+    async downloadTokenizationRuntime() {
+        // 插件只有几 MB 但要遍历多个 PyPI 索引兜底
+        return this._sendRequest({ command: 'download_tokenization_runtime' }, 600000)
+    }
+
+    async deleteTokenizationRuntime() {
+        return this._sendRequest({ command: 'delete_tokenization_runtime' }, 20000)
     }
 
     async checkDetectionModule() {
