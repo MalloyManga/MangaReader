@@ -26,7 +26,7 @@
 ### 00:30 前后 — 一次协作事故记录（分支基点搞错 + doc 短暂丢失，已无损恢复）
 
 - **事故**：Malloy 说"当前分支已完成，新建分支来写"，但执行 `git checkout -b` 时 HEAD 实际停在 `main`（`74d15ab`，2026-08-20），于是新分支 `feat/shared-runtime-plugin-architecture` 被从**八月旧代码**切出，缺九月 ja→en 全部工作（`main` 与 `feat/japanese-to-english-adaptation` 相差 75 文件 / +2714 −561）。
-- **连带现象**：`doc/journal.md`、`doc/bugs-and-fixes.md` 从工作树"消失"——`.gitignore:41` 虽写着 `doc/`（"Local design documents (never commit)"），但这两份在九月分支上**仍是被跟踪的**，15:32 切到 `main` 时被 git 删掉了。`git log --diff-filter=D` 查不到删除提交，因为它们只是随 checkout 离开跟踪集。
+- **连带现象**：`doc/journal.md`、`doc/bugs-and-fixes.md` 从工作树"消失"——`.gitignore` 现在是 `doc/*` 加这两份的白名单（`!doc/journal.md`、`!doc/bugs-and-fixes.md`，09-20 那次改的），所以它们在九月分支上**是被跟踪的**；而 `main`（`74d15ab`）上还没有这两条白名单，15:32 切到 `main` 时文件便随 checkout 离开了跟踪集、被 git 删掉。`git log --diff-filter=D` 查不到删除提交，因为这不是删除，只是随分支切换。
 - **恢复**：从 `91aa397:doc/journal.md`、`f97b105:doc/bugs-and-fixes.md` 取回，`git hash-object` 与 `rev-parse` 比对确认与九月分支 blob **逐字节一致**；随后 `git checkout -B feat/shared-runtime-plugin-architecture feat/japanese-to-english-adaptation` 把分支挪回 `998f9f5`，改动以 `/tmp/unidic.patch`（4051B）保存后干净重放，git 顺带原位恢复了两份 doc。本轮所有验证已在**正确基线**上重跑（见上条 4、5）。
 - **我自己的一步失误**：临时移开 doc 副本的命令末尾串了 `rm -rf "$T"`，在 checkout 失败的情况下仍执行，把副本删了；因事先校验过 blob 哈希，实际无损。**教训：清理动作不要和未验证的操作串在一条命令里。**
 - **给未来的自己**：新建分支前先 `git log -1` 确认基点，不要假设"当前就停在你说的那条分支上"。
@@ -66,6 +66,16 @@
 - 体积：后端目录 513M → **509M**（-4M，与 sudachipy 3.5M + 元数据一致），包内确认无 `sudachipy`。
 - **本轮没做到的（选型带来的代价，必须记清）**：插件里只有第三方运行时，**我们自己的适配代码（`tokenizer.py` 的 POS 映射与读音处理）仍在核心包里**——因为选了"不自建文件托管"，我们自己的代码就没有可下载的来源。所以"适配代码可独立更新"这条本轮不成立。
 - **下一步（未完成）**：Electron 侧（`electron/ipc/backend-api.cjs`、`backend-service.cjs`、preload）、设置页插件卡、前端区分两种未就绪提示 + i18n 文案、完整打包复测。
+
+### 13:20–13:36 — 全量核查"文档 == 代码"，修 README 与分词默认值的矛盾
+
+- **核查方式**：拿 journal 11:30 段的每条声明回代码点位比对。全部对得上：`tokenizer.py` 已是 `_load_sudachi()` 延迟加载（不再是模块级 import，否则 PyInstaller 又把它收进包）；`build_backend.spec:33,79` 确实在 excludes 里；`requirements.txt:3` 确实钉了 `manga-ocr==0.1.14`；`useSettings.ts:17` 的 `enableTokenization` 已是 `false`；`electron/` 与前端确实**还没有**分词插件那一层（与本文件第 68 行"下一步未完成"一致）。B 编号 001–013 连续；B-2026-003（vue-tsc 未装）、B-2026-004 遗留（`useModelStatus` fallback 只有 `['zh']`）经核实仍成立；`plugin-platform-vision.md:28/:51` 的旧论断仍在工作树里，属本文件第 72 行**已记录的推迟项**，不是漏记。
+- **修掉的矛盾（README 说反话）**：`README.md:91` 原文「分词：默认开启」、`README.en.md:107` 原文 "on by default" —— 与 11:05 那次改默认值冲突（README 写于 02:30 之前）。两份都改成"默认关闭 + 在 设置 > 通用 开启 + 该页下载 SudachiDict-core 约 207 MB"。措辞依据：`SettingsGeneral.vue:333-364` 确实是词典卡所在页，`general.dictionarySize` 值即"约 207 MB"。
+- **修掉的小瑕疵**：本文件第 29 行原先写"`.gitignore:41` 虽写着 `doc/`"，但 `.gitignore` 现状是 `doc/*` + 两份白名单（09-20 那次加的）。事故结论不变——`main`（`74d15ab`）上没有这两条白名单，所以切过去时文件离开跟踪集——但叙述里的文件状态已改写为准确版本。
+- **发现但按 Malloy 指示未动**：
+  1. `services/requirements.txt:4` 的 `sudachipy` **没有钉版本**，而 `tokenization/manager.py` 里 `VERSION = "0.6.10"` 写死；这正是第 74–76 行为 `manga-ocr` 论证过的同类漂移（本文件第 59 行自己提到"0.6.11 起 wheel 文件名改小写"）。Malloy：他之后处理。
+  2. `app/locales/zh.json` 的 `readerWorkflow.dictionaryRequired` 仍写"需要先在**设置 > 翻译模型**中下载日语分词词典"，而词典控制早已在「设置 > 通用」（`SettingsGeneral.vue`）。属 UI 文案与页面归属不一致，未在本次授权范围内，留作待确认。
+- **改动范围**：`README.md`、`README.en.md` 与本文件。
 
 ### 截至 11:25 仍未了结
 

@@ -104,7 +104,7 @@ Restart the app afterwards. The detection module is not part of this layout — 
 
 ## ⚙️ Other settings
 
-- **Tokenization** — on by default; marks Japanese word boundaries in recognition results.
+- **Tokenization** — **off by default**, so people who only read are never nudged to download a dictionary. Turn it on under **Settings → General**; the first time you do, that same panel offers the SudachiDict-core dictionary (~207 MB). Once enabled, it marks Japanese word boundaries and annotates each word with its reading.
 - **Translation** — off by default until you choose a model.
 - **Reading modes** — study mode (image left, text right), list mode, and an immersive mode that overlays translations on the page.
 - **Global shortcuts** — bind OCR capture plus previous/next page.
