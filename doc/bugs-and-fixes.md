@@ -167,3 +167,12 @@
   **Electron 实机完整 App（真图 + 真 UI）未跑**，验证止于冻结后端进程。
 - **教训**：① 打包脚本里"关键修复：必须收集 X"这类注释只记录了"曾经报错"，没记录"为什么需要它"；追到底层调用点后，两行注释支撑的 249M 就可以被证伪。② 依赖体积的归属要按**实际调用的方法**判断，而不是按"这个对象被构造了"判断——一个只被 `decode()` 用到的 tokenizer 拖着 `encode()` 侧的全部词典。③ 任何"下载回来的模型文件就地改写"的方案都要先问"这个目录在用户机器上可写吗"，把修复放在内存里通常比落在盘上更安全。
 - **时间/commit**：2026-09-23 02:15，本轮改动（`build_backend.spec`、`services/modules/ocr_engine.py`）。
+
+## B-2026-014 检测器下载进度永远不更新：主进程与 preload 用了两个不同的频道名
+
+- **发现时间**：2026-09-23 13:48（给分词插件加进度转发时，拿检测器那一对当模板，逐字比对才发现两侧名字不一致）
+- **现象**：主进程 `electron/main.cjs:224` 发送 `detection-module-download-progress`（连字符），而 `electron/preload.js:98,99` 订阅的是 `detection-module:download-progress`（冒号）。两边字符串不相等，`ipcRenderer.on` 的回调**永远不会被触发**，因此检测器模块下载期间渲染进程收不到任何进度事件。对照：词典那一对（`main.cjs:222` 发 `dictionary:download-progress` / preload 订阅同名）是一致的，所以只有检测器这一条坏。
+- **根因**：项目里转发后端进度事件有两套命名风格（`model:download-progress`、`dictionary:download-progress` 用冒号；`init-error`、`backend:log` 混用），新增检测器通道时发送侧写成了连字符，而监听侧按冒号写，两处各写各的、没有任何编译期或运行时检查能发现拼写不一致。
+- **解决方式**：把发送侧改为 `detection-module:download-progress`，与 preload 及词典通道命名保持一致（`main.cjs:224`）。
+- **验证**：**仅静态验证** —— 改后两侧字符串完全相同（grep 双向确认）。**Electron 实机未跑**：需要真实下载一次检测器模块看进度条是否走动；也没有回溯确认过此前 UI 在该状态下的具体表现（进度停在 0 / 不显示），因为要复现得删掉已装的检测器插件重新下载。
+- **教训**：跨进程字符串频道名没有类型约束，新增一条通道时必须**同时 grep 发送方与监听方**再收工，不能只看一侧写得顺眼；同类问题在 `tokenization-runtime:download-progress` 上我已经这么做了一次（两条一起写，避免再错开）。

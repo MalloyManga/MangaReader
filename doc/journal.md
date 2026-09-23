@@ -77,6 +77,14 @@
   2. `app/locales/zh.json` 的 `readerWorkflow.dictionaryRequired` 仍写"需要先在**设置 > 翻译模型**中下载日语分词词典"，而词典控制早已在「设置 > 通用」（`SettingsGeneral.vue`）。属 UI 文案与页面归属不一致，未在本次授权范围内，留作待确认。
 - **改动范围**：`README.md`、`README.en.md` 与本文件。
 
+### 13:40–13:50 — 回答 Malloy 两问：sudachipy 没钉版本；三条接口只做了后端那一半
+
+- **问 1「sudachipy 在 requirements 里没钉版本，处理了没有？」** —— 当时**没处理**。13:20 那次全量核查已把它记成「发现但按 Malloy 指示未动 · 他之后处理」（本文件第 76 行），所以我没有自作主张动。Malloy 追问后当场收口：`services/requirements.txt` 钉 `sudachipy==0.6.10`，与 venv 实测的 `SudachiPy-0.6.10.dist-info` 一致（**所以不必重装依赖**），并加注释要求它与 `tokenization/manager.py` 的 `VERSION` 同步。commit `49bf56c`。Malloy 这条提得对：我前一小时才为 `manga-ocr` 论证过"没钉版本＝重建 venv 就漂移"，同一个道理却没贯彻到 sudachipy，属于自己没贯彻自己的结论。
+- **问 2「三个接口下一轮的，我们不是都做了吗？」** —— **没有，我把"后端命令"和"Electron 接口"混成一句话说了，容易误读**。分层事实：Python 侧 `dispatch.py` 三条命令在 `43f53c3` 就有了且冻结包实测通过；但 `grep tokenization_runtime electron/ app/` 当时 **0 命中**（13:20 核查第 72 行也独立确认"electron/ 与前端确实还没有那一层"）。本轮补齐 Electron 四层：`backend-service.cjs` 三个请求方法、`ipc/backend-api.cjs` 三个 `ipcMain.handle`、`preload.js` 三个 API + 一个进度监听、`interface.d.ts` 类型，全部 `node --check` 通过 → commit `2170d3f`。
+- **顺手发现并修掉一个既有 bug（B-2026-014）**：`main.cjs:224` 发的频道名是 `detection-module-download-progress`（连字符），`preload.js:98` 订阅的是 `detection-module:download-progress`（冒号），**两侧对不上，检测器的下载进度事件从来到不了渲染进程**；词典那一对是一致的，所以只有检测器坏。改发送侧对齐 → commit `31f6df9`。**只做了静态验证（两侧字符串现已相同），实机未跑**：要复现得删掉已装检测器插件重新下载，还没做。
+- **仍未做**：设置页的分词插件卡（含未装/下载中带进度/已装/删除四态）、`useTokenizationRuntimeStatus` composable、`TokenizedWords.vue` 区分 `TOKENIZER_RUNTIME_NOT_INSTALLED` 与 `DICTIONARY_NOT_FOUND` 两种提示、i18n 中英文案、`npm run build:win` 复测体积。
+- **另一条待你确认的文案 bug**（13:20 核查第 77 行记录的）：`app/locales/zh.json` 的 `readerWorkflow.dictionaryRequired` 写「需要先在**设置 > 翻译模型**中下载日语分词词典」，但词典卡其实在「设置 > 通用」。我下一步做分词插件卡时正好要碰这块文案，**要不要一起改**？
+
 ### 截至 11:25 仍未了结
 
 1. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。（10:55 Malloy 定：推迟，等真正启动第三种语言时再处理——插件化的收益本来就是"加语言不发版"，不是省体积。）** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
