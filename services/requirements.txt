@@ -1,6 +1,6 @@
 pillow>=10.0.0
 numpy==1.26.4
-manga-ocr
+manga-ocr==0.1.14
 sudachipy
 sudachidict_core
 huggingface_hub>=0.10.0

@@ -35,10 +35,16 @@
 
 1. **`npm run build:win` 已跑（02:22 启动，10:11 出产物，Malloy 批准后）**：`MangaReader Setup 1.5.2.exe` = **241.1 MiB**，对比上一个已发布构建 `1.5.1` 的 270.8 MiB，**净 -29.6 MiB**；同次构建的 `MangaReader-1.5.2-win.zip` 314.1 MiB vs `1.5.1` 358.1 MiB（-44.0 MiB，zip 压缩率低于 NSIS，故两个口径差属正常）。注意口径：`1.5.1` 是 7-30 从更早代码构建的，**不是同基线对照**，所以这 -29.6 MiB 里混着九月其他改动的加减；同基线的后端目录对照才是纯净的（763M → 513M，-250M，其中 unidic 249M）。产物已落在 `dist_electron/`，Electron 实机由 Malloy 自测。
 2. ~~`dist/backend.bak-unidic`（763M）~~ **已删（02:22，Malloy 批准）**。
-3. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
+3. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。（10:55 Malloy 定：推迟，等真正启动第三种语言时再处理——插件化的收益本来就是"加语言不发版"，不是省体积。）** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
 4. **英文分支仍未审查、未合并**，因此本分支的两个提交（`d0f75b6`、`b33a714`）是悬在未合并基点上的；合并顺序由 Malloy 定。
-5. **`basic_word_tokenizer()` 与 `manga_ocr/ocr.py:18` 的调用点耦合，且无回归测试。** 若上游改为不经 `AutoTokenizer.from_pretrained` 构造 tokenizer，配合 spec 的 `excludes` 会让 OCR 初始化直接 `ImportError`（失败是响亮的、不会静默出错字），但升级 `manga_ocr` 时必须重跑一次 OCR 冒烟。
-6. **点词/Sudachi 分词做成插件** —— Malloy 定 2026-09-24 处理。**10:08 更正后的实际缺口**（比原判断小得多）：功能已按需构造、已被 `enableTokenization` 设置项门控、词典已按需下载，剩下的只是 `useSettings.ts:17` 默认值为 `true`。所以"做成插件"在体积上只值 `sudachipy` 3.5M，真正的收益是**新增语言时无需重发核心**；若要立刻减小众用户负担，一行改默认值为 `false` 即可，不必等插件系统。
+5. **`basic_word_tokenizer()` 与 `manga_ocr/ocr.py:18` 的调用点耦合 —— 已按 Malloy 定的"低成本方案"收口（10:55）**：把 `services/requirements.txt:3` 的 `manga-ocr` 钉成 `==0.1.14`（与当前 venv 实测版本一致）。
+   - **为什么这条是必要的而不是"等上游哪天改"**：`requirements.txt` 原本没有版本约束，所以**重建 venv（换机器、重装依赖）本身就会拿到当时的最新版**，不需要任何人主动升级。钉住之后，升级才变成一次有意识的动作。
+   - **依赖来源已核实**（`manga_ocr-0.1.14.dist-info/METADATA` 的 `Requires-Dist`）：`manga-ocr` 自己就把 `fugashi`、`unidic_lite`、`torch>=1.0`、`transformers>=4.25.0` 声明为依赖 —— 这正是当年 spec 里那句"BertJapaneseTokenizer 必须"的出处。`requirements.txt` 也确实没有单独声明 torch/transformers，它们全靠这一层传递。
+   - **钉版本没有解决的部分**：`torch>=1.0` 与 `transformers>=4.25.0` 是开区间，钉住 `manga-ocr` 只固定了它的传递集成员，不固定这两个的实际解析结果。
+   - **配套纪律**：升 `manga-ocr` 时必须重跑一次 OCR 冒烟（判据：后端日志出现 `MangaOCR Initialized Successfully`；若变成 `No module named 'fugashi'` 即说明上游不再经 `AutoTokenizer.from_pretrained` 构造分词器，`basic_word_tokenizer()` 失效）。失败模式是响亮的，不会静默出错字。
+   - **不做的事**：不 vendor 那 70 行（`basic_word_tokenizer()` 已经是"二次封装"，没有动第三方源码；venv 被 gitignore，改源码会被下次重装抹掉）；不为本条新建 pytest 基建（`doc/unit-testing-strategy.md` 明确测试落地时机是"第一个新功能通道加入时"，届时可把 OCR 冒烟列为首批用例）。
+   - **顺带发现的更大可复现性缺口（未处理，留给 Malloy 审查时定）**：`requirements.txt` 里**没有显式声明 `torch` / `transformers` / `sentencepiece` / `tokenizers`**，它们靠 `manga-ocr` 的开区间传递依赖解析进来，打包用的 torch 版本会在不同机器上漂移——影响面比 manga_ocr 那 70 行大得多。
+6. **点词/Sudachi 分词做成插件** —— Malloy 10:55 确认**可以做**，定 2026-09-24 处理。**10:08 更正后的实际缺口**（比原判断小得多）：功能已按需构造、已被 `enableTokenization` 设置项门控、词典已按需下载，剩下的只是 `useSettings.ts:17` 默认值为 `true`。所以"做成插件"在体积上只值 `sudachipy` 3.5M，真正的收益是**新增语言时无需重发核心**；若要立刻减小众用户负担，一行改默认值为 `false` 即可，不必等插件系统。
 
 ## 2026-09-21（AI 结对：Qoder 主写）
 
