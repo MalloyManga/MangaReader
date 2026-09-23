@@ -15,9 +15,16 @@ def handle_recognize(session, request):
 def handle_tokenize(session, request):
     text = request.get("text", "")
     log_message(f"Processing tokenize request for: {repr(text)}")
+    if not session.tokenization_manager.is_installed():
+        raise Exception("TOKENIZER_RUNTIME_NOT_INSTALLED")
     if not session.dictionary_manager.check_exists():
         raise Exception("DICTIONARY_NOT_FOUND")
     if session.tokenizer is None:
-        session.tokenizer = JapaneseTokenizer(session.dictionary_manager.dictionary_path)
+        session.tokenizer = JapaneseTokenizer(
+            session.dictionary_manager.dictionary_path,
+            session.tokenization_manager.sys_path_entry,
+        )
+    if session.tokenizer.tokenizer is None:
+        raise Exception(f"TOKENIZER_INIT_FAILED: {getattr(session.tokenizer, 'init_error', '')}")
     tokens = session.tokenizer.tokenize(text)
     return {"success": True, "tokens": tokens}

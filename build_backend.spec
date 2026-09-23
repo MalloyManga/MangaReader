@@ -29,6 +29,8 @@ excludes = [
     'torchvision',
     'sudachidict_core',
     'sudachidict_core.resources',
+    # 分词运行时改由 tokenization 插件按需装到用户目录
+    'sudachipy',
     # OCR 的 BertJapaneseTokenizer 已在加载前改为 basic 分词, 不需要 MeCab 词典
     'fugashi',
     'unidic_lite',
@@ -74,6 +76,7 @@ def filter_dict_artifacts(entries):
     excluded_tokens = (
         'sudachidict_core',
         'sudachidict-core',
+        'sudachipy',
         'unidic_lite',
         'unidic-lite',
         'fugashi',
@@ -122,13 +125,8 @@ if libiomp_path and os.path.exists(libiomp_path):
 else:
     print("WARNING: libiomp5md.dll not found in site-packages!")
 
-# 收集所有必要的库 (防止漏掉)
-tmp_ret = collect_all('sudachipy')
-datas += filter_dict_artifacts(tmp_ret[0])
-binaries += filter_dict_artifacts(tmp_ret[1])
-hiddenimports += filter_hiddenimports(tmp_ret[2])
+# sudachipy 与 SudachiDict-core 都不打包: 前者装成 tokenization 插件 后者按需下载
 
-# SudachiDict-core is downloaded on demand into models/dictionary/sudachi.
 # Do not bundle sudachidict_core/resources/system.dic in the packaged backend.
 
 tmp_ret = collect_all('manga_ocr')

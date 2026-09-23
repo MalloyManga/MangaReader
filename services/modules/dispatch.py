@@ -47,6 +47,14 @@ def dispatch(session, request):
         case "detect_text_regions":
             handler = handlers_detection.handle_detect_text_regions
 
+        # 分词运行时插件
+        case "check_tokenization_runtime":
+            handler = handlers_misc.handle_check_tokenization_runtime
+        case "download_tokenization_runtime":
+            handler = handlers_misc.handle_download_tokenization_runtime
+        case "delete_tokenization_runtime":
+            handler = handlers_misc.handle_delete_tokenization_runtime
+
         # 词典
         case "check_dictionary":
             handler = handlers_misc.handle_check_dictionary

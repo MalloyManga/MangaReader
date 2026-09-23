@@ -51,6 +51,22 @@
 
 
 
+### 11:30–12:05 — Sudachi 分词插件化：后端层完成（Malloy 拍板：下载源走 PyPI，不自建托管）
+
+- **岔路决定**：插件代码文件从 **PyPI 官方 wheel** 拉，不搭自己的发布资产。Malloy 的理由是要长期维护就得背负担；而且检测器插件已经是这个做法（`text_detection/manager.py:49,61` 从 `files.pythonhosted.org` 拉 opencv/torchvision 固定 wheel，`mirrors.aliyun.com` 兜底）。
+- **协议核查**（Malloy 主动问到再分发是否允许）：SudachiPy 0.6.10 与 SudachiDict-core 均为 **Apache-2.0**（读本地 `*.dist-info/METADATA` 的 `License:` 字段），允许原样再分发，条件是带上 LICENSE 与版权声明；我们不改其代码，只解包。另外确认 **sudachipy 没有任何运行时依赖**（METADATA 里只有 test extras），所以插件包就是"一个 wheel 解出 `sudachipy/` 目录"。
+- **先做 spike 证明前提**：故意打一个不含 sudachipy 的冻结程序，让它从外部目录 import 并分词 → `frozen=True`、来源为外部 `__init__.py`、6 个 token 与 venv 基线逐字段一致。意义是：先证明"搬出去还能用"，再动手搬。
+- **新增 `services/modules/tokenization/manager.py`**（`SudachiRuntimeManager`）：遍历 6 个 PyPI 索引找 `SudachiPy-0.6.10-cp312-cp312-win_amd64.whl` → 下载（带进度）→ **代码里钉死的 sha256 校验**（索引本身也给 `#sha256=`，但钉在代码里才不会被镜像或索引骗到）→ 只解 `sudachipy/` 前缀成员并防 zip slip → 写 `plugin.json` + `integrity.json`（逐文件 sha256）→ 装到 `<modules_root>/tokenization/installed/0.6.10/`。版本钉 0.6.10 与 venv 实测一致；wheel 文件名是大写 `SudachiPy-`（0.6.11 起才改小写），比较时两边都转小写所以不受影响。
+- **`tokenizer.py` 去掉模块级 `from sudachipy import ...`**：那是关键坑——模块级 import 会让 PyInstaller 又把 sudachipy 收进包里，排除个寂寞。改成 `_load_sudachi(runtime_path)` 延迟加载并缓存。
+- **踩到并修掉一个真 bug**：把**包目录本身**插进 `sys.path` 时，包里的 `sudachipy.cp312-win_amd64.pyd` 会被当作顶层模块 `sudachipy` import 到，反而盖掉真正的包，报 `cannot import name 'dictionary'`。必须插**上一层**（安装根目录），已固化成 `sys_path_entry` 属性并留注释。
+- **未就绪拆成两种状态**：`handle_tokenize` 先查插件（`TOKENIZER_RUNTIME_NOT_INSTALLED`）再查词典（`DICTIONARY_NOT_FOUND`）。顺带修掉一个顺序 bug：`handle_download_dictionary` 原本下载完词典就立刻构造分词器，而现在词典可以先于插件下载，已改成只失效缓存、交给 tokenize 按需重建。
+- 新命令：`check/download/delete_tokenization_runtime`（`dispatch.py` + `handlers_misc.py`）。
+- 打包：`build_backend.spec` 把 `sudachipy` 加进 `excludes` 与 `filter_dict_artifacts`，删掉 `collect_all('sudachipy')`。
+- **验证（全部打在冻结 `dist/backend/backend.exe` 上，`--modules-root` 指临时目录）**：① 包里没有 sudachipy 时启动正常、`ping` 通（OCR 主链路没被牵连）；② 未装插件时 tokenize 干净返回 `TOKENIZER_RUNTIME_NOT_INSTALLED`，进程不死；③ `download_tokenization_runtime` 从 PyPI 真实下载、sha256 校验通过、安装成功；④ `check` 返回 installed true；⑤ tokenize 得 `今日/は/いい/天気/です/ね` 含读音与词性，与改造前一致。
+- 体积：后端目录 513M → **509M**（-4M，与 sudachipy 3.5M + 元数据一致），包内确认无 `sudachipy`。
+- **本轮没做到的（选型带来的代价，必须记清）**：插件里只有第三方运行时，**我们自己的适配代码（`tokenizer.py` 的 POS 映射与读音处理）仍在核心包里**——因为选了"不自建文件托管"，我们自己的代码就没有可下载的来源。所以"适配代码可独立更新"这条本轮不成立。
+- **下一步（未完成）**：Electron 侧（`electron/ipc/backend-api.cjs`、`backend-service.cjs`、preload）、设置页插件卡、前端区分两种未就绪提示 + i18n 文案、完整打包复测。
+
 ### 截至 11:25 仍未了结
 
 1. **架构讨论的结论尚未回写 `doc/plugin-platform-vision.md`。（10:55 Malloy 定：推迟，等真正启动第三种语言时再处理——插件化的收益本来就是"加语言不发版"，不是省体积。）** 该文档 `:28` 把"模型适配代码 + 模型文件"视为一个插件下载单位，`:51` 说"不应为其复制一整套运行代码"，但按本轮实测需要修正为三层：核心 / **共享 runtime** / 插件（适配声明 + 权重）。同时要记下两条结论与两个未解难点：共享 runtime **只避免重复、不减少首次下载量**（torch 302M 用到就得付）；未解难点是 runtime 变体（CPU/CUDA 自动选择与回退）与插件对 runtime 的兼容区间表达。方向本身仍成立，但价值在"能自由加新语言"，不在安装包体积。
@@ -62,7 +78,7 @@
    - **配套纪律**：升 `manga-ocr` 时必须重跑一次 OCR 冒烟（判据：后端日志出现 `MangaOCR Initialized Successfully`；若变成 `No module named 'fugashi'` 即说明上游不再经 `AutoTokenizer.from_pretrained` 构造分词器，`basic_word_tokenizer()` 失效）。失败模式是响亮的，不会静默出错字。
    - **不做的事**：不 vendor 那 70 行（`basic_word_tokenizer()` 已经是"二次封装"，没有动第三方源码；venv 被 gitignore，改源码会被下次重装抹掉）；不为本条新建 pytest 基建（`doc/unit-testing-strategy.md` 明确测试落地时机是"第一个新功能通道加入时"，届时可把 OCR 冒烟列为首批用例）。
    - **顺带发现的更大可复现性缺口（未处理，留给 Malloy 审查时定）**：`requirements.txt` 里**没有显式声明 `torch` / `transformers` / `sentencepiece` / `tokenizers`**，它们靠 `manga-ocr` 的开区间传递依赖解析进来，打包用的 torch 版本会在不同机器上漂移——影响面比 manga_ocr 那 70 行大得多。
-4. **点词/Sudachi 分词做成插件 —— 本轮唯一要做的项，尚未开工**（Malloy 11:2x 拍板"那就拆分成插件"）。默认值已在本轮改为 `false`（见 11:05 段），所以这条的剩余内容就是**把分词器代码与 `sudachipy` 运行时从核心包里拆成可独立装卸/独立更新的插件**，体积收益 3.5M，真正收益是"加语言不发版"。实现路径见 11:25 澄清段（复用检测器已验证的 `manager + registry + plugin.json + integrity + installed/<id>/<version>` 形态）。
+4. **点词/Sudachi 分词做成插件 —— 进行中：后端层已完成并冻结验证（见 11:30–12:05 段），剩 Electron IPC、设置页插件卡、两种未就绪状态的前端提示与 i18n、完整打包复测**（Malloy 11:2x 拍板"那就拆分成插件"）。默认值已改为 `false`（见 11:05 段）。体积收益实测 4M（513M→509M），真正收益仍是"加语言不发版"。
    - **时间口径注意**：Malloy 说"现在已经是第二天了"，但本机 `date` 实测仍是 **2026-09-23 11:17**（会话从 00:29 起，Malloy 中途睡了一觉，10:12 醒）。原定"09-24 处理"的这件事按对话语义已提前开始，journal 里的日期以本机时间为准。
 
 ## 2026-09-21（AI 结对：Qoder 主写）

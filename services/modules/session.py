@@ -30,6 +30,7 @@ class Session:
 
         self.ocr = None # ocr 模型引擎
         self.dictionary_manager = None
+        self.tokenization_manager = None
         self.tokenizer = None
         self.detection_manager = None
         self.detection_registry = None
@@ -104,9 +105,11 @@ def init_session(args, models_root, modules_root):
         sys.exit(1)
 
     from .sudachi_dictionary import SudachiDictionaryManager
+    from .tokenization.manager import SudachiRuntimeManager
     from .workers import DetectionWorkerClient
 
     session.dictionary_manager = SudachiDictionaryManager(session.dictionary_root)
+    session.tokenization_manager = SudachiRuntimeManager(modules_root)
     session.detection_manager = DetectionModuleManager(modules_root)
     session.detection_registry = DetectionWorkerClient(modules_root)
     atexit.register(session.detection_registry.unload)
