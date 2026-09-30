@@ -4,17 +4,24 @@
 # handler 统一签名 handle_xxx(session, request) -> dict
 # handler 只返回结果 dict 不含 id 由这里统一补 req_id 并处理异常
 # 这样一条坏请求只会得到 success False 的响应 不会杀死消息循环
+from collections.abc import Callable
+from typing import Any
+
 from . import handlers_book
 from . import handlers_detection
 from . import handlers_misc
 from . import handlers_ocr
 from . import handlers_translate
+from .session import Session
 from .utils import log_message
 
+Handler = Callable[[Session, dict[str, Any]], dict[str, Any]]
 
-def dispatch(session, request):
+
+def dispatch(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     req_id = request.get("id")
     command = request.get("command")
+    handler: Handler
 
     match command:
         # 阅读主链路

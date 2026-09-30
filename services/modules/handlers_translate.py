@@ -1,7 +1,9 @@
 # services/modules/handlers_translate.py
 # 翻译与模型生命周期 handler
 import traceback
+from typing import Any
 
+from .session import Session
 from .translator import (
     DEFAULT_TRANSLATOR_ID,
     get_default_translator_id_for_language,
@@ -13,7 +15,7 @@ from .utils import log_message
 from .workers import should_translate_in_worker, translate_in_worker
 
 
-def handle_translate(session, request):
+def handle_translate(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     text = request.get("text", "")
     model_id = request.get("model_id") or request.get("modelId")
     selected_model_id = normalize_translator_id(model_id)
@@ -72,7 +74,7 @@ def handle_translate(session, request):
         raise
 
 
-def handle_list_translation_models(session, request):
+def handle_list_translation_models(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     target_language = request.get("target_language") or request.get("targetLanguage") or "zh"
     models = list_translator_models_by_language(target_language)
     return {
@@ -84,7 +86,7 @@ def handle_list_translation_models(session, request):
     }
 
 
-def handle_check_model(session, request):
+def handle_check_model(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     model_id = request.get("model_id") or request.get("modelId")
     selected_model_id, selected_translator = session.get_or_create_translator(model_id)
     exists = selected_translator.check_model_exists()
@@ -95,7 +97,7 @@ def handle_check_model(session, request):
     }
 
 
-def handle_download_model(session, request):
+def handle_download_model(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     model_id = request.get("model_id") or request.get("modelId")
     selected_model_id, selected_translator = session.get_or_create_translator(model_id)
     selected_translator.download_model()
@@ -108,7 +110,7 @@ def handle_download_model(session, request):
     }
 
 
-def handle_delete_model(session, request):
+def handle_delete_model(session: Session, request: dict[str, Any]) -> dict[str, Any]:
     model_id = request.get("model_id") or request.get("modelId")
     selected_model_id, selected_translator = session.get_or_create_translator(model_id)
     success = selected_translator.delete_model()

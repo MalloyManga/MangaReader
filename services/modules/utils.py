@@ -3,15 +3,18 @@ import sys
 import json
 import os
 import contextlib
+from collections.abc import Iterator
+from typing import Any
+
 import tqdm
 
 
-def log_message(message):
+def log_message(message: str) -> None:
     """输出日志到 stderr (Electron console 会显示)"""
     print(f"[Backend Service] {message}", file=sys.stderr, flush=True)
 
 
-def send_response(response):
+def send_response(response: dict[str, Any]) -> None:
     """发送 JSON 响应到 stdout (Electron 通过 stdio 接收)"""
     try:
         # ensure_ascii=True 是最安全的做法 它会将非 ASCII 字符转义为 \uXXXX
@@ -33,7 +36,7 @@ _original_init = tqdm.tqdm.__init__
 _original_update = tqdm.tqdm.update
 
 # Global config for the current patch session
-_tqdm_config = {
+_tqdm_config: dict[str, Any] = {
     "type": "progress",
     "msg_key": "message",
     "msg_value": "Loading...",
@@ -41,7 +44,7 @@ _tqdm_config = {
 }
 
 
-def _patched_init(self, *args, **kwargs):
+def _patched_init(self, *args: Any, **kwargs: Any) -> None:
     # 1. 强制开启进度条
     kwargs["disable"] = False
     # 2. 将原始的视觉进度条重定向到空设备 (devnull)
@@ -51,7 +54,7 @@ def _patched_init(self, *args, **kwargs):
     self.last_percent = -1
 
 
-def _patched_update(self, n=1):
+def _patched_update(self, n: int | None = 1) -> None:
     # 调用原始 update 更新内部计数器
     _original_update(self, n)
 
@@ -76,11 +79,11 @@ def _patched_update(self, n=1):
 
 @contextlib.contextmanager
 def patch_tqdm(
-    msg_type="progress",
-    msg_key="message",
-    default_msg="Loading...",
-    extra_fields=None,
-):
+    msg_type: str = "progress",
+    msg_key: str = "message",
+    default_msg: str = "Loading...",
+    extra_fields: dict[str, Any] | None = None,
+) -> Iterator[None]:
     """
     上下文管理器: 在代码块执行期间 替换 tqdm 的行为以输出 JSON 格式进度
     """
@@ -91,7 +94,8 @@ def patch_tqdm(
     _tqdm_config["extra_fields"] = extra_fields or {}
 
     tqdm.tqdm.__init__ = _patched_init
-    tqdm.tqdm.update = _patched_update
+    # 运行时 monkey-patch 第三方方法 签名与 typeshed 无法逐字对齐 逐行豁免
+    tqdm.tqdm.update = _patched_update  # pyright: ignore[reportAttributeAccessIssue]
     try:
         yield
     finally:

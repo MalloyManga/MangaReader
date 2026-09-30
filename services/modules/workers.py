@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from typing import Any
 
 from .openmp import preload_openmp_for_ocr
 from .text_detection import DetectionModuleManager, TextDetectorRegistry
@@ -25,7 +26,7 @@ _ENTRY_SCRIPT = os.path.join(
 )
 
 
-def run_translate_worker_mode(models_root):
+def run_translate_worker_mode(models_root: str) -> int:
     """一次性 worker 进程翻译器"""
     try:
         encoded = sys.stdin.readline().strip()
@@ -63,13 +64,13 @@ def run_translate_worker_mode(models_root):
         return 1
 
 
-def run_detection_worker_mode(modules_root):
+def run_detection_worker_mode(modules_root: str) -> int:
     """文本检测常驻 worker 进程"""
     manager = DetectionModuleManager(modules_root)
     registry = TextDetectorRegistry(manager)
     try:
         for line in sys.stdin:
-            request = {}
+            request: dict[str, Any] = {}
             try:
                 request = json.loads(line)
                 worker_id = request.get("worker_id")
@@ -106,18 +107,18 @@ def run_detection_worker_mode(modules_root):
 class DetectionWorkerClient:
     """自动检测的 worker 进程类"""
 
-    def __init__(self, modules_root):
+    def __init__(self, modules_root: str) -> None:
         self.modules_root = modules_root
-        self.process = None
-        self.next_request_id = 1
+        self.process: subprocess.Popen[str] | None = None
+        self.next_request_id: int = 1
 
-    def load(self):
+    def load(self) -> str:
         return self._request("load").get("version", "")
 
-    def detect_base64(self, image_base64):
+    def detect_base64(self, image_base64: str) -> list[Any]:
         return self._request("detect", image=image_base64).get("regions", [])
 
-    def unload(self):
+    def unload(self) -> None:
         process = self.process
         self.process = None
         if process is None:
@@ -125,6 +126,7 @@ class DetectionWorkerClient:
         try:
             if process.poll() is None:
                 request = {"worker_id": self.next_request_id, "action": "shutdown"}
+                assert process.stdin is not None
                 process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
                 process.stdin.flush()
                 process.wait(timeout=10)
@@ -136,7 +138,7 @@ class DetectionWorkerClient:
                 if stream:
                     stream.close()
 
-    def _start(self):
+    def _start(self) -> None:
         if self.process is not None and self.process.poll() is None:
             return
         command = [sys.executable]
@@ -158,16 +160,19 @@ class DetectionWorkerClient:
             ),
         )
 
-    def _request(self, action, **payload):
+    def _request(self, action: str, **payload: Any) -> dict[str, Any]:
         self._start()
         worker_id = self.next_request_id
         self.next_request_id += 1
         request = {"worker_id": worker_id, "action": action, **payload}
         try:
-            self.process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
-            self.process.stdin.flush()
+            process = self.process
+            assert process is not None
+            assert process.stdin is not None and process.stdout is not None
+            process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+            process.stdin.flush()
             while True:
-                line = self.process.stdout.readline()
+                line = process.stdout.readline()
                 if not line:
                     raise RuntimeError("DETECTION_WORKER_STOPPED")  # 没有响应 关闭进程
                 try:
@@ -186,7 +191,9 @@ class DetectionWorkerClient:
             raise
 
 
-def translate_in_worker(models_root, model_id, text, timeout=600):
+def translate_in_worker(
+    models_root: str, model_id: str, text: str, timeout: float = 600
+) -> tuple[str, Any]:
     """针对某一些模型 在独立的 worker 进程当中进行翻译"""
     payload = {"model_id": model_id, "text": text}
     encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
@@ -234,7 +241,7 @@ def translate_in_worker(models_root, model_id, text, timeout=600):
     return response.get("translation", ""), response.get("model_id") or model_id
 
 
-def should_translate_in_worker(model_id):
+def should_translate_in_worker(model_id: str) -> bool:
     if os.environ.get("MANGAREADER_TRANSLATE_WORKER") != "1":
         return False
     return getattr(sys, "frozen", False) and requires_translate_worker(model_id)

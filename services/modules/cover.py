@@ -11,11 +11,11 @@ from PIL import Image
 from .utils import log_message
 
 
-def atoi(text):
+def atoi(text: str) -> int | str:
     return int(text) if text.isdigit() else text
 
 
-def natural_keys(text):
+def natural_keys(text: str) -> list[int | str]:
     """
     alist.sort(key=natural_keys) sorts in human order
     http://nedbatchelder.com/blog/200712/human_sorting.html
@@ -23,7 +23,7 @@ def natural_keys(text):
     return [atoi(c) for c in re.split(r"(\d+)", text.lower())]
 
 
-def resize_image(img_data, max_height=300):
+def resize_image(img_data: bytes, max_height: int = 300) -> str | None:
     try:
         image = Image.open(io.BytesIO(img_data))
 
@@ -48,7 +48,7 @@ def resize_image(img_data, max_height=300):
         return None
 
 
-def extract_cover_image(path):
+def extract_cover_image(path: str) -> str | None:
     """
     Extracts the first image from a folder or ZIP file and returns it as a Base64 string.
     Uses natural sorting to ensure '1.jpg' comes before '10.jpg'.

@@ -1,12 +1,13 @@
 # services/modules/tokenizer.py
 import sys
+from typing import Any, ClassVar
 
 from .utils import log_message
 
-_cached_sudachi = None
+_cached_sudachi: Any = None
 
 
-def _load_sudachi(runtime_path):
+def _load_sudachi(runtime_path: str | None) -> Any:
     """sudachipy 不在核心包内 从插件安装目录动态加载."""
     global _cached_sudachi
     if _cached_sudachi:
@@ -21,7 +22,7 @@ def _load_sudachi(runtime_path):
 
 class JapaneseTokenizer:
     # 静态配置: 词性映射
-    POS_MAPPING = {
+    POS_MAPPING: ClassVar[dict[str, str]] = {
         "名詞": "noun",
         "代名詞": "noun",
         "動詞": "verb",
@@ -36,8 +37,10 @@ class JapaneseTokenizer:
         "記号": "other",
     }
 
-    def __init__(self, dict_path=None, runtime_path=None):
-        self.tokenizer = None
+    def __init__(self, dict_path: str | None = None, runtime_path: str | None = None) -> None:
+        self.tokenizer: Any = None
+        self.mode: Any = None
+        self.init_error: str
         try:
             log_message("Initializing Sudachi Tokenizer...")
             dictionary, SplitMode = _load_sudachi(runtime_path)
@@ -50,7 +53,7 @@ class JapaneseTokenizer:
             self.tokenizer = None
             self.init_error = str(e)
 
-    def _katakana_to_hiragana(self, text):
+    def _katakana_to_hiragana(self, text: str) -> str:
         """
         辅助函数: 将片假名转换为平假名
         利用 Unicode 偏移量: 片假名 = 平假名 + 0x60
@@ -65,9 +68,9 @@ class JapaneseTokenizer:
                 result.append(char)
         return "".join(result)
 
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> list[dict[str, Any]]:
         if not self.tokenizer:
-            raise Exception(f"Tokenizer not ready")
+            raise Exception("Tokenizer not ready")
 
         # 调试日志: 打印输入文本的 repr 查看是否有乱码
         log_message(f"Tokenizing text: {repr(text)}")

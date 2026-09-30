@@ -6,16 +6,17 @@ import urllib.parse
 import urllib.request
 import zipfile
 from html.parser import HTMLParser
+from typing import Any
 
 from .utils import log_message, send_response
 
 
 class _SimpleIndexParser(HTMLParser):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.links = []
+        self.links: list[str] = []
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag != "a":
             return
         for key, value in attrs:
@@ -37,12 +38,12 @@ class SudachiDictionaryManager:
         "https://pypi.org/simple/",
     ]
 
-    def __init__(self, dictionary_dir):
+    def __init__(self, dictionary_dir: str) -> None:
         self.dictionary_dir = dictionary_dir
         self.dictionary_path = os.path.join(dictionary_dir, "system.dic")
         self.manifest_path = os.path.join(dictionary_dir, "manifest.json")
 
-    def check_exists(self):
+    def check_exists(self) -> bool:
         if not os.path.exists(self.dictionary_path):
             return False
         try:
@@ -50,13 +51,13 @@ class SudachiDictionaryManager:
         except OSError:
             return False
 
-    def delete(self):
+    def delete(self) -> bool:
         if os.path.exists(self.dictionary_dir):
             shutil.rmtree(self.dictionary_dir)
             return True
         return False
 
-    def download(self):
+    def download(self) -> bool:
         os.makedirs(self.dictionary_dir, exist_ok=True)
         wheel_url = self._find_wheel_url()
         log_message(f"[INFO] Downloading Sudachi dictionary from: {wheel_url}")
@@ -79,8 +80,8 @@ class SudachiDictionaryManager:
         )
         return True
 
-    def _find_wheel_url(self):
-        last_error = None
+    def _find_wheel_url(self) -> str:
+        last_error: Exception | None = None
         for base_url in self.SIMPLE_INDEXES:
             index_url = urllib.parse.urljoin(base_url, "sudachidict-core/")
             try:
@@ -107,7 +108,7 @@ class SudachiDictionaryManager:
 
         raise Exception(f"DICTIONARY_DOWNLOAD_SOURCE_UNAVAILABLE: {last_error}")
 
-    def _download_file(self, url, target_path):
+    def _download_file(self, url: str, target_path: str) -> None:
         request = urllib.request.Request(
             url,
             headers={"User-Agent": "MangaReader/1.3 SudachiDictionaryDownloader"},
@@ -137,7 +138,7 @@ class SudachiDictionaryManager:
                                 }
                             )
 
-    def _extract_dictionary(self, wheel_path):
+    def _extract_dictionary(self, wheel_path: str) -> None:
         tmp_dictionary_path = self.dictionary_path + ".tmp"
         if os.path.exists(tmp_dictionary_path):
             os.remove(tmp_dictionary_path)
@@ -150,8 +151,8 @@ class SudachiDictionaryManager:
 
         os.replace(tmp_dictionary_path, self.dictionary_path)
 
-    def _write_manifest(self, source_url):
-        manifest = {
+    def _write_manifest(self, source_url: str) -> None:
+        manifest: dict[str, Any] = {
             "name": "SudachiDict-core",
             "version": self.VERSION,
             "source": source_url,

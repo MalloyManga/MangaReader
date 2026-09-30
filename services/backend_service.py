@@ -14,6 +14,8 @@ import io
 import json
 import os
 import sys
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 # 解决 OpenMP 冲突
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -23,8 +25,8 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 # 解决 Windows 编码
 try:
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    cast(io.TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8")
+    cast(io.TextIOWrapper, sys.stderr).reconfigure(encoding="utf-8")
 except AttributeError:
     sys.stdout = io.TextIOWrapper(
         sys.stdout.buffer, encoding="utf-8", line_buffering=True
@@ -37,8 +39,11 @@ except AttributeError:
 # worker 模式分流不需要主循环的重量级依赖 (handlers 链会拖入 sudachipy 等)
 from modules.utils import log_message, send_response
 
+if TYPE_CHECKING:
+    from modules.session import Session
 
-def resolve_models_root(args):
+
+def resolve_models_root(args: argparse.Namespace) -> str:
     """获取模型目录"""
     # 修复 如果未提供 --model-dir 则使用默认路径 (防止 NoneType 错误)
     if args.models_root:
@@ -53,7 +58,7 @@ def resolve_models_root(args):
     return os.path.join(os.getcwd(), "models")
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """声明启动参数给js主进程 同时接收主进程传递的参数值并返回"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=str, help="Path to OCR model")
@@ -70,7 +75,7 @@ def parse_args():
     return args
 
 
-def decode_request(line):
+def decode_request(line: str) -> dict[str, Any] | None:
     # 请求载荷格式: JSON 序列化 -> UTF-8 编码 -> Base64
     # 兼容旧调用方的裸 JSON(不经 Base64)
     try:
@@ -86,7 +91,9 @@ def decode_request(line):
             return None
 
 
-def run_message_loop(session, dispatch):
+def run_message_loop(
+    session: "Session", dispatch: "Callable[[Session, dict[str, Any]], dict[str, Any]]"
+) -> None:
     for line in sys.stdin:
         try:
             line = line.strip()
@@ -106,7 +113,7 @@ def run_message_loop(session, dispatch):
             log_message(f"Critical Loop Error: {e}")
 
 
-def main():
+def main() -> None:
     log_message("Starting Backend Service")
 
     send_response({"type": "init_status", "message": "正在启动后台服务..."})

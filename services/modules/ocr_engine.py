@@ -1,8 +1,11 @@
 # services/modules/ocr_engine.py
 import os
 import base64
+from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
+from typing import Any
+
 from PIL import Image
 from manga_ocr import MangaOcr
 from transformers import AutoTokenizer
@@ -11,28 +14,29 @@ from .utils import log_message, patch_tqdm
 
 
 @contextmanager
-def basic_word_tokenizer():
+def basic_word_tokenizer() -> Iterator[None]:
     """上游配置要求 mecab 分词器, 会让 BertJapaneseTokenizer 加载约 249MB unidic-lite 词典; OCR 只用 decode(), 不经过它."""
     original = AutoTokenizer.from_pretrained.__func__
 
-    def from_pretrained(cls, *args, **kwargs):
+    def from_pretrained(cls, *args: Any, **kwargs: Any):
         kwargs.setdefault("word_tokenizer_type", "basic")
         return original(cls, *args, **kwargs)
 
-    AutoTokenizer.from_pretrained = classmethod(from_pretrained)
+    # 有意的运行时 monkey-patch: 类型检查器无法为第三方类属性赋值让路 逐行豁免
+    AutoTokenizer.from_pretrained = classmethod(from_pretrained)  # pyright: ignore[reportAttributeAccessIssue]
     try:
         yield
     finally:
-        AutoTokenizer.from_pretrained = classmethod(original)
+        AutoTokenizer.from_pretrained = classmethod(original)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 class OCRDownloadError(RuntimeError):
-    all_sources_failed = True
+    all_sources_failed: bool = True
 
 
 class OCREngine:
-    def __init__(self, model_dir=None, download_source="mirror"):
-        self.mocr = None
+    def __init__(self, model_dir: str | None = None, download_source: str = "mirror") -> None:
+        self.mocr: MangaOcr | None = None
         # 如果没有传入路径 抛出错误 因为我们现在的策略是必须指定路径
         if not model_dir:
             raise ValueError("Model directory is required for cleaner deployment.")
@@ -48,7 +52,7 @@ class OCREngine:
 
         self._load_model()
 
-    def _check_integrity(self):
+    def _check_integrity(self) -> bool:
         """检查本地模型文件是否完整"""
         if not os.path.exists(self.model_dir):
             return False
@@ -101,7 +105,7 @@ class OCREngine:
 
         return True
 
-    def _load_model(self):
+    def _load_model(self) -> None:
         """加载OCR模型"""
         # 1. 检查本地是否存在且完整
         if self._check_integrity():
@@ -167,7 +171,7 @@ class OCREngine:
             log_message(f"[ERROR] MangaOCR Load Failed: {e}")
             raise e
 
-    def recognize(self, image_base64):
+    def recognize(self, image_base64: str) -> str:
         """执行 OCR"""
         if not self.mocr:
             raise Exception("OCR Model not initialized")

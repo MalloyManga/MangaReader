@@ -9,7 +9,7 @@ import sys
 from .utils import log_message
 
 
-def preload_openmp_for_ocr():
+def preload_openmp_for_ocr() -> None:
     if not getattr(sys, "frozen", False):
         return
 
