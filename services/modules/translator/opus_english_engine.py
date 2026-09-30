@@ -4,13 +4,15 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from typing import Any
 
 from .base import BaseTranslator, ordered_download_bases
 from ..utils import log_message, send_response
 
 
 class OpusEnglishEngine(BaseTranslator):
-    def __init__(self, model_root_dir, download_source="mirror"):
+    def __init__(self, model_root_dir: str, download_source: str = "mirror") -> None:
         path = os.path.join(model_root_dir, "opus-mt-ja-en")
         super().__init__(path)
 
@@ -25,18 +27,18 @@ class OpusEnglishEngine(BaseTranslator):
             "tokenizer_config.json": 42,
             "vocab.json": 1501341,
         }
-        self.model = None
-        self.tokenizer = None
-        self.torch = None
+        self.model: Any = None
+        self.tokenizer: Any = None
+        self.torch: Any = None
         self.lock = threading.Lock()
 
-    def unload(self):
+    def unload(self) -> None:
         self.model = None
         self.tokenizer = None
         self.torch = None
         self.is_ready = False
 
-    def check_model_exists(self):
+    def check_model_exists(self) -> bool:
         if not os.path.isdir(self.model_dir):
             return False
         for filename, minimum_size in self.required_files.items():
@@ -53,14 +55,16 @@ class OpusEnglishEngine(BaseTranslator):
                 return False
         return True
 
-    def delete_model(self):
+    def delete_model(self) -> bool:
         self.unload()
         if os.path.exists(self.model_dir):
             shutil.rmtree(self.model_dir)
             return True
         return False
 
-    def download_model(self, progress_callback=None):
+    def download_model(
+        self, progress_callback: Callable[[dict[str, Any]], None] | None = None
+    ) -> bool:
         log_message("[INFO] Downloading OPUS-MT ja-en via HuggingFace Hub...")
         log_message(f"   Repo: {self.repo_id}")
         os.makedirs(self.model_dir, exist_ok=True)
@@ -119,14 +123,14 @@ class OpusEnglishEngine(BaseTranslator):
 
     def _download_file(
         self,
-        base_url,
-        filename,
-        target_path,
-        expected_size,
-        previous_bytes,
-        total_bytes,
-        last_percent_step,
-    ):
+        base_url: str,
+        filename: str,
+        target_path: str,
+        expected_size: int,
+        previous_bytes: int,
+        total_bytes: int,
+        last_percent_step: int,
+    ) -> int:
         quoted_repo = "/".join(urllib.parse.quote(part) for part in self.repo_id.split("/"))
         quoted_filename = urllib.parse.quote(filename)
         url = f"{base_url}/{quoted_repo}/resolve/main/{quoted_filename}"
@@ -197,7 +201,7 @@ class OpusEnglishEngine(BaseTranslator):
         os.replace(tmp_path, target_path)
         return expected_size
 
-    def initialize(self):
+    def initialize(self) -> None:
         if not self.check_model_exists():
             self.is_ready = False
             return
@@ -232,7 +236,7 @@ class OpusEnglishEngine(BaseTranslator):
             self.unload()
             raise e
 
-    def translate(self, text):
+    def translate(self, text: str) -> str:
         if not self.is_ready or not self.model or not self.tokenizer:
             raise Exception("OPUS-MT ja-en engine not ready")
 

@@ -2,45 +2,48 @@ import gc
 import sys
 import types
 from pathlib import Path
+from typing import Any
 
+from PIL import Image
 from packaging.version import parse as parse_version
 
 
-def _ensure_pkg_resources_compatibility():
+def _ensure_pkg_resources_compatibility() -> None:
     if "pkg_resources" in sys.modules:
         return
     compatibility_module = types.ModuleType("pkg_resources")
-    compatibility_module.parse_version = parse_version
+    setattr(compatibility_module, "parse_version", parse_version)
     sys.modules["pkg_resources"] = compatibility_module
 
 
 class CtdDetectorAdapter:
-    def __init__(self):
+    def __init__(self) -> None:
         self.device = "cpu"
         self.input_size = (1024, 1024)
         self.confidence_threshold = 0.4
         self.nms_threshold = 0.35
-        self.network = None
+        self.network: Any = None
 
-    def load(self, module_path, device="cpu"):
+    def load(self, module_path: str | Path, device: str = "cpu") -> None:
         _ensure_pkg_resources_compatibility()
         import torch
-        from basemodel import TextDetBase
+        # basemodel/utils/cv2 来自检测插件安装目录 _ensure_loaded 运行时才插入 sys.path
+        from basemodel import TextDetBase  # pyright: ignore[reportMissingImports]
 
         self.device = device
         model_path = str(Path(module_path) / "comictextdetector.pt")
         self.network = TextDetBase(model_path, device=device, act="leaky")
         self.network.eval()
 
-    def detect(self, image):
+    def detect(self, image: Image.Image) -> list[dict[str, Any]]:
         if self.network is None:
             raise RuntimeError("CTD detector is not loaded")
 
-        import cv2
+        import cv2  # pyright: ignore[reportMissingImports]
         import numpy as np
         import torch
-        from utils.imgproc_utils import letterbox
-        from utils.yolov5_utils import non_max_suppression
+        from utils.imgproc_utils import letterbox  # pyright: ignore[reportMissingImports]
+        from utils.yolov5_utils import non_max_suppression  # pyright: ignore[reportMissingImports]
 
         image_bgr = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
         image_input, _ratio, (dw, dh) = letterbox(
@@ -85,7 +88,7 @@ class CtdDetectorAdapter:
             )
         return regions
 
-    def unload(self):
+    def unload(self) -> None:
         self.network = None
         gc.collect()
         try:

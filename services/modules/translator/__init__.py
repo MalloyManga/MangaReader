@@ -1,4 +1,8 @@
-TRANSLATOR_MODELS = [
+from typing import Any
+
+from .base import BaseTranslator
+
+TRANSLATOR_MODELS: list[dict[str, Any]] = [
     {
         "id": "sakura-1.5b",
         "name": "Sakura-1.5B-Qwen2.5",
@@ -42,7 +46,7 @@ TRANSLATOR_MODELS = [
 ]
 
 
-def get_default_translator_id():
+def get_default_translator_id() -> str:
     """按照体积最小的来获取到默认的模型"""
     return min(
         TRANSLATOR_MODELS,
@@ -64,7 +68,7 @@ _ALIASES = {
 }
 
 
-def normalize_translator_id(model_id):
+def normalize_translator_id(model_id: str | None) -> str:
     if not model_id:
         return DEFAULT_TRANSLATOR_ID
     normalized = _ALIASES.get(model_id)
@@ -73,14 +77,14 @@ def normalize_translator_id(model_id):
     return normalized
 
 
-def list_translator_models():
+def list_translator_models() -> list[dict[str, Any]]:
     return sorted(
         TRANSLATOR_MODELS,
         key=lambda item: item.get("size_bytes", float("inf")),
     )
 
 
-def list_translator_models_by_language(target_language):
+def list_translator_models_by_language(target_language: str) -> list[dict[str, Any]]:
     """Filter translator models by target language (zh or en)"""
     return sorted(
         [m for m in TRANSLATOR_MODELS if target_language in m.get("target_languages", [])],
@@ -88,13 +92,15 @@ def list_translator_models_by_language(target_language):
     )
 
 
-def get_default_translator_id_for_language(target_language):
+def get_default_translator_id_for_language(target_language: str) -> str:
     """默认模型必须取自该语言可用的模型 否则会选中另一种语言的模型"""
     models = list_translator_models_by_language(target_language)
     return models[0]["id"] if models else DEFAULT_TRANSLATOR_ID
 
 
-def get_translator_engine(model_id, model_root_dir, download_source="mirror"):
+def get_translator_engine(
+    model_id: str | None, model_root_dir: str, download_source: str = "mirror"
+) -> BaseTranslator:
     normalized = normalize_translator_id(model_id)
     if normalized == "sakura-1.5b":
         from .sakura_engine import SakuraEngine
@@ -115,7 +121,7 @@ def get_translator_engine(model_id, model_root_dir, download_source="mirror"):
     raise ValueError(f"Unknown translator model: {model_id}")
 
 
-def requires_translate_worker(model_id):
+def requires_translate_worker(model_id: str | None) -> bool:
     return normalize_translator_id(model_id) in {
         "sakura-1.5b",
         "qwen3-4b-instruct-2507-q4-k-m",

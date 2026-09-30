@@ -2,6 +2,8 @@
 import os
 import shutil
 import threading
+from collections.abc import Callable
+from typing import Any
 
 from .base import BaseTranslator
 from .llama_gguf import LlamaCppRuntime, get_llama_class
@@ -10,7 +12,7 @@ from ..utils import log_message, patch_tqdm
 
 
 class SakuraEngine(BaseTranslator):
-    def __init__(self, model_root_dir):
+    def __init__(self, model_root_dir: str) -> None:
         path = os.path.join(model_root_dir, "sakura")
         super().__init__(path)
 
@@ -27,11 +29,11 @@ class SakuraEngine(BaseTranslator):
             log_prefix="Sakura",
         )
 
-        self.llm = None
+        self.llm: Any = None
         self.use_external_runtime = False
         self.lock = threading.Lock()
 
-    def unload(self):
+    def unload(self) -> None:
         if self.llm:
             try:
                 del self.llm
@@ -41,7 +43,7 @@ class SakuraEngine(BaseTranslator):
         self.use_external_runtime = False
         self.is_ready = False
 
-    def check_model_exists(self):
+    def check_model_exists(self) -> bool:
         # 检查物理文件是否存在
         # 注意: 使用 hf_hub_download 后 实际文件可能是一个 symlink 指向 .cache
         # 但 os.path.exists 会自动追踪 symlink 所以逻辑是通用的
@@ -58,7 +60,7 @@ class SakuraEngine(BaseTranslator):
             return False
         return True
 
-    def delete_model(self):
+    def delete_model(self) -> bool:
         # 1. 释放内存
         if self.llm:
             log_message("[INFO] Unloading model...")
@@ -98,7 +100,9 @@ class SakuraEngine(BaseTranslator):
 
         return deleted
 
-    def download_model(self, progress_callback=None):
+    def download_model(
+        self, progress_callback: Callable[[dict[str, Any]], None] | None = None
+    ) -> bool:
         log_message(f"[INFO] Downloading SakuraLLM via HuggingFace Hub...")
         log_message(f"   Repo: {self.repo_id}")
 
@@ -125,7 +129,7 @@ class SakuraEngine(BaseTranslator):
             log_message(f"[ERROR] Download failed: {e}")
             raise e
 
-    def initialize(self):
+    def initialize(self) -> None:
         model_path = self.model_file_path
 
         if self.runtime.needs_external():
@@ -196,7 +200,7 @@ class SakuraEngine(BaseTranslator):
             log_message(f"[ERROR] Failed to load Sakura: {e}\nTraceback: {tb}")
             self.is_ready = False
 
-    def translate(self, text):
+    def translate(self, text: str) -> str:
         if not self.is_ready:
             raise Exception("Sakura Engine not ready")
 
@@ -252,7 +256,7 @@ class SakuraEngine(BaseTranslator):
                 log_message(f"Sakura output error: {e}")
                 return text
 
-    def _build_chat_prompt(self, text):
+    def _build_chat_prompt(self, text: str) -> str:
         system_prompt = (
             "You are a Japanese-to-Simplified-Chinese light novel and manga translator. "
             "Translate naturally and concisely. Output only the Simplified Chinese translation."

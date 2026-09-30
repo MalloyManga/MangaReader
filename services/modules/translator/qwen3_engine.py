@@ -7,6 +7,8 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from typing import Any
 
 from .base import BaseTranslator, ordered_download_bases
 from .llama_gguf import LlamaCppRuntime, get_llama_class
@@ -14,7 +16,7 @@ from ..utils import log_message, send_response
 
 
 class Qwen3GgufEngine(BaseTranslator):
-    def __init__(self, model_root_dir, download_source="mirror"):
+    def __init__(self, model_root_dir: str, download_source: str = "mirror") -> None:
         path = os.path.join(model_root_dir, "qwen3-4b-instruct-2507-q4-k-m")
         super().__init__(path)
 
@@ -30,11 +32,11 @@ class Qwen3GgufEngine(BaseTranslator):
         )
         self.download_bases = ordered_download_bases(download_source)
 
-        self.llm = None
+        self.llm: Any = None
         self.use_external_runtime = False
         self.lock = threading.Lock()
 
-    def unload(self):
+    def unload(self) -> None:
         if self.llm:
             try:
                 del self.llm
@@ -44,7 +46,7 @@ class Qwen3GgufEngine(BaseTranslator):
         self.use_external_runtime = False
         self.is_ready = False
 
-    def check_model_exists(self):
+    def check_model_exists(self) -> bool:
         if not os.path.exists(self.model_file_path):
             log_message(f"[INFO] Qwen3 model missing: {self.model_file_path}")
             return False
@@ -56,14 +58,16 @@ class Qwen3GgufEngine(BaseTranslator):
             return False
         return True
 
-    def delete_model(self):
+    def delete_model(self) -> bool:
         self.unload()
         if os.path.exists(self.model_dir):
             shutil.rmtree(self.model_dir)
             return True
         return False
 
-    def download_model(self, progress_callback=None):
+    def download_model(
+        self, progress_callback: Callable[[dict[str, Any]], None] | None = None
+    ) -> bool:
         log_message("[INFO] Downloading Qwen3-4B-Instruct-2507 Q4_K_M GGUF...")
         log_message(f"   Repo: {self.repo_id}")
         os.makedirs(self.model_dir, exist_ok=True)
@@ -103,7 +107,7 @@ class Qwen3GgufEngine(BaseTranslator):
 
         raise Exception("MODEL_DOWNLOAD_FAILED: qwen3-4b-instruct-2507-q4-k-m")
 
-    def _download_file(self, base_url):
+    def _download_file(self, base_url: str) -> None:
         quoted_repo = "/".join(urllib.parse.quote(part) for part in self.repo_id.split("/"))
         quoted_filename = urllib.parse.quote(self.filename)
         url = f"{base_url}/{quoted_repo}/resolve/main/{quoted_filename}"
@@ -173,7 +177,7 @@ class Qwen3GgufEngine(BaseTranslator):
 
         os.replace(tmp_path, self.model_file_path)
 
-    def initialize(self):
+    def initialize(self) -> None:
         if self.runtime.needs_external():
             if not self.check_model_exists():
                 log_message(f"[WARN] Initialize failed. Model not found at: {self.model_file_path}")
@@ -220,7 +224,7 @@ class Qwen3GgufEngine(BaseTranslator):
                 if not self.runtime.needs_external():
                     raise e
 
-    def translate(self, text):
+    def translate(self, text: str) -> str:
         if not self.is_ready:
             raise Exception("Qwen3 GGUF engine not ready")
 
@@ -255,7 +259,7 @@ class Qwen3GgufEngine(BaseTranslator):
                 log_message(f"Qwen3 output error: {e}")
                 return text
 
-    def _build_chat_prompt(self, text):
+    def _build_chat_prompt(self, text: str) -> str:
         system_prompt = (
             "You are a professional Japanese-to-Simplified-Chinese manga translator. "
             "Translate the user's Japanese manga text into natural, concise Simplified Chinese. "

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import urllib.request
 import zipfile
+from typing import Any
 
 from ..utils import log_message, send_response
 
@@ -24,10 +25,10 @@ RUNTIME_DOWNLOAD_URLS = [
 ]
 
 # llama_cpp.Llama 类缓存 全部引擎共享一份
-_Llama = None
+_Llama: Any = None
 
 
-def prepare_llama_cpp_runtime():
+def prepare_llama_cpp_runtime() -> None:
     if not getattr(sys, "frozen", False) or not sys.platform.startswith("win"):
         return
 
@@ -49,7 +50,7 @@ def prepare_llama_cpp_runtime():
         return
 
 
-def get_llama_class():
+def get_llama_class() -> Any:
     global _Llama
     if _Llama is None:
         prepare_llama_cpp_runtime()
@@ -69,7 +70,13 @@ class LlamaCppRuntime:
     progress_filename/model_id 用于下载进度事件 log_prefix 用于日志区分引擎
     """
 
-    def __init__(self, model_dir, progress_filename, model_id, log_prefix):
+    def __init__(
+        self,
+        model_dir: str,
+        progress_filename: str,
+        model_id: str,
+        log_prefix: str,
+    ) -> None:
         self.model_dir = model_dir
         self.runtime_dir = os.path.join(model_dir, "runtime", "llama-cpp-win-cpu-x64")
         self.progress_filename = progress_filename
@@ -77,13 +84,13 @@ class LlamaCppRuntime:
         self.log_prefix = log_prefix
 
     @staticmethod
-    def needs_external():
+    def needs_external() -> bool:
         return getattr(sys, "frozen", False) and sys.platform.startswith("win")
 
-    def exe_path(self):
+    def exe_path(self) -> str:
         return os.path.join(self.runtime_dir, "llama-cli.exe")
 
-    def exists(self):
+    def exists(self) -> bool:
         exe_path = self.exe_path()
         if not os.path.exists(exe_path):
             return False
@@ -104,7 +111,7 @@ class LlamaCppRuntime:
         )
         return has_required_files and has_cpu_backend
 
-    def ensure(self):
+    def ensure(self) -> bool:
         if self.exists():
             return True
 
@@ -136,7 +143,7 @@ class LlamaCppRuntime:
 
         raise Exception("LLAMA_RUNTIME_DOWNLOAD_FAILED")
 
-    def _download_zip(self, url, zip_path):
+    def _download_zip(self, url: str, zip_path: str) -> None:
         tmp_path = zip_path + ".tmp"
         resume_from = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
         if resume_from >= RUNTIME_EXPECTED_SIZE:
@@ -188,7 +195,7 @@ class LlamaCppRuntime:
 
         os.replace(tmp_path, zip_path)
 
-    def _extract_zip(self, zip_path):
+    def _extract_zip(self, zip_path: str) -> None:
         if os.path.exists(self.runtime_dir):
             shutil.rmtree(self.runtime_dir)
         os.makedirs(self.runtime_dir, exist_ok=True)
@@ -205,7 +212,14 @@ class LlamaCppRuntime:
                 ) as target:
                     shutil.copyfileobj(source, target)
 
-    def translate_with_cli(self, prompt, model_file_path, context_window, error_prefix, timeout=180):
+    def translate_with_cli(
+        self,
+        prompt: str,
+        model_file_path: str,
+        context_window: int,
+        error_prefix: str,
+        timeout: float = 180,
+    ) -> str:
         """调用 llama-cli 完成一次翻译
 
         error_prefix 决定错误名 例如 SAKURA_TRANSLATION 生成
@@ -216,6 +230,8 @@ class LlamaCppRuntime:
             raise Exception("LLAMA_RUNTIME_NOT_FOUND")
 
         prompt_file = None
+        kernel32 = None
+        restore_dll_dir = None
         system_root = os.environ.get("SystemRoot", r"C:\Windows")
         clean_env = {
             "PATH": os.pathsep.join(
@@ -270,8 +286,6 @@ class LlamaCppRuntime:
                 prompt_file = temp.name
             command[command.index("-f") + 1] = prompt_file
 
-            kernel32 = None
-            restore_dll_dir = None
             if sys.platform.startswith("win"):
                 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
                 restore_dll_dir = getattr(sys, "_MEIPASS", None)
@@ -291,7 +305,7 @@ class LlamaCppRuntime:
         except subprocess.TimeoutExpired:
             raise Exception(f"{error_prefix}_TIMEOUT")
         finally:
-            if "kernel32" in locals() and kernel32 is not None and sys.platform.startswith("win"):
+            if kernel32 is not None and sys.platform.startswith("win"):
                 kernel32.SetDllDirectoryW(restore_dll_dir)
             if prompt_file:
                 try:
@@ -327,7 +341,7 @@ class LlamaCppRuntime:
         return translation
 
     @staticmethod
-    def extract_cli_translation(stdout):
+    def extract_cli_translation(stdout: str) -> str:
         stdout = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", stdout)
         translation = stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
         assistant_marker = "<|im_start|>assistant"

@@ -9,7 +9,9 @@ import urllib.request
 import urllib.error
 import uuid
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 
 MODULE_ID = "ctd-detector"
@@ -17,7 +19,7 @@ MODULE_VERSION = "1.0.0"
 SUPPORTED_API_VERSION = 1
 
 # Third-party files are downloaded from their upstream distribution channels.
-OFFICIAL_ASSETS = (
+OFFICIAL_ASSETS: tuple[dict[str, Any], ...] = (
     {
         "id": "ctd-source",
         "name": "CTD 检测代码",
@@ -74,12 +76,12 @@ class DetectionModuleError(RuntimeError):
 
 
 class DetectionModuleManager:
-    def __init__(self, modules_root):
+    def __init__(self, modules_root: str | Path) -> None:
         self.module_root = Path(modules_root).resolve() / "text_detection"
         self.installed_root = self.module_root / "installed" / MODULE_ID
         self.download_root = self.module_root / ".downloads"
 
-    def get_status(self, verify_integrity=False):
+    def get_status(self, verify_integrity: bool = False) -> dict[str, Any]:
         corrupted = False
         message = ""
         installed = self.get_installed_module()
@@ -104,7 +106,7 @@ class DetectionModuleManager:
             "message": message,
         }
 
-    def get_installed_module(self):
+    def get_installed_module(self) -> dict[str, Any] | None:
         version_path = self.installed_root / MODULE_VERSION
         if not version_path.is_dir():
             return None
@@ -116,10 +118,14 @@ class DetectionModuleManager:
         except DetectionModuleError:
             return None
 
-    def install(self, progress_callback=None, download_source="mirror"):
+    def install(
+        self,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+        download_source: str = "mirror",
+    ) -> dict[str, Any]:
         self.download_root.mkdir(parents=True, exist_ok=True)
         staging_path = self.installed_root / f".install-{uuid.uuid4().hex}"
-        downloaded_assets = {}
+        downloaded_assets: dict[str, Path] = {}
 
         try:
             total_size = sum(asset["size"] for asset in OFFICIAL_ASSETS if asset["size"])
@@ -173,14 +179,14 @@ class DetectionModuleManager:
         finally:
             shutil.rmtree(staging_path, ignore_errors=True)
 
-    def delete(self):
+    def delete(self) -> bool:
         if self.installed_root.exists():
             shutil.rmtree(self.installed_root)
         if self.download_root.exists():
             shutil.rmtree(self.download_root)
         return True
 
-    def verify_integrity(self, module_path):
+    def verify_integrity(self, module_path: str | Path) -> bool:
         module_path = Path(module_path).resolve()
         self._validate_structure(module_path)
         integrity_path = module_path / "integrity.json"
@@ -213,13 +219,13 @@ class DetectionModuleManager:
 
     def _download_asset(
         self,
-        asset,
-        destination,
-        completed_size,
-        total_size,
-        progress_callback,
-        download_source="mirror",
-    ):
+        asset: dict[str, Any],
+        destination: Path,
+        completed_size: int,
+        total_size: int,
+        progress_callback: Callable[[dict[str, Any]], None] | None,
+        download_source: str = "mirror",
+    ) -> None:
         if destination.exists():
             existing_size = destination.stat().st_size
             if asset["size"] and existing_size == asset["size"]:
@@ -246,7 +252,7 @@ class DetectionModuleManager:
             if download_source == "official"
             else mirror_sources + official_sources
         )
-        last_error = None
+        last_error: Exception | None = None
         for source_index, (source_url, source_name) in enumerate(sources):
             self._emit_progress(
                 progress_callback,
@@ -299,14 +305,14 @@ class DetectionModuleManager:
 
     def _download_from_source(
         self,
-        asset,
-        source_url,
-        source_name,
-        destination,
-        completed_size,
-        total_size,
-        progress_callback,
-    ):
+        asset: dict[str, Any],
+        source_url: str,
+        source_name: str,
+        destination: Path,
+        completed_size: int,
+        total_size: int,
+        progress_callback: Callable[[dict[str, Any]], None] | None,
+    ) -> None:
         existing_size = destination.stat().st_size if destination.exists() else 0
         headers = {"User-Agent": "MangaReader-DetectionModule/1"}
         if existing_size:
@@ -335,7 +341,7 @@ class DetectionModuleManager:
                         f"{asset['name']}（{source_name}）",
                     )
 
-    def _assemble_module(self, staging_path, assets):
+    def _assemble_module(self, staging_path: Path, assets: dict[str, Path]) -> None:
         source_extract = staging_path / ".source"
         self._safe_extract(assets["source"], source_extract)
         source_roots = [path for path in source_extract.iterdir() if path.is_dir()]
@@ -404,7 +410,7 @@ class DetectionModuleManager:
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    def _validate_structure(self, module_path):
+    def _validate_structure(self, module_path: Path) -> dict[str, Any]:
         manifest_path = module_path / "plugin.json"
         if not manifest_path.is_file():
             raise DetectionModuleError("检测模块缺少 plugin.json")
@@ -433,8 +439,8 @@ class DetectionModuleManager:
             raise DetectionModuleError("检测模块缺少 LICENSE")
         return manifest
 
-    def _write_integrity_manifest(self, module_path):
-        files = {}
+    def _write_integrity_manifest(self, module_path: Path) -> None:
+        files: dict[str, Any] = {}
         for file_path in sorted(path for path in module_path.rglob("*") if path.is_file()):
             relative_path = file_path.relative_to(module_path).as_posix()
             files[relative_path] = {
@@ -444,7 +450,7 @@ class DetectionModuleManager:
             json.dumps({"version": 1, "files": files}, indent=2), encoding="utf-8"
         )
 
-    def _safe_extract(self, archive_path, destination):
+    def _safe_extract(self, archive_path: Path, destination: Path) -> None:
         destination.mkdir(parents=True, exist_ok=True)
         destination = destination.resolve()
         with zipfile.ZipFile(archive_path) as archive:
@@ -460,7 +466,7 @@ class DetectionModuleManager:
                     raise DetectionModuleError("下载文件解压路径越界")
             archive.extractall(destination)
 
-    def _resolve_member(self, module_path, relative_path):
+    def _resolve_member(self, module_path: str | Path, relative_path: str) -> Path:
         if not isinstance(relative_path, str) or not relative_path:
             raise DetectionModuleError("检测模块文件路径无效")
         module_path = Path(module_path).resolve()
@@ -469,7 +475,7 @@ class DetectionModuleManager:
             raise DetectionModuleError(f"检测模块文件无效: {relative_path}")
         return member_path
 
-    def _resolve_directory(self, module_path, relative_path):
+    def _resolve_directory(self, module_path: str | Path, relative_path: str) -> Path:
         if not isinstance(relative_path, str) or not relative_path:
             raise DetectionModuleError("检测模块依赖目录无效")
         module_path = Path(module_path).resolve()
@@ -479,14 +485,14 @@ class DetectionModuleManager:
         return directory_path
 
     @classmethod
-    def _verify_sha256(cls, file_path, expected_hash):
+    def _verify_sha256(cls, file_path: str | Path, expected_hash: str) -> None:
         if not re.fullmatch(r"[0-9a-f]{64}", str(expected_hash)):
             raise DetectionModuleError("检测模块 SHA-256 配置无效")
         if cls._calculate_sha256(file_path) != expected_hash:
             raise DetectionModuleError(f"下载文件校验失败: {Path(file_path).name}")
 
     @staticmethod
-    def _calculate_sha256(file_path):
+    def _calculate_sha256(file_path: str | Path) -> str:
         digest = hashlib.sha256()
         with open(file_path, "rb") as source:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
@@ -494,7 +500,7 @@ class DetectionModuleManager:
         return digest.hexdigest()
 
     @staticmethod
-    def _replace_path(source, destination):
+    def _replace_path(source: str | Path, destination: str | Path) -> None:
         for attempt in range(8):
             try:
                 os.replace(source, destination)
@@ -514,13 +520,22 @@ class DetectionModuleManager:
 
     @classmethod
     def _emit_download_progress(
-        cls, callback, downloaded_size, total_size, asset_name
-    ):
+        cls,
+        callback: Callable[[dict[str, Any]], None] | None,
+        downloaded_size: float,
+        total_size: float,
+        asset_name: str,
+    ) -> None:
         percent = min(88, downloaded_size / max(total_size, 1) * 88)
         cls._emit_progress(callback, percent, "downloading", f"正在下载 {asset_name}")
 
     @staticmethod
-    def _emit_progress(callback, percent, stage, message):
+    def _emit_progress(
+        callback: Callable[[dict[str, Any]], None] | None,
+        percent: float,
+        stage: str,
+        message: str,
+    ) -> None:
         if callback:
             callback(
                 {"percent": round(percent, 1), "stage": stage, "message": message}

@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from typing import Any
 
 from ..utils import log_message, send_response
 
@@ -38,7 +39,7 @@ class SudachiRuntimeManager:
         "https://pypi.org/simple/",
     ]
 
-    def __init__(self, modules_root):
+    def __init__(self, modules_root: str) -> None:
         self.root = os.path.join(modules_root, "tokenization", "installed", self.VERSION)
         self.package_path = os.path.join(self.root, self.PACKAGE_MEMBER_PREFIX.rstrip("/"))
         self.manifest_path = os.path.join(self.root, "plugin.json")
@@ -46,16 +47,16 @@ class SudachiRuntimeManager:
 
     # --- 状态 ---
 
-    def is_installed(self):
+    def is_installed(self) -> bool:
         return os.path.isdir(self.package_path) and os.path.exists(self.integrity_path)
 
     @property
-    def sys_path_entry(self):
+    def sys_path_entry(self) -> str:
         # 插这一层 (内含 sudachipy/ 包); 插 package_path 会让包里的 .pyd
         # 被当成顶层模块 import 到, 反而盖掉真正的包
         return self.root
 
-    def get_status(self, verify_integrity=False):
+    def get_status(self, verify_integrity: bool = False) -> dict[str, Any]:
         installed = self.is_installed()
         status = {
             "name": self.NAME,
@@ -73,7 +74,7 @@ class SudachiRuntimeManager:
 
     # --- 安装 ---
 
-    def install(self, download_source="mirror"):
+    def install(self, download_source: str = "mirror") -> bool:
         wheel_url = self._find_wheel_url(download_source)
         with tempfile.TemporaryDirectory() as tmp_dir:
             wheel_path = os.path.join(tmp_dir, self.WHEEL_NAME)
@@ -87,7 +88,7 @@ class SudachiRuntimeManager:
         log_message(f"[INFO] sudachipy runtime installed at: {self.root}")
         return True
 
-    def uninstall(self):
+    def uninstall(self) -> bool:
         if os.path.exists(self.root):
             shutil.rmtree(self.root)
             return True
@@ -95,13 +96,13 @@ class SudachiRuntimeManager:
 
     # --- 索引与下载 ---
 
-    def _find_wheel_url(self, download_source="mirror"):
+    def _find_wheel_url(self, download_source: str = "mirror") -> str:
         wanted = self.WHEEL_NAME.lower()
         indexes = list(self.SIMPLE_INDEXES)
         if download_source == "official":
             indexes.remove("https://pypi.org/simple/")
             indexes.append("https://pypi.org/simple/")
-        last_error = None
+        last_error: Exception | None = None
         for base_url in indexes:
             index_url = urllib.parse.urljoin(base_url, "sudachipy/")
             try:
@@ -128,10 +129,10 @@ class SudachiRuntimeManager:
         )
 
     @staticmethod
-    def _parse_index_links(html):
+    def _parse_index_links(html: str) -> list[str]:
         return re.findall(r'href="([^"]+)"', html)
 
-    def _download_file(self, url, target_path):
+    def _download_file(self, url: str, target_path: str) -> None:
         request = urllib.request.Request(
             url, headers={"User-Agent": self._user_agent()}
         )
@@ -155,12 +156,12 @@ class SudachiRuntimeManager:
                         )
 
     @staticmethod
-    def _user_agent():
+    def _user_agent() -> str:
         return "MangaReader/1.5 SudachiRuntimeDownloader"
 
     # --- 校验与解包 ---
 
-    def _check_sha256(self, file_path):
+    def _check_sha256(self, file_path: str) -> str:
         actual = self._sha256(file_path)
         if self.EXPECTED_SHA256 and actual.lower() != self.EXPECTED_SHA256.lower():
             raise TokenizationModuleError(
@@ -168,10 +169,10 @@ class SudachiRuntimeManager:
             )
         return actual
 
-    def _extract_package(self, wheel_path, tmp_dir):
+    def _extract_package(self, wheel_path: str, tmp_dir: str) -> dict[str, str]:
         staging = os.path.join(tmp_dir, "staged")
         os.makedirs(staging, exist_ok=True)
-        checksums = {}
+        checksums: dict[str, str] = {}
         with zipfile.ZipFile(wheel_path) as wheel:
             for member in wheel.infolist():
                 if not member.filename.startswith(self.PACKAGE_MEMBER_PREFIX):
@@ -196,7 +197,7 @@ class SudachiRuntimeManager:
         return checksums
 
     @staticmethod
-    def _resolve_within(root, relative_path):
+    def _resolve_within(root: str, relative_path: str) -> str:
         # 防 zip slip: wheel 里的成员名可能带 .. 或绝对路径
         target = os.path.realpath(os.path.join(root, relative_path))
         prefix = os.path.realpath(root) + os.sep
@@ -205,14 +206,14 @@ class SudachiRuntimeManager:
         return target
 
     @staticmethod
-    def _sha256(file_path):
+    def _sha256(file_path: str) -> str:
         digest = hashlib.sha256()
         with open(file_path, "rb") as file:
             for chunk in iter(lambda: file.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def _write_artifacts(self, source_url, checksums):
+    def _write_artifacts(self, source_url: str, checksums: dict[str, str]) -> None:
         with open(self.integrity_path, "w", encoding="utf-8") as file:
             json.dump(
                 {"algorithm": "sha256", "files": checksums},
@@ -236,10 +237,10 @@ class SudachiRuntimeManager:
                 indent=2,
             )
 
-    def verify_integrity(self):
+    def verify_integrity(self) -> bool:
         return self._verify_integrity()
 
-    def _verify_integrity(self):
+    def _verify_integrity(self) -> bool:
         if not os.path.exists(self.integrity_path):
             raise TokenizationModuleError("TOKENIZATION_INTEGRITY_MISSING")
         with open(self.integrity_path, encoding="utf-8") as file:
