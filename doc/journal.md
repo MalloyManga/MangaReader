@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-09-30（AI 结对：Qoder 主写，Malloy 审阅）
+
+### 18:55–19:05 — services/ 第一方 Python 全量类型注解（分支 `feat/python-type-hints`）
+
+- **起因**：Malloy 提出后端 py 代码在编辑器里成片报红，希望加类型注解顺手服务他的学习/审查。用 pyright 实测确认红色 error 基线为顶层 19 个（不含 vendored）。工作跨三次对话：09-26 顶层 15 文件、09-27 子包 11 文件、09-30 收尾清零。
+- **修法要点**（全部零运行时行为变化，逐处核过）：
+  - `session.py`：`self.xxx = None` 被 Pylance 推断成"永远是 None"是 19 红的主因，改 `X | None` 显式注解；重量级类型放 `if TYPE_CHECKING` 防破坏延迟导入——**代价是函数签名注解运行时求值**，引用 TYPE_CHECKING 类型的签名必须写成字符串（第一次 import 冒烟当场 NameError，已修正）。
+  - handler/dispatch：IPC 边界统一 `request: dict[str, Any] -> dict[str, Any]`（Malloy 问 TypedDict——**本阶段不用**：envelope 由 dispatch `{**response}` 动态拼装、键随命令变，与 TS 侧协议重复；稳定后可挑 `regions`/`tokens` 二批再钉）；dispatch 定义 `Handler = Callable[...]` 别名并显式声明 `handler: Handler`，否则 match 各分支赋值被推断成首个函数的具体类型。
+  - Optional 收窄用 assert（`workers.py` 的 stdin/stdout、`registry.detect_base64`、handlers 对 init_session 保证非空的成员），assert 放在原 try 内，异常传播路径与旧 AttributeError 逐条等价。
+  - 存量问题两处：`llama_gguf.py` 的 `kernel32` 定义在 try 内、finally 靠 `"kernel32" in locals()` 判断——初始化提到 try 外改回常规 None 判断；`BaseTranslator.download_model` 返回类型定为 `-> bool`（sakura/opus 实际 `return True`，与接口约定悄悄不符被抓到）。
+  - `sys.stdout.reconfigure` 用 `cast(io.TextIOWrapper, ...)`（cast 运行时恒等）；给伪造 `pkg_resources` 模块挂属性改 `setattr`（对象层面等价，绕开 ModuleType 属性检查）。
+- **收尾 suppressions（09-30）**：残余 7 红——3 处运行时 monkey-patch（`AutoTokenizer.from_pretrained`×2、`tqdm.update`）逐行 `# pyright: ignore[reportAttributeAccessIssue]`；4 个动态 `sys.path` 插件 import（`basemodel`/`cv2`/`utils.*`，来自 `installed/` 插件目录）逐行 `# pyright: ignore[reportMissingImports]`。`.vscode/settings.json` 增 `python.analysis.typeCheckingMode: basic` 与 `python.analysis.exclude`（build/dist/dist_electron/node_modules/installed），编辑器只对第一方代码报红；vendored 文件本体一律未动。
+- **验证链**：`py_compile` 全部 26 个第一方文件 → 全模块真实 import 通过（含五个翻译引擎与 registry）→ `backend_service.py --help` 正常 → **pyright 第一方 0 error**（19:02 实测）。Electron 实机未跑（改动均在类型层/assert 处，无逻辑变更，但冒烟路径未覆盖 GUI）。
+
+---
+
 ## 2026-09-23（AI 结对：Qoder 主写）
 
 ### 00:29–02:15 — 插件化/共享运行时方向讨论，落地为剥离 unidic-lite（B-2026-013）
