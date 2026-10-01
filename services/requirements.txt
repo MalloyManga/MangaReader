@@ -4,7 +4,10 @@ manga-ocr==0.1.14
 # 版本必须与 services/modules/tokenization/manager.py 的 VERSION 一致
 # 插件从 PyPI 下的就是这个版本; venv 里装一份只为开发机直调 tokenizer
 sudachipy==0.6.10
-sudachidict_core
+# 词典版本必须与 services/modules/sudachi_dictionary.py 里写死的下载目标一致
+sudachidict_core==20251022
+# build_backend.spec 会 collect_all('sentencepiece') 并对 0.2.1 直接报错: OPUS 的 source.spm 在 0.2.1 会崩
+sentencepiece==0.2.0
 huggingface_hub>=0.10.0
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 llama-cpp-python==0.3.16
