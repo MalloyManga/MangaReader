@@ -49,7 +49,8 @@
 - **📸 离线 OCR 识别**：基于 AI 模型，无需联网即可精准识别竖排日文漫画
 - **🧭 自动识别翻译**：按需安装文字检测模块，支持处理当前页面或串行处理全部页面，自动完成文字区域检测、OCR 与翻译，并可继续编辑、删除或手动补充文字框
 - **🔍 智能分词**：自动将句子拆解为单词，标注假名读音 (Furigana)
-- **🌐 多源翻译**：
+- **🌐 多源翻译**：输出语言可在「设置 > 语言」中于**中文 / 英文**之间切换，模型列表只展示对应目标语言的模型
+  - **OPUS-MT ja-en**：约 307 MB，日译英，速度快、体积小
   - **OPUS-MT ja-zh**：约 300 MB，速度快、体积小
   - **Sakura-1.5B-Qwen2.5**：约 1.2 GB，面向漫画、轻小说与 Galgame
   - **Qwen3-4B-Instruct-2507**：约 2.5 GB，通用翻译质量更高、资源占用更大
@@ -133,7 +134,18 @@ MangaReader/
 ### ⚡ 本地开发
 
 - Node.js 20+ (electron-store 等依赖要求)
-- Python 3.10+ (消息路由使用 match/case 语法)
+- Python 3.12（装在 `services/venv`，用 `services/requirements.txt` 建环境）。分词插件下载的是 `cp312` wheel，`manager.py` 也按 cp312 声明 runtime，所以打包环境必须是 3.12
+
+```bash
+npm install             # 顺带跑 nuxt prepare
+npm run dev             # 渲染进程，http://localhost:3000
+npm start               # Electron + 开发版渲染进程
+npm run build:backend    # PyInstaller 产出 dist/backend（App 内的 Python 服务）
+npm run build:win        # 后端 + 前端 + 安装包；已包含后端重建
+npm run check:i18n       # locale key 审计：重复、缺失、死 key
+```
+
+`build:win` 现在会先重建后端。此前它只跑 `nuxt generate`，把 `dist/backend` 里**恰好存在的**旧产物打进安装包，后端过期也不会报错。
 
 ### Backlog
 

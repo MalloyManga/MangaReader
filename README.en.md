@@ -75,7 +75,9 @@ Grab the latest installer from the [Releases](https://github.com/MalloyManga/Man
 
 ### 1. 🟢 Core OCR (automatic)
 
-The first time you launch MangaReader it checks your environment and downloads the OCR model (~400 MB) from [huggingface.co](https://huggingface.co). Keep the connection up until it finishes. After that, OCR works fully offline forever.
+The first time you launch MangaReader it checks your environment and downloads the OCR model (~400 MB). Keep the connection up until it finishes. After that, OCR works fully offline forever.
+
+The download source **defaults to `hf-mirror.com`**, because most users are in mainland China. Outside China, switch it in **Settings → General → Download source → Official** to pull straight from [huggingface.co](https://huggingface.co). The running backend picks the source up when it starts, so **restart the app after changing it** — downloads already in flight keep using the previous source.
 
 ### 2. 🌐 Translation (opt-in)
 
@@ -147,15 +149,18 @@ MangaReader/
 ### Prerequisites
 
 - Node.js 20+ (required by dependencies such as electron-store)
-- Python 3.10+ (the message router uses `match`/`case`)
+- Python 3.12 in `services/venv`, created from `services/requirements.txt` (the packaged backend is built with PyInstaller from there, and the tokenization plugin ships a `cp312` wheel)
 
 ```bash
 npm install      # also runs nuxt prepare
 npm run dev      # renderer on http://localhost:3000
 npm start        # Electron with the dev renderer
-npm run build:win # packaged Windows build
-npm run check:i18n # locale key audit: duplicates, gaps, dead keys
+npm run build:backend # PyInstaller → dist/backend (the Python service shipped inside the app)
+npm run build:win     # backend + renderer + installer; the backend is rebuilt as part of this
+npm run check:i18n    # locale key audit: duplicates, gaps, dead keys
 ```
+
+`build:win` rebuilds the backend on purpose. Before this, it only ran `nuxt generate` and packaged whatever `dist/backend` happened to contain — so a stale Python build could ship silently.
 
 ### Backlog
 
