@@ -93,7 +93,7 @@ async function initStore() {
         defaults: {     // 默认配置 防止首次运行为空
             enableTranslation: true,
             translationModelId: '',
-            enableTokenization: true,
+            enableTokenization: false,
             translationApiKey: '',
             theme: 'system',
             downloadSource: 'mirror',
