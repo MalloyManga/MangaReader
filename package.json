@@ -3,7 +3,7 @@
   "author": "Malloy",
   "description": "A tool helps manga lover and Japanese learner read manga easily",
   "type": "module",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "main": "electron/main.cjs",
   "private": true,
   "electronMirror": "https://npmmirror.com/mirrors/electron/",
@@ -24,7 +24,8 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "build:win": "npm run generate && electron-builder --win"
+    "build:backend": "services/venv/Scripts/python.exe -m PyInstaller --noconfirm build_backend.spec",
+    "build:win": "npm run build:backend && npm run generate && electron-builder --win"
   },
   "config": {
     "forge": "./forge.config.cjs"
