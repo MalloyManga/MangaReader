@@ -176,3 +176,38 @@
 - **解决方式**：把发送侧改为 `detection-module:download-progress`，与 preload 及词典通道命名保持一致（`main.cjs:224`）。
 - **验证**：**仅静态验证** —— 改后两侧字符串完全相同（grep 双向确认）。**Electron 实机未跑**：需要真实下载一次检测器模块看进度条是否走动；也没有回溯确认过此前 UI 在该状态下的具体表现（进度停在 0 / 不显示），因为要复现得删掉已装的检测器插件重新下载。
 - **教训**：跨进程字符串频道名没有类型约束，新增一条通道时必须**同时 grep 发送方与监听方**再收工，不能只看一侧写得顺眼；同类问题在 `tokenization-runtime:download-progress` 上我已经这么做了一次（两条一起写，避免再错开）。
+
+## B-2026-015 「分词默认关闭」改了却没生效：electron-store defaults 覆盖前端默认
+
+- **发现时间**：2026-10-01 21:55（发布前体检；子代理提出，我回代码复核确认）
+- **现象**：`f072ed7 feat: keep tokenization off by default` 之后，全新安装仍然默认开启分词。
+- **根因**：默认值有两处，后者覆盖前者。`app/composables/useSettings.ts:17` 的 `enableTokenization: false` 只是前端初值；`electron/main.cjs:96` 的 electron-store `defaults` 里仍写着 `enableTokenization: true`，而 `useSettings.ts:103` 是 `Object.assign(settings.value, storedSettings)` —— store 返回值把前端默认盖回 `true`。当时 journal 的记录（9-23 11:05 段）只核了前端那一处，因此"只影响全新安装"这个结论也是错的：**它对全新安装完全没作用**。
+- **解决方式**：`electron/main.cjs:96` 改为 `false`（与前端默认一致）。存量用户 store 里已有 `true`，仍不受影响，这一点与当初"需要一次性迁移才能翻转老用户"的判断一致。
+- **验证**：静态确认两处默认值现已一致。**未实机**：需删掉 `%APPDATA%` 下 config.json 后首启，确认阅读器不出现分词卡片与词典引导。
+- **教训**：核对"默认值"必须核到**最终生效的那一次赋值**，而不是第一处字面量；跨层默认（前端 state / 主进程 store defaults）要一起看。
+
+## B-2026-016 打包不重建 Python 后端：安装包静默带着 7 天前的旧二进制
+
+- **发现时间**：2026-10-01 22:00
+- **现象**：`dist/backend/backend.exe` 时间戳 `09-23 11:52`，`services/` 最后改动 `09-30 19:04`（含 `2170d3f` 新增的分词运行时 IPC）。`npm run build:win` 会成功产出安装包，但里面是旧后端。
+- **根因**：`scripts/build.mjs` 只做 `nuxt generate`（为绕开 nuxt#28474 注入 `NUXT_APP_BASE_URL`），`build:win` = `generate && electron-builder --win`，而 `electron-builder.json:23` 把 `dist/backend` 原样搬进包。**没有任何脚本或文档记录 PyInstaller 该怎么跑**，后端全靠手工产出，于是"忘了重跑"这种失误没有任何信号。
+- **解决方式**：新增 `npm run build:backend`（`services/venv/Scripts/python.exe -m PyInstaller --noconfirm build_backend.spec`），并把 `build:win` 改为 `build:backend && generate && electron-builder --win`，让陈旧产物变成不可能。命令由 `build_backend.spec` 的 `name='backend'` 与 PyInstaller 默认 `distpath=dist` 反推（venv 内 pyinstaller 6.17.0）。
+- **验证**：**未跑过**（一次构建十几分钟且吃满 CPU，留给 Malloy 首跑确认产物路径）。改动只增不改现有步骤。
+- **教训**：任何"手工执行的构建步骤"迟早会变成静默的过期产物；把产物链写进脚本比写进文档有效。
+
+## B-2026-017 分词运行环境损坏仍报"已安装"：状态检查关了完整性校验
+
+- **发现时间**：2026-10-01 22:05
+- **现象**：`handle_check_tokenization_runtime` 走 `get_status(verify_integrity=False)`（`handlers_misc.py:39`），而被它当模板的检测器模块用 `verify_integrity=True`（`handlers_detection.py:13`）。插件文件被改坏或缺文件时，设置页显示已安装，直到真正分词才炸。
+- **根因**：复制检测器代码时只复制了调用形状，没复制参数值；两边都是合法默认值，静态看不出差异。
+- **解决方式**：改为 `verify_integrity=True`。顺带修掉打开校验后新暴露的一条未捕获路径——`_verify_integrity()` 在 `integrity.json` 自身损坏时由 `json.load` 抛 `JSONDecodeError`（`ValueError` 子类），不被原 `except TokenizationModuleError` 捕获，会把状态查询打成异常；现已在 `tokenization/manager.py:67-73` 扩为 `(TokenizationModuleError, OSError, ValueError)` 并保留降级为"未安装 + error 文案"的行为。
+- **验证**：`python -m compileall services` exit 0。降级路径与损坏文件的行为需实机确认（手工改坏 `installed/0.6.10` 下任一 `.py` 或 `integrity.json`）。
+- **教训**：打开一条校验分支，等于新增一条异常分支；要顺着被调函数把抛出类型看一遍，不能假设它只抛自家异常。
+
+## B-2026-018 发布版本号撞上已发布 tag：`v1.5.2` 早已指向 7-31 的提交
+
+- **发现时间**：2026-10-01 22:05
+- **现象**：`package.json:6` 为 `1.5.2`，但本地与 origin 都已存在 tag `v1.5.2` → `a3dad0b`（07-31 "fix: render manual translation results immediately"），其 `package.json` 同样是 1.5.2。若按现状态打 tag 发布，等于用同一版本号覆盖两次完全不同的构建（9-23 那次实测 241.1 MiB 的 1.5.2 也没随 tag 走）。
+- **解决方式**：`package.json:6` 与 `package-lock.json:3,9` 同步升到 **1.5.3**。不动已发布的 `v1.5.2` tag。
+- **验证**：两份 JSON 解析通过，`grep 1.5.2` 仅剩 journal 里的历史记录（属事实记录，不改）。
+- **教训**：发版前第一步是 `git tag --sort=-v:refname | head` + `git ls-remote --tags origin` 对一遍，而不是读 `package.json`；`npm version` 之类工具应负责让两处与 tag 同步，手工改号必然漏锁文件。

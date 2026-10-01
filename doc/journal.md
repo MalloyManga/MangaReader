@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-10-01（AI 结对：Qoder 主写）
+
+### 21:40–22:25 — 发布前全面体检：`main` 领先 origin 50 commit，准备推送/打包/发布
+
+**做法**：两个 Explore 子代理分头查"分词链路是否贯通"和"发布阻断项"，我**逐条回代码复核后才采信**（子代理有两条是错的，见下）。机器门：`npm run check:i18n` → en/zh 各 335、零重复、零差集、零缺失、未使用 0；`python -m compileall services` → exit 0；`package.json`/`package-lock.json` JSON 解析通过。
+
+**核实为真并已修掉的（含证据）**：
+
+1. **`分词默认关闭`其实一直没生效**（B-2026-015）。`app/composables/useSettings.ts:17` 是 `false`，但 `electron/main.cjs:96` 的 electron-store `defaults` 里仍是 `enableTokenization: true`，而 `useSettings.ts:103` 用 `Object.assign(settings.value, storedSettings)` 让 store 覆盖前端默认 → 新装用户照样开着。**已把 `main.cjs:96` 改为 `false`。**
+2. **打包不会重建后端**（B-2026-016）。`scripts/build.mjs` 只做 `nuxt generate`，`electron-builder.json:23` 直接搬 `dist/backend`；`dist/backend/backend.exe` 时间戳 `09-23 11:52`，而 `services/` 最后改动 `09-30 19:04`（含 `2170d3f` 新增的分词 IPC）。照原样发布，前端会调用二进制里不存在的命令。**已新增 `npm run build:backend`（`services/venv/Scripts/python.exe -m PyInstaller --noconfirm build_backend.spec`，由 spec 的 `name='backend'` 与默认 `distpath=dist` 反推）并把它接进 `build:win`。**
+3. **版本号撞已发布 tag**（B-2026-018）。`git tag` 与 `git ls-remote` 都有 `v1.5.2` → `a3dad0b`（7-31），其 `package.json` 同为 1.5.2。**已把 `package.json:6` 与 `package-lock.json:3,9` 一并升到 1.5.3。**
+4. **分词运行环境损坏会被报成已安装**（B-2026-017）。`handlers_misc.py:39` 用 `verify_integrity=False`，而检测器用 `True`（`handlers_detection.py:13`）。**已改 `True`**；打开后新暴露一条未捕获路径（`integrity.json` 自身损坏时 `json.load` 抛 `JSONDecodeError`），已在 `tokenization/manager.py:67-73` 把 except 扩到 `(TokenizationModuleError, OSError, ValueError)` 并注释原因。
+5. **构建依赖未声明**：`build_backend.spec:141` 调 `version('sentencepiece')` 且对 0.2.1 显式 raise，但 `requirements.txt` 里没有它（`grep -c` = 0）。venv 实测 `sentencepiece 0.2.0` → **已补 `sentencepiece==0.2.0`**；`sudachidict_core` 原未钉版而 `sudachi_dictionary.py:28` 写死 20251022，venv 实测正是 `20251022` → **已钉版并加注释**。（`sudachipy` 你已在 `49bf56c` 收口，本次未动。）
+6. **README 与代码相反/落后的四处**：`README.en.md:78` 说首次 OCR 从 huggingface.co 下，但默认源是 `main.cjs:99` 的 `mirror` → 改为如实写"默认 hf-mirror.com，海外请在 设置>通用>下载源 切 Official，**改完要重启 App 才生效**"；`README.md` 功能清单缺 `opus-mt-ja-en` 与"输出语言可选中/英" → 已补；两份的 Python 版本要求写的是 `3.10+`，但 `manager.py:27` 钉的是 `cp312` wheel、venv 实测 3.12.8 → 已改为 3.12 并补开发命令段。
+
+**子代理报的错，我复核后否掉**：① "切下载源不重启就无效、检测器读实时值所以不一致" —— 前半不准确：`backend-api.cjs:185`（`backend:retry-init`）确实会 `backend.restart(source)`；准确说法是**只有走加载失败重试那条路才会重启**，在设置里正常切换不会，所以我把这条写进 README 而不是当 bug 修。② 建议"发布前必须实机验证"这条我保留，但不是代码缺陷。
+
+**自我纠正（保留错误过程）**：`9-23 13:36` 那条审计我写了"逐条抽查全部对得上：`useSettings.ts:17` 的 `enableTokenization` 已是 `false`"——那是对的代码字面、错的行为结论。我当时只核到前端默认值，没去核 store defaults 与合并方向，于是还把 README 改成"默认关闭"，等于**文档描述了一个并不存在的行为**。教训：核"默认值"必须核到最终生效的那一次赋值，不是第一处赋值。
+
+**改动文件**：`electron/main.cjs`、`services/modules/handlers_misc.py`、`services/modules/tokenization/manager.py`、`services/requirements.txt`、`package.json`、`package-lock.json`、`README.md`、`README.en.md`、本文件与 `doc/bugs-and-fixes.md`。**未跑构建、未推送**（push 与打包由 Malloy 决定与执行）。
+
+### 待 Malloy 实测（我这边做不了的）
+
+1. **`npm run build:backend` 首次运行**：命令是我从 `build_backend.spec`（`name='backend'`、默认 `distpath=dist`）与 venv 里的 PyInstaller 6.17.0 反推的，**我没跑过**（一次要十几分钟且吃满 CPU，你在电池上）。跑通后确认产物路径仍是 `dist/backend/backend.exe`，`build:win` 的串联才成立。
+2. **新装首启的分词默认值**：删掉 `%APPDATA%\<app>\config.json`（或改 `enableTokenization` 为缺失）后开 App，阅读器右侧不应出现分词卡片与词典下载引导；在 设置 > 通用 勾选后应恢复。存量用户 store 里已存 `true`，本次改动不会翻转他们。
+3. **分词"一键能力"整条链路**（此前从未实机跑）：装运行环境 → 下词典 → 出词（`今日/は/いい/天気/です/ね` 带读音词性）→ 删除 → 再装；中途拔网看是否停在可恢复的半态。
+4. **损坏运行环境的降级显示**：手工改坏 `installed/0.6.10` 里任一个 `.py` 文件或 `integrity.json`，设置页应显示"未安装"并可重装，而不是报 installed 后在分词时才炸（本次打开 `verify_integrity` 就是为了这个）。
+5. **改下载源需重启才生效**：在 设置 > 通用 从镜像切到官方后，不重启 App 直接下 OCR/翻译模型，验证它是否还走旧源（代码上是 spawn 时传入的 `--download-source`/`HF_ENDPOINT`）；若确认如此，要不要顺手在保存 `downloadSource` 时也 `backend.restart()`（`backend-api.cjs:185` 已有该能力）由你定，会打断进行中的下载是代价。
+
 ## 2026-09-30（AI 结对：Qoder 主写，Malloy 审阅）
 
 ### 18:55–19:05 — services/ 第一方 Python 全量类型注解（分支 `feat/python-type-hints`）
