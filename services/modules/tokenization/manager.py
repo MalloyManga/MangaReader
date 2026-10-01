@@ -67,7 +67,8 @@ class SudachiRuntimeManager:
         if installed and verify_integrity:
             try:
                 status["verified"] = self._verify_integrity()
-            except TokenizationModuleError as error:
+            except (TokenizationModuleError, OSError, ValueError) as error:
+                # integrity.json 自身损坏会抛 JSONDecodeError(ValueError), 同样应降级为未安装
                 status["installed"] = False
                 status["error"] = str(error)
         return status

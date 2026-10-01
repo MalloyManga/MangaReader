@@ -36,7 +36,7 @@ def handle_check_tokenization_runtime(session: Session, request: dict[str, Any])
     assert session.tokenization_manager is not None
     return {
         "success": True,
-        **session.tokenization_manager.get_status(verify_integrity=False),
+        **session.tokenization_manager.get_status(verify_integrity=True),
     }
 
 
